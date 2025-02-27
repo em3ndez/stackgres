@@ -7,7 +7,7 @@ package io.stackgres.common;
 
 import static io.stackgres.common.StackGresContext.LOCK_POD_KEY;
 import static io.stackgres.common.StackGresContext.LOCK_SERVICE_ACCOUNT_KEY;
-import static io.stackgres.common.StackGresContext.LOCK_TIMESTAMP_KEY;
+import static io.stackgres.common.StackGresContext.LOCK_TIMEOUT_KEY;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -29,12 +29,14 @@ import java.util.Properties;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.LoadBalancerIngress;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
+import io.fabric8.kubernetes.api.model.ObjectMetaBuilder;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.ServiceStatus;
 import io.fabric8.kubernetes.client.CustomResource;
@@ -43,9 +45,15 @@ import io.quarkus.arc.ArcContainer;
 import io.stackgres.common.component.Component;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgcluster.StackGresPostgresFlavor;
+import io.stackgres.common.crd.sgconfig.StackGresConfigAdminui;
+import io.stackgres.common.crd.sgconfig.StackGresConfigImage;
+import io.stackgres.common.crd.sgconfig.StackGresConfigJobs;
+import io.stackgres.common.crd.sgconfig.StackGresConfigRestapi;
+import io.stackgres.common.crd.sgconfig.StackGresConfigSpec;
 import io.stackgres.common.crd.sgdistributedlogs.StackGresDistributedLogs;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedCluster;
-import io.stackgres.common.resource.ResourceUtil;
+import io.stackgres.common.crd.sgshardedcluster.StackGresShardingType;
+import io.stackgres.operatorframework.resource.ResourceUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jooq.lambda.Seq;
@@ -55,7 +63,9 @@ import org.jooq.lambda.tuple.Tuple2;
 
 public interface StackGresUtil {
 
+  String DISTRIBUTEDLOGS_POSTGRES_VERSION = "12";
   String MD5SUM_KEY = "MD5SUM";
+  String MD5SUM_2_KEY = MD5SUM_KEY + "_2";
   String DATA_SUFFIX = "-data";
   String BACKUP_SUFFIX = "-backup";
   Pattern EMPTY_LINE_PATTERN = Pattern.compile(
@@ -64,18 +74,28 @@ public interface StackGresUtil {
       "^\\s*(?<parameter>[^\\s=]+)"
           + "\\s*[=\\s]\\s*"
           + "(?:'(?<quoted>.*)'|(?<unquoted>(?:|[^'\\s#][^\\s#]*)))(?:\\s*#.*)?\\s*$");
+  Pattern IMAGE_NAME_WITH_REGISTRY_PATTERN =
+      Pattern.compile("^[^/]+\\.[^/]+/.*$");
 
-  static String statefulSetDataPersistentVolumeName(ClusterContext cluster) {
-    return ResourceUtil
-        .nameIsValidService(cluster.getCluster().getMetadata().getName() + DATA_SUFFIX);
+  static String statefulSetDataPersistentVolumeClaimName(ClusterContext cluster) {
+    return ResourceUtil.resourceName(cluster.getCluster().getMetadata().getName() + DATA_SUFFIX);
   }
 
-  static String statefulSetDataPersistentVolumeName(CustomResource<?, ?> cluster) {
-    return ResourceUtil.nameIsValidService(cluster.getMetadata().getName() + DATA_SUFFIX);
+  static String statefulSetDataPersistentVolumeClaimName(CustomResource<?, ?> cluster) {
+    return ResourceUtil.resourceName(cluster.getMetadata().getName() + DATA_SUFFIX);
   }
 
-  static String statefulSetBackupPersistentVolumeName(StackGresCluster cluster) {
-    return ResourceUtil.nameIsValidService(cluster.getMetadata().getName() + BACKUP_SUFFIX);
+  static String cronJobBackupName(StackGresCluster cluster) {
+    return ResourceUtil.resourceName(cluster.getMetadata().getName() + BACKUP_SUFFIX);
+  }
+
+  static String cronJobShardedBackupName(StackGresShardedCluster cluster) {
+    return ResourceUtil.resourceName(cluster.getMetadata().getName() + BACKUP_SUFFIX);
+  }
+
+  static String statefulSetPodDataPersistentVolumeClaimName(CustomResource<?, ?> cluster) {
+    return ResourceUtil.resourceName(cluster.getMetadata().getName() + DATA_SUFFIX
+        + "-" + cluster.getMetadata().getName());
   }
 
   /**
@@ -142,15 +162,32 @@ public interface StackGresUtil {
    * Calculate MD5 hash of all exisitng values ordered by key.
    */
   static Map<String, String> addMd5Sum(Map<String, String> data) {
+    MessageDigest messageDigest2 = Unchecked
+        .supplier(() -> MessageDigest.getInstance("MD5")).get();
+    messageDigest2.update(data.entrySet().stream()
+        .filter(entry -> !entry.getKey().startsWith(MD5SUM_KEY))
+        .sorted(Map.Entry.comparingByKey())
+        .map(e -> e.getKey() + "=" + e.getValue())
+        .collect(Collectors.joining())
+        .getBytes(StandardCharsets.UTF_8));
+    data = ImmutableMap.<String, String>builder()
+        .putAll(data.entrySet().stream()
+            .filter(entry -> !entry.getKey().startsWith(MD5SUM_KEY))
+            .toList())
+        .put(MD5SUM_2_KEY, HexFormat.of().withUpperCase().formatHex(messageDigest2.digest()))
+        .build();
     MessageDigest messageDigest = Unchecked
         .supplier(() -> MessageDigest.getInstance("MD5")).get();
     messageDigest.update(data.entrySet().stream()
+        .filter(entry -> !entry.getKey().equals(MD5SUM_KEY))
         .sorted(Map.Entry.comparingByKey())
         .map(Map.Entry::getValue)
         .collect(Collectors.joining())
         .getBytes(StandardCharsets.UTF_8));
     return ImmutableMap.<String, String>builder()
-        .putAll(data)
+        .putAll(data.entrySet().stream()
+            .filter(entry -> !entry.getKey().equals(MD5SUM_KEY))
+            .toList())
         .put(MD5SUM_KEY, HexFormat.of().withUpperCase().formatHex(messageDigest.digest()))
         .build();
   }
@@ -163,7 +200,12 @@ public interface StackGresUtil {
         .supplier(() -> MessageDigest.getInstance("MD5")).get();
     Seq.of(paths)
         .sorted()
-        .map(Unchecked.function(Files::readAllBytes))
+        .flatMap(path -> Stream.concat(
+            Stream.of(path.toString()
+                .getBytes(StandardCharsets.UTF_8)),
+            Optional.of(path)
+            .map(Unchecked.function(Files::readAllBytes))
+            .stream()))
         .forEach(messageDigest::update);
     return HexFormat.of().withUpperCase().formatHex(messageDigest.digest());
   }
@@ -194,7 +236,7 @@ public interface StackGresUtil {
    * Return the port of an Web URL.
    */
   static int getPortFromUrl(String url) throws MalformedURLException {
-    URL parsedUrl = new URL(url);
+    URL parsedUrl = URI.create(url).toURL();
     int port = parsedUrl.getPort();
     if (port == -1) {
       if (parsedUrl.getProtocol().equals("https")) {
@@ -258,7 +300,7 @@ public interface StackGresUtil {
     if (status != null && "LoadBalancer".equals(service.getSpec().getType())) {
       List<LoadBalancerIngress> ingress = status.getLoadBalancer().getIngress();
       if (ingress != null && !ingress.isEmpty()) {
-        LoadBalancerIngress loadBalancerIngress = ingress.get(0);
+        LoadBalancerIngress loadBalancerIngress = ingress.getFirst();
         serviceDns = loadBalancerIngress.getHostname() != null
             ? loadBalancerIngress.getHostname()
             : loadBalancerIngress.getIp();
@@ -285,11 +327,11 @@ public interface StackGresUtil {
   }
 
   static List<ExtensionTuple> getDefaultClusterExtensions(
-      StackGresVersion stackGresVersion, String pgVersion, String flavor) {
+      StackGresVersion sgVersion, String pgVersion, String flavor) {
     if (Component.compareBuildVersions("6.6",
-        StackGresComponent.PATRONI.getOrThrow(stackGresVersion)
+        StackGresComponent.PATRONI.getOrThrow(sgVersion)
             .getBuildVersion(StackGresComponent.LATEST, Map.of(
-                getPostgresFlavorComponent(flavor).getOrThrow(stackGresVersion),
+                getPostgresFlavorComponent(flavor).getOrThrow(sgVersion),
                 pgVersion))) <= 0) {
       return List.of();
     }
@@ -301,14 +343,14 @@ public interface StackGresUtil {
   }
 
   static List<ExtensionTuple> getDefaultClusterExtensions(
-      String pgVersion, StackGresComponent flavor, StackGresVersion stackGresVersion) {
+      String pgVersion, StackGresComponent flavor, StackGresVersion sgVersion) {
     if (flavor == StackGresComponent.BABELFISH) {
       return List.of();
     }
     if (Component.compareBuildVersions("6.6",
-        StackGresComponent.PATRONI.getOrThrow(stackGresVersion)
+        StackGresComponent.PATRONI.getOrThrow(sgVersion)
             .getBuildVersion(StackGresComponent.LATEST, Map.of(
-                flavor.getOrThrow(stackGresVersion),
+                flavor.getOrThrow(sgVersion),
                 pgVersion))) <= 0) {
       return List.of();
     }
@@ -319,76 +361,130 @@ public interface StackGresUtil {
   }
 
   static List<ExtensionTuple> getDefaultShardedClusterExtensions(
-      StackGresCluster cluster) {
-    String pgVersion = cluster.getSpec().getPostgres().getVersion();
-
-    return getDefaultShardedClusterExtensions(
-        pgVersion,
-        StackGresVersion.getStackGresVersion(cluster));
+      StackGresShardedCluster cluster) {
+    if (StackGresShardingType.CITUS.equals(
+        StackGresShardingType.fromString(cluster.getSpec().getType()))) {
+      return getDefaultCitusShardedClusterExtensions(cluster);
+    }
+    if (StackGresShardingType.DDP.equals(
+        StackGresShardingType.fromString(cluster.getSpec().getType()))) {
+      return getDefaultDdpShardedClusterExtensions(cluster);
+    }
+    if (StackGresShardingType.SHARDING_SPHERE.equals(
+        StackGresShardingType.fromString(cluster.getSpec().getType()))) {
+      return getDefaultShardingSphereShardedClusterExtensions(cluster);
+    }
+    return List.of();
   }
 
-  static List<ExtensionTuple> getDefaultShardedClusterExtensions(
-      String pgVersion, StackGresVersion stackGresVersion) {
+  static List<ExtensionTuple> getDefaultCitusShardedClusterExtensions(StackGresShardedCluster cluster) {
+    String pgVersion = cluster.getSpec().getPostgres().getVersion();
+    StackGresVersion sgVersion = StackGresVersion.getStackGresVersion(cluster);
+    Component pgComponent = StackGresComponent.POSTGRESQL.getOrThrow(sgVersion);
+    String pgMajorVersion = pgComponent
+        .getMajorVersion(pgVersion);
+    long pgMajorVersionIndex = pgComponent
+        .streamOrderedMajorVersions()
+        .zipWithIndex()
+        .filter(t -> t.v1.equals(pgMajorVersion))
+        .map(Tuple2::v2)
+        .findAny()
+        .get();
+    long pg14Index = pgComponent
+        .streamOrderedMajorVersions()
+        .zipWithIndex()
+        .filter(t -> t.v1.equals("14"))
+        .map(Tuple2::v2)
+        .findAny()
+        .get();
     return List.of(
-        new ExtensionTuple("citus", "11.3-1"),
+        pgMajorVersionIndex <= pg14Index
+        ? new ExtensionTuple("citus", "12.1-1")
+            : new ExtensionTuple("citus", "11.3-1"),
         new ExtensionTuple("citus_columnar", "11.3-1"));
   }
 
-  static List<ExtensionTuple> getDefaultDistributedLogsExtensions(
-      StackGresCluster cluster) {
-    String pgVersion = cluster.getSpec().getPostgres().getVersion();
-
-    return getDefaultDistributedLogsExtensions(
-        pgVersion,
-        StackGresVersion.getStackGresVersion(cluster));
+  static List<ExtensionTuple> getDefaultDdpShardedClusterExtensions(StackGresShardedCluster cluster) {
+    return List.of(
+        new ExtensionTuple("dblink"),
+        new ExtensionTuple("postgres_fdw"));
   }
 
-  static List<ExtensionTuple> getDefaultDistributedLogsExtensions(
-      String pgVersion, StackGresVersion stackGresVersion) {
-    return Seq.seq(getDefaultClusterExtensions(
-        stackGresVersion,
-        pgVersion,
-        StackGresPostgresFlavor.VANILLA.toString())).append(
-            new ExtensionTuple("timescaledb", "1.7.4"))
-        .toList();
+  static List<ExtensionTuple> getDefaultShardingSphereShardedClusterExtensions(StackGresShardedCluster cluster) {
+    return List.of(
+        new ExtensionTuple("dblink"),
+        new ExtensionTuple("postgres_fdw"));
   }
 
-  static boolean isLocked(HasMetadata resource, int lockTimeoutMillis) {
-    long currentTimeSeconds = System.currentTimeMillis() / 1000;
-    long timedOutLock = currentTimeSeconds - lockTimeoutMillis;
+  static boolean isLocked(HasMetadata resource) {
+    return isLocked(resource, System.currentTimeMillis() / 1000);
+  }
+
+  static boolean isLocked(HasMetadata resource, long checkTimestamp) {
     return Optional.ofNullable(resource.getMetadata())
         .map(ObjectMeta::getAnnotations)
-        .filter(annotation -> annotation.containsKey(LOCK_POD_KEY)
-            && annotation.containsKey(LOCK_TIMESTAMP_KEY))
-        .map(annotations -> Long.parseLong(annotations.get(LOCK_TIMESTAMP_KEY)))
-        .map(lockTimestamp -> lockTimestamp > timedOutLock)
+        .filter(annotations -> annotations.containsKey(LOCK_POD_KEY)
+            && annotations.containsKey(LOCK_TIMEOUT_KEY))
+        .map(annotations -> {
+          try {
+            return Long.parseLong(annotations.get(LOCK_TIMEOUT_KEY));
+          } catch (NumberFormatException ex) {
+            return null;
+          }
+        })
+        .map(lockTimeout -> checkTimestamp < lockTimeout)
         .orElse(false);
   }
 
-  static boolean isLockedByMe(HasMetadata resource, String lockPodName) {
+  static boolean isLockedBy(HasMetadata resource, String lockPodName) {
+    return isLockedBy(resource, lockPodName,
+        System.currentTimeMillis() / 1000);
+  }
+
+  static boolean isLockedBy(HasMetadata resource, String lockPodName,
+      long checkTimestamp) {
     return Optional.ofNullable(resource.getMetadata())
         .map(ObjectMeta::getAnnotations)
         .filter(annotation -> annotation.containsKey(LOCK_POD_KEY)
-            && annotation.containsKey(LOCK_TIMESTAMP_KEY))
-        .map(annotation -> annotation.get(LOCK_POD_KEY).equals(lockPodName))
+            && annotation.containsKey(LOCK_TIMEOUT_KEY))
+        .filter(annotations -> annotations.get(LOCK_POD_KEY).equals(lockPodName))
+        .map(annotations -> {
+          try {
+            return Long.parseLong(annotations.get(LOCK_TIMEOUT_KEY));
+          } catch (NumberFormatException ex) {
+            return null;
+          }
+        })
+        .map(lockTimeout -> checkTimestamp < lockTimeout)
         .orElse(false);
+  }
+
+  static void setLock(HasMetadata resource, String lockServiceAccount,
+      String lockPodName, long lockDuration) {
+    setLock(resource, lockServiceAccount, lockPodName, lockDuration,
+        System.currentTimeMillis() / 1000);
   }
 
   static void setLock(HasMetadata resource, String lockServiceAccount, String lockPodName,
-      long lockTimestamp) {
-    final Map<String, String> annotations = resource.getMetadata().getAnnotations();
-
-    annotations.put(LOCK_SERVICE_ACCOUNT_KEY, lockServiceAccount);
-    annotations.put(LOCK_POD_KEY, lockPodName);
-    annotations.put(LOCK_TIMESTAMP_KEY, Long.toString(lockTimestamp));
+      long lockDuration, long lockTimestamp) {
+    resource.setMetadata(
+        new ObjectMetaBuilder(resource.getMetadata())
+        .removeFromAnnotations(LOCK_SERVICE_ACCOUNT_KEY)
+        .removeFromAnnotations(LOCK_POD_KEY)
+        .removeFromAnnotations(LOCK_TIMEOUT_KEY)
+        .addToAnnotations(LOCK_SERVICE_ACCOUNT_KEY, lockServiceAccount)
+        .addToAnnotations(LOCK_POD_KEY, lockPodName)
+        .addToAnnotations(LOCK_TIMEOUT_KEY, Long.toString(lockTimestamp + lockDuration))
+        .build());
   }
 
   static void resetLock(HasMetadata resource) {
-    final Map<String, String> annotations = resource.getMetadata().getAnnotations();
-
-    annotations.remove(LOCK_SERVICE_ACCOUNT_KEY);
-    annotations.remove(LOCK_POD_KEY);
-    annotations.remove(LOCK_TIMESTAMP_KEY);
+    resource.setMetadata(
+        new ObjectMetaBuilder(resource.getMetadata())
+        .removeFromAnnotations(LOCK_SERVICE_ACCOUNT_KEY)
+        .removeFromAnnotations(LOCK_POD_KEY)
+        .removeFromAnnotations(LOCK_TIMEOUT_KEY)
+        .build());
   }
 
   static String getLockServiceAccount(HasMetadata resource) {
@@ -398,6 +494,46 @@ public interface StackGresUtil {
         .orElseThrow(() -> new IllegalArgumentException(
             "Resource not locked or locked and annotation "
                 + LOCK_SERVICE_ACCOUNT_KEY + " not set"));
+  }
+
+  static String getPatroniVersion(StackGresCluster cluster) {
+    return getPatroniVersion(cluster, cluster.getSpec().getPostgres().getVersion());
+  }
+
+  static String getPatroniVersion(StackGresCluster cluster, String postgresVersion) {
+    Component postgresComponentFlavor = getPostgresFlavorComponent(cluster).get(cluster);
+    return StackGresComponent.PATRONI.get(cluster).getVersion(
+        StackGresComponent.LATEST,
+        Map.of(postgresComponentFlavor,
+            postgresVersion));
+  }
+
+  static String getPatroniVersion(StackGresShardedCluster cluster) {
+    return getPatroniVersion(cluster, cluster.getSpec().getPostgres().getVersion());
+  }
+
+  static String getPatroniVersion(StackGresShardedCluster cluster, String postgresVersion) {
+    Component postgresComponentFlavor = getPostgresFlavorComponent(cluster).get(cluster);
+    return StackGresComponent.PATRONI.get(cluster).getVersion(
+        StackGresComponent.LATEST,
+        Map.of(postgresComponentFlavor,
+            postgresVersion));
+  }
+
+  static String getPatroniVersion(StackGresDistributedLogs distributedLogs) {
+    Component postgresComponentFlavor = StackGresComponent.POSTGRESQL.get(distributedLogs);
+    return StackGresComponent.PATRONI.get(distributedLogs).getVersion(
+        StackGresComponent.LATEST,
+        Map.of(postgresComponentFlavor,
+            DISTRIBUTEDLOGS_POSTGRES_VERSION));
+  }
+
+  static int getPatroniMajorVersion(String patroniVersion) {
+    return Optional.of(patroniVersion)
+        .map(version -> version.split("\\.")[0])
+        .map(Integer::parseInt)
+        .orElseThrow(() -> new RuntimeException("Can not extract patroni major version from "
+            + patroniVersion));
   }
 
   static String getPatroniImageName(StackGresCluster cluster) {
@@ -416,7 +552,19 @@ public interface StackGresUtil {
     return StackGresComponent.PATRONI.get(distributedLogs).getImageName(
         StackGresComponent.LATEST,
         Map.of(StackGresComponent.POSTGRESQL.get(distributedLogs),
-            "12"));
+            DISTRIBUTEDLOGS_POSTGRES_VERSION));
+  }
+
+  static String getPatroniImageName(StackGresShardedCluster cluster) {
+    return getPatroniImageName(cluster, cluster.getSpec().getPostgres().getVersion());
+  }
+
+  static String getPatroniImageName(StackGresShardedCluster cluster, String postgresVersion) {
+    Component postgresComponentFlavor = getPostgresFlavorComponent(cluster).get(cluster);
+    return StackGresComponent.PATRONI.get(cluster).getImageName(
+        StackGresComponent.LATEST,
+        Map.of(postgresComponentFlavor,
+            postgresVersion));
   }
 
   static @NotNull StackGresComponent getPostgresFlavorComponent(StackGresCluster cluster) {
@@ -493,6 +641,62 @@ public interface StackGresUtil {
             matcher -> Optional.ofNullable(matcher.group("quoted"))
                 .map(quoted -> quoted.replaceAll("[\\']'", "'"))
                 .orElseGet(() -> matcher.group("unquoted"))));
+  }
+
+  static String getDefaultPullPolicy() {
+    return StackGresProperty.SG_IMAGE_PULL_POLICY.get()
+        .orElse("IfNotPresent");
+  }
+
+  static String getRestapiImageNameWithTag(ConfigContext context) {
+    return getImageNameWithTag(
+        context,
+        Optional.of(context.getConfig().getSpec())
+        .map(StackGresConfigSpec::getRestapi)
+        .map(StackGresConfigRestapi::getImage),
+        "stackgres/restapi");
+  }
+
+  static String getAdminuiImageNameWithTag(ConfigContext context) {
+    return getImageNameWithTag(
+        context,
+        Optional.of(context.getConfig().getSpec())
+        .map(StackGresConfigSpec::getAdminui)
+        .map(StackGresConfigAdminui::getImage),
+        "stackgres/admin-ui");
+  }
+
+  static String getCollectorImageNameWithTag(ConfigContext context) {
+    return StackGresComponent.OTEL_COLLECTOR.get(StackGresVersion.LATEST)
+        .get().getLatestImageName();
+  }
+
+  static String getJobsImageNameWithTag(ConfigContext context) {
+    return getImageNameWithTag(
+        context,
+        Optional.of(context.getConfig().getSpec())
+        .map(StackGresConfigSpec::getJobs)
+        .map(StackGresConfigJobs::getImage),
+        "stackgres/jobs");
+  }
+      
+  static String getImageNameWithTag(
+      ConfigContext context,
+      Optional<StackGresConfigImage> image,
+      String defaultImageName) {
+    final String containerRegistry = context.getConfig().getSpec().getContainerRegistry();
+    String imageName = image
+        .map(StackGresConfigImage::getName)
+        .orElse(defaultImageName);
+    String imageTag = image
+        .map(StackGresConfigImage::getTag)
+        .or(() -> StackGresProperty.OPERATOR_IMAGE_VERSION.get())
+        .orElseThrow(() -> new IllegalArgumentException(
+            "Can not determine the image tag."
+                + " Missing OPERATOR_IMAGE_VERSION environment variable"));
+    return IMAGE_NAME_WITH_REGISTRY_PATTERN.matcher(imageName).matches()
+        ? imageName + ":" + imageTag
+            : containerRegistry + "/" + imageName + ":" + imageTag;
   }
 
 }

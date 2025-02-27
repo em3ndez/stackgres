@@ -68,7 +68,7 @@ cluster:
   #       password:
   #         name:
   #         key:
-  sgInstanceProfile: size-xs
+  sgInstanceProfile: size-s
   postgresServices:
     primary:
       enabled: true
@@ -116,7 +116,7 @@ cluster:
       # storageClass: "-"
     disableConnectionPooling: false
     disablePostgresUtil: false
-    disableMetricsExporter: false
+    disableEnvoy: false
     # scheduling:
     #   nodeSelector:
     #     key: value
@@ -154,9 +154,14 @@ cluster:
     # - secret:
     # customContainers:
     # customInitContainers:
+  # disableBackups: false
   configurations:
     sgPostgresConfig: postgresconf
     sgPoolingConfig: pgbouncerconf
+    observability:
+      disableMetrics: false
+      # receiver: ""
+      prometheusAutobind: false
     backups:
       retention: 5
       cronSchedule: "*/2 * * * *"
@@ -168,6 +173,10 @@ cluster:
         #maxDiskBandwidth:
     # sgObjectStorage: objectstorage
     # path: "demo/mypath"
+      useVolumeSnapshot: false
+    # volumeSnapshotClass:
+    # fastVolumeSnapshot: true
+      retainWalsForUnmanagedLifecycle: true
   distributedLogs:
     sgDistributedLogs: distributedlogs
     retention: 7 days
@@ -197,7 +206,6 @@ cluster:
   #      configMapKeyRef: # read long script from a ConfigMap to avoid have to much data in the helm releasea and the sgcluster CR
   #        name: stackgres-sqls-scripts
   #        key: create-stackgres-schema.sql
-  prometheusAutobind: true
 
 shardedCluster:
   type: citus
@@ -205,11 +213,15 @@ shardedCluster:
   shards:
     clusters: 2
     instancesPerCluster: 1
+    sgInstanceProfile: size-s
+    configurations:
+      sgPostgresConfig: postgresconf
+      sgPoolingConfig: pgbouncerconf
+    pods:
+      persistentVolume:
+        size: 5Gi
 
 instanceProfiles:
-  - name: size-xs
-    cpu: "500m"
-    memory: "512Mi"
   - name: size-s
     cpu: "1"
     memory: "2Gi"

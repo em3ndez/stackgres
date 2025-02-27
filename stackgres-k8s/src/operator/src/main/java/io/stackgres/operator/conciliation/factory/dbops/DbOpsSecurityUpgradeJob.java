@@ -6,22 +6,29 @@
 package io.stackgres.operator.conciliation.factory.dbops;
 
 import static io.stackgres.common.DbOpsUtil.jobName;
+import static io.stackgres.common.StackGresUtil.getDefaultPullPolicy;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
 
 import io.fabric8.kubernetes.api.model.AffinityBuilder;
 import io.fabric8.kubernetes.api.model.ContainerBuilder;
 import io.fabric8.kubernetes.api.model.EnvVarBuilder;
 import io.fabric8.kubernetes.api.model.PodSecurityContext;
 import io.fabric8.kubernetes.api.model.TolerationBuilder;
+import io.fabric8.kubernetes.api.model.Volume;
+import io.fabric8.kubernetes.api.model.VolumeMount;
 import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder;
 import io.stackgres.common.OperatorProperty;
+import io.stackgres.common.StackGresContext;
 import io.stackgres.common.StackGresProperty;
+import io.stackgres.common.StackGresUtil;
+import io.stackgres.common.crd.sgconfig.StackGresConfigDeveloper;
+import io.stackgres.common.crd.sgconfig.StackGresConfigDeveloperContainerPatches;
+import io.stackgres.common.crd.sgconfig.StackGresConfigDeveloperPatches;
+import io.stackgres.common.crd.sgconfig.StackGresConfigSpec;
 import io.stackgres.common.crd.sgdbops.StackGresDbOps;
 import io.stackgres.common.crd.sgdbops.StackGresDbOpsSpec;
 import io.stackgres.common.crd.sgdbops.StackGresDbOpsSpecScheduling;
@@ -29,12 +36,14 @@ import io.stackgres.common.labels.LabelFactoryForDbOps;
 import io.stackgres.operator.conciliation.OperatorVersionBinder;
 import io.stackgres.operator.conciliation.dbops.StackGresDbOpsContext;
 import io.stackgres.operator.conciliation.factory.ResourceFactory;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jooq.lambda.Seq;
 
 @Singleton
 @OperatorVersionBinder
-@OpJob("securityUpgrade")
-public class DbOpsSecurityUpgradeJob implements JobFactory {
+@DbOpsJob("securityUpgrade")
+public class DbOpsSecurityUpgradeJob implements DbOpsJobFactory {
 
   private final LabelFactoryForDbOps dbOpsLabelFactory;
   private final ResourceFactory<StackGresDbOpsContext, PodSecurityContext> podSecurityFactory;
@@ -107,9 +116,9 @@ public class DbOpsSecurityUpgradeJob implements JobFactory {
                 .orElse(null))
             .build())
         .withContainers(new ContainerBuilder()
-            .withName("security-upgrade")
-            .withImagePullPolicy(getPullPolicy())
-            .withImage(getImageName())
+            .withName("run-dbops")
+            .withImage(StackGresUtil.getJobsImageNameWithTag(context))
+            .withImagePullPolicy(getDefaultPullPolicy())
             .addToEnv(new EnvVarBuilder()
                 .withName(OperatorProperty.OPERATOR_NAME.getEnvironmentVariableName())
                 .withValue(OperatorProperty.OPERATOR_NAME.getString())
@@ -133,10 +142,6 @@ public class DbOpsSecurityUpgradeJob implements JobFactory {
                 new EnvVarBuilder()
                     .withName("CONVERSION_WEBHOOKS")
                     .withValue(Boolean.FALSE.toString())
-                    .build(),
-                new EnvVarBuilder()
-                    .withName("DATABASE_OPERATION_JOB")
-                    .withValue(Boolean.TRUE.toString())
                     .build(),
                 new EnvVarBuilder()
                     .withName("DATABASE_OPERATION_CR_NAME")
@@ -175,14 +180,47 @@ public class DbOpsSecurityUpgradeJob implements JobFactory {
                     .withValue(System.getenv("DEBUG_OPERATOR_SUSPEND"))
                     .build(),
                 new EnvVarBuilder()
-                    .withName("DBOPS_LOCK_TIMEOUT")
-                    .withValue(OperatorProperty.LOCK_TIMEOUT.getString())
+                    .withName("DBOPS_LOCK_DURATION")
+                    .withValue(OperatorProperty.LOCK_DURATION.getString())
                     .build(),
                 new EnvVarBuilder()
                     .withName("DBOPS_LOCK_POLL_INTERVAL")
                     .withValue(OperatorProperty.LOCK_POLL_INTERVAL.getString())
+                    .build(),
+                new EnvVarBuilder()
+                    .withName("LOCK_SERVICE_ACCOUNT_KEY")
+                    .withValue(StackGresContext.LOCK_SERVICE_ACCOUNT_KEY)
+                    .build(),
+                new EnvVarBuilder()
+                    .withName("LOCK_POD_KEY")
+                    .withValue(StackGresContext.LOCK_POD_KEY)
+                    .build(),
+                new EnvVarBuilder()
+                    .withName("LOCK_TIMEOUT_KEY")
+                    .withValue(StackGresContext.LOCK_TIMEOUT_KEY)
                     .build())
+            .addAllToVolumeMounts(Optional.of(context.getConfig().getSpec())
+                .map(StackGresConfigSpec::getDeveloper)
+                .map(StackGresConfigDeveloper::getPatches)
+                .map(StackGresConfigDeveloperPatches::getJobs)
+                .map(StackGresConfigDeveloperContainerPatches::getVolumeMounts)
+                .stream()
+                .flatMap(List::stream)
+                .map(VolumeMount.class::cast)
+                .toList())
             .build())
+        .addAllToVolumes(Seq.seq(
+            Optional.of(context.getConfig().getSpec())
+            .map(StackGresConfigSpec::getDeveloper)
+            .map(StackGresConfigDeveloper::getPatches)
+            .map(StackGresConfigDeveloperPatches::getJobs)
+            .map(StackGresConfigDeveloperContainerPatches::getVolumes)
+            .stream()
+            .flatMap(List::stream)
+            .map(Volume.class::cast))
+            .grouped(volume -> volume.getName())
+            .flatMap(t -> t.v2.limit(1))
+            .toList())
         .endSpec()
         .endTemplate()
         .endSpec()

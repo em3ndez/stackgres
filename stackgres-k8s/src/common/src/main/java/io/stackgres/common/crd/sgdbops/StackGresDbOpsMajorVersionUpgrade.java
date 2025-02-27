@@ -5,21 +5,23 @@
 
 package io.stackgres.common.crd.sgdbops;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-
-import javax.validation.constraints.AssertTrue;
-import javax.validation.constraints.NotEmpty;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
+import io.stackgres.common.crd.sgcluster.StackGresClusterExtension;
+import io.stackgres.common.crd.sgcluster.StackGresClusterInstalledExtension;
 import io.stackgres.common.validation.FieldReference;
 import io.stackgres.common.validation.FieldReference.ReferencedField;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.NotEmpty;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -29,25 +31,25 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresDbOpsMajorVersionUpgrade {
 
-  @JsonProperty("postgresVersion")
   @NotEmpty(message = "postgresVersion must not be empty")
   private String postgresVersion;
 
-  @JsonProperty("sgPostgresConfig")
+  @Valid
+  private List<StackGresClusterExtension> postgresExtensions;
+
   @NotEmpty(message = "sgPostgresConfig must not be empty")
   private String sgPostgresConfig;
 
-  @JsonProperty("backupPath")
   private String backupPath;
 
-  @JsonProperty("link")
   private Boolean link;
 
-  @JsonProperty("clone")
   private Boolean clone;
 
-  @JsonProperty("check")
   private Boolean check;
+
+  @Valid
+  private List<StackGresClusterInstalledExtension> toInstallPostgresExtensions;
 
   @ReferencedField("backupPath")
   interface BackupPath extends FieldReference { }
@@ -79,6 +81,14 @@ public class StackGresDbOpsMajorVersionUpgrade {
 
   public void setPostgresVersion(String postgresVersion) {
     this.postgresVersion = postgresVersion;
+  }
+
+  public List<StackGresClusterExtension> getPostgresExtensions() {
+    return postgresExtensions;
+  }
+
+  public void setPostgresExtensions(List<StackGresClusterExtension> postgresExtensions) {
+    this.postgresExtensions = postgresExtensions;
   }
 
   public String getSgPostgresConfig() {
@@ -121,9 +131,19 @@ public class StackGresDbOpsMajorVersionUpgrade {
     this.check = check;
   }
 
+  public List<StackGresClusterInstalledExtension> getToInstallPostgresExtensions() {
+    return toInstallPostgresExtensions;
+  }
+
+  public void setToInstallPostgresExtensions(
+      List<StackGresClusterInstalledExtension> toInstallPostgresExtensions) {
+    this.toInstallPostgresExtensions = toInstallPostgresExtensions;
+  }
+
   @Override
   public int hashCode() {
-    return Objects.hash(backupPath, check, clone, link, postgresVersion, sgPostgresConfig);
+    return Objects.hash(backupPath, check, clone, postgresExtensions, link, postgresVersion,
+        sgPostgresConfig, toInstallPostgresExtensions);
   }
 
   @Override
@@ -135,10 +155,14 @@ public class StackGresDbOpsMajorVersionUpgrade {
       return false;
     }
     StackGresDbOpsMajorVersionUpgrade other = (StackGresDbOpsMajorVersionUpgrade) obj;
-    return Objects.equals(backupPath, other.backupPath) && Objects.equals(check, other.check)
-        && Objects.equals(clone, other.clone) && Objects.equals(link, other.link)
+    return Objects.equals(backupPath, other.backupPath)
+        && Objects.equals(check, other.check)
+        && Objects.equals(clone, other.clone)
+        && Objects.equals(postgresExtensions, other.postgresExtensions)
+        && Objects.equals(link, other.link)
         && Objects.equals(postgresVersion, other.postgresVersion)
-        && Objects.equals(sgPostgresConfig, other.sgPostgresConfig);
+        && Objects.equals(sgPostgresConfig, other.sgPostgresConfig)
+        && Objects.equals(toInstallPostgresExtensions, other.toInstallPostgresExtensions);
   }
 
   @Override

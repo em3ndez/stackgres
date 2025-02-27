@@ -13,7 +13,7 @@
       "mode": "async",
       "role": "ha-read"
     },
-    "sgInstanceProfile": "size-xs",
+    "sgInstanceProfile": "size-s",
     "initialData": {
       "restore": {
         "fromBackup": {
@@ -24,8 +24,10 @@
     "configurations": {
       "sgPostgresConfig": "postgresconf",
       "sgPoolingConfig": "pgbouncerconf",
-      "backupPath": "sgbackups.stackgres.io/stackgres/stackgres/11",
-      "sgBackupConfig": "backupconf"
+      "backups": [{
+        "path": "sgbackups.stackgres.io/stackgres/stackgres/11",
+        "sgObjectStorage": "objstorage"
+      }]
     },
     "pods": {
       "persistentVolume": {

@@ -9,15 +9,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.fabric8.kubernetes.api.model.ServicePort;
 import io.fabric8.kubernetes.api.model.SessionAffinityConfig;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
+import io.stackgres.common.crd.CustomServicePort;
 import io.stackgres.common.crd.ServiceSpec;
 import io.stackgres.common.validation.ValidEnum;
 import io.sundr.builder.annotations.Buildable;
 import io.sundr.builder.annotations.BuildableReference;
+import jakarta.validation.Valid;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -38,6 +41,11 @@ public class StackGresPostgresService extends ServiceSpec {
       message = "type must be one of ClusterIP, LoadBalancer or NodePort")
   protected String type;
 
+  protected StackGresPostgresServiceNodePort nodePorts;
+
+  @Valid
+  private List<CustomServicePort> customPorts;
+
   public StackGresPostgresService() {
     super();
   }
@@ -48,12 +56,24 @@ public class StackGresPostgresService extends ServiceSpec {
       List<String> ipFamilies, String ipFamilyPolicy, String loadBalancerClass,
       String loadBalancerIP, List<String> loadBalancerSourceRanges, List<ServicePort> ports,
       Boolean publishNotReadyAddresses, Map<String, String> selector, String sessionAffinity,
-      SessionAffinityConfig sessionAffinityConfig, String type) {
+      SessionAffinityConfig sessionAffinityConfig, String trafficDistribution, String type,
+      StackGresPostgresServiceNodePort nodePorts, List<CustomServicePort> customPorts) {
     super(allocateLoadBalancerNodePorts, clusterIP, clusterIPs, externalIPs, externalName,
         externalTrafficPolicy, healthCheckNodePort, internalTrafficPolicy, ipFamilies,
         ipFamilyPolicy, loadBalancerClass, loadBalancerIP, loadBalancerSourceRanges, ports,
-        publishNotReadyAddresses, selector, sessionAffinity, sessionAffinityConfig, null);
+        publishNotReadyAddresses, selector, sessionAffinity, sessionAffinityConfig,
+        trafficDistribution, type);
     this.type = type;
+    this.nodePorts = nodePorts;
+    this.customPorts = customPorts;
+  }
+
+  public List<CustomServicePort> getCustomPorts() {
+    return customPorts;
+  }
+
+  public void setCustomPorts(List<CustomServicePort> customPorts) {
+    this.customPorts = customPorts;
   }
 
   public Boolean getEnabled() {
@@ -62,6 +82,14 @@ public class StackGresPostgresService extends ServiceSpec {
 
   public void setEnabled(Boolean enabled) {
     this.enabled = enabled;
+  }
+
+  @JsonIgnore
+  public String getServiceType() {
+    if (Objects.equals(getType(), StackGresPostgresServiceType.NONE.toString())) {
+      return "ClusterIP";
+    }
+    return getType();
   }
 
   @Override
@@ -82,6 +110,14 @@ public class StackGresPostgresService extends ServiceSpec {
   @Override
   public void setAllocateLoadBalancerNodePorts(Boolean allocateLoadBalancerNodePorts) {
     super.setAllocateLoadBalancerNodePorts(allocateLoadBalancerNodePorts);
+  }
+
+  @JsonIgnore
+  public String getServiceClusterIP() {
+    if (Objects.equals(getType(), StackGresPostgresServiceType.NONE.toString())) {
+      return "None";
+    }
+    return null;
   }
 
   @Override
@@ -254,11 +290,19 @@ public class StackGresPostgresService extends ServiceSpec {
     super.setSessionAffinityConfig(sessionAffinityConfig);
   }
 
+  public StackGresPostgresServiceNodePort getNodePorts() {
+    return nodePorts;
+  }
+
+  public void setNodePorts(StackGresPostgresServiceNodePort nodePorts) {
+    this.nodePorts = nodePorts;
+  }
+
   @Override
   public int hashCode() {
     final int prime = 31;
     int result = super.hashCode();
-    result = prime * result + Objects.hash(enabled, type);
+    result = prime * result + Objects.hash(enabled, type, nodePorts);
     return result;
   }
 
@@ -270,11 +314,12 @@ public class StackGresPostgresService extends ServiceSpec {
     if (!super.equals(obj)) {
       return false;
     }
-    if (!(obj instanceof StackGresPostgresService)) {
+    if (!(obj instanceof StackGresPostgresService other)) {
       return false;
     }
-    StackGresPostgresService other = (StackGresPostgresService) obj;
-    return Objects.equals(enabled, other.enabled) && Objects.equals(type, other.type);
+    return Objects.equals(enabled, other.enabled)
+        && Objects.equals(type, other.type)
+        && Objects.equals(nodePorts, other.nodePorts);
   }
 
   @Override

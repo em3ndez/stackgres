@@ -8,16 +8,22 @@ package io.stackgres.common.crd.sgdistributedlogs;
 import java.util.List;
 import java.util.Objects;
 
-import javax.validation.Valid;
-import javax.validation.constraints.NotNull;
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
+import io.stackgres.common.crd.postgres.service.StackGresPostgresServices;
 import io.stackgres.common.crd.sgcluster.StackGresClusterInstalledExtension;
+import io.stackgres.common.crd.sgcluster.StackGresClusterNonProduction;
+import io.stackgres.common.crd.sgcluster.StackGresClusterPodsPersistentVolume;
+import io.stackgres.common.crd.sgcluster.StackGresClusterPodsScheduling;
+import io.stackgres.common.crd.sgcluster.StackGresClusterProfile;
+import io.stackgres.common.crd.sgcluster.StackGresClusterResources;
+import io.stackgres.common.crd.sgcluster.StackGresClusterSpecMetadata;
+import io.stackgres.common.validation.ValidEnum;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -27,97 +33,101 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresDistributedLogsSpec {
 
-  @JsonProperty("persistentVolume")
+  @ValidEnum(enumClass = StackGresClusterProfile.class, allowNulls = true,
+      message = "profile must be production, testing or development")
+  private String profile;
+
   @NotNull(message = "Persistent volume must be specified")
   @Valid
-  private StackGresDistributedLogsPersistentVolume persistentVolume;
+  private StackGresClusterPodsPersistentVolume persistentVolume;
 
-  @JsonProperty("postgresServices")
   @Valid
-  private StackGresDistributedLogsPostgresServices postgresServices;
+  private StackGresPostgresServices postgresServices;
 
-  @JsonProperty("nonProductionOptions")
   @Valid
-  private StackGresDistributedLogsNonProduction nonProductionOptions;
+  private StackGresClusterNonProduction nonProductionOptions;
 
-  @JsonProperty("resources")
-  private StackGresDistributedLogsResources resources;
-
-  @JsonProperty("scheduling")
   @Valid
-  private StackGresDistributedLogsPodScheduling scheduling;
+  private StackGresClusterResources resources;
 
-  @JsonProperty("sgInstanceProfile")
+  @Valid
+  private StackGresClusterPodsScheduling scheduling;
+
   @NotNull(message = "resource profile is required")
-  private String resourceProfile;
+  private String sgInstanceProfile;
 
-  @JsonProperty("configurations")
   @NotNull(message = "configurations is required")
   @Valid
-  private StackGresDistributedLogsConfiguration configuration;
+  private StackGresDistributedLogsConfigurations configurations;
 
-  @JsonProperty("metadata")
   @Valid
-  private StackGresDistributedLogsSpecMetadata metadata;
+  private StackGresClusterSpecMetadata metadata;
 
-  @JsonProperty("toInstallPostgresExtensions")
   @Valid
   private List<StackGresClusterInstalledExtension> toInstallPostgresExtensions;
 
-  public StackGresDistributedLogsPersistentVolume getPersistentVolume() {
+  public String getProfile() {
+    return profile;
+  }
+
+  public void setProfile(String profile) {
+    this.profile = profile;
+  }
+
+  public StackGresClusterPodsPersistentVolume getPersistentVolume() {
     return persistentVolume;
   }
 
   public void setPersistentVolume(
-      StackGresDistributedLogsPersistentVolume persistentVolume) {
+      StackGresClusterPodsPersistentVolume persistentVolume) {
     this.persistentVolume = persistentVolume;
   }
 
-  public StackGresDistributedLogsNonProduction getNonProductionOptions() {
+  public StackGresClusterNonProduction getNonProductionOptions() {
     return nonProductionOptions;
   }
 
-  public void setNonProductionOptions(StackGresDistributedLogsNonProduction nonProductionOptions) {
+  public void setNonProductionOptions(StackGresClusterNonProduction nonProductionOptions) {
     this.nonProductionOptions = nonProductionOptions;
   }
 
-  public StackGresDistributedLogsResources getResources() {
+  public StackGresClusterResources getResources() {
     return resources;
   }
 
-  public void setResources(StackGresDistributedLogsResources resources) {
+  public void setResources(StackGresClusterResources resources) {
     this.resources = resources;
   }
 
-  public StackGresDistributedLogsPodScheduling getScheduling() {
+  public StackGresClusterPodsScheduling getScheduling() {
     return scheduling;
   }
 
-  public void setScheduling(StackGresDistributedLogsPodScheduling scheduling) {
+  public void setScheduling(StackGresClusterPodsScheduling scheduling) {
     this.scheduling = scheduling;
   }
 
-  public String getResourceProfile() {
-    return resourceProfile;
+  public String getSgInstanceProfile() {
+    return sgInstanceProfile;
   }
 
-  public void setResourceProfile(String resourceProfile) {
-    this.resourceProfile = resourceProfile;
+  public void setSgInstanceProfile(String sgInstanceProfile) {
+    this.sgInstanceProfile = sgInstanceProfile;
   }
 
-  public StackGresDistributedLogsConfiguration getConfiguration() {
-    return configuration;
+  public StackGresDistributedLogsConfigurations getConfigurations() {
+    return configurations;
   }
 
-  public void setConfiguration(StackGresDistributedLogsConfiguration configuration) {
-    this.configuration = configuration;
+  public void setConfigurations(StackGresDistributedLogsConfigurations configurations) {
+    this.configurations = configurations;
   }
 
-  public StackGresDistributedLogsSpecMetadata getMetadata() {
+  public StackGresClusterSpecMetadata getMetadata() {
     return metadata;
   }
 
-  public void setMetadata(StackGresDistributedLogsSpecMetadata metadata) {
+  public void setMetadata(StackGresClusterSpecMetadata metadata) {
     this.metadata = metadata;
   }
 
@@ -130,18 +140,19 @@ public class StackGresDistributedLogsSpec {
     this.toInstallPostgresExtensions = toInstallPostgresExtensions;
   }
 
-  public StackGresDistributedLogsPostgresServices getPostgresServices() {
+  public StackGresPostgresServices getPostgresServices() {
     return postgresServices;
   }
 
-  public void setPostgresServices(StackGresDistributedLogsPostgresServices postgresServices) {
+  public void setPostgresServices(StackGresPostgresServices postgresServices) {
     this.postgresServices = postgresServices;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(configuration, metadata, nonProductionOptions, persistentVolume,
-        postgresServices, resourceProfile, scheduling, toInstallPostgresExtensions);
+    return Objects.hash(configurations, metadata, nonProductionOptions, persistentVolume,
+        postgresServices, profile, resources, scheduling, sgInstanceProfile,
+        toInstallPostgresExtensions);
   }
 
   @Override
@@ -153,13 +164,15 @@ public class StackGresDistributedLogsSpec {
       return false;
     }
     StackGresDistributedLogsSpec other = (StackGresDistributedLogsSpec) obj;
-    return Objects.equals(configuration, other.configuration)
+    return Objects.equals(configurations, other.configurations)
         && Objects.equals(metadata, other.metadata)
         && Objects.equals(nonProductionOptions, other.nonProductionOptions)
         && Objects.equals(persistentVolume, other.persistentVolume)
         && Objects.equals(postgresServices, other.postgresServices)
-        && Objects.equals(resourceProfile, other.resourceProfile)
+        && Objects.equals(profile, other.profile)
+        && Objects.equals(resources, other.resources)
         && Objects.equals(scheduling, other.scheduling)
+        && Objects.equals(sgInstanceProfile, other.sgInstanceProfile)
         && Objects.equals(toInstallPostgresExtensions, other.toInstallPostgresExtensions);
   }
 

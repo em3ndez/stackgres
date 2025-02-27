@@ -11,7 +11,7 @@
   <parent>
     <groupId>io.stackgres</groupId>
     <artifactId>stackgres-parent</artifactId>
-    <version>1.6.0-SNAPSHOT</version>
+    <version>1.16.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>stackgres-operator</artifactId>
@@ -31,11 +31,6 @@
       <version>${project.version}</version>
     </dependency>
     <dependency>
-      <groupId>com.ongres.pgconfig</groupId>
-      <artifactId>pgconfig-validator</artifactId>
-      <version>${pgconfig-validator.version}</version>
-    </dependency>
-    <dependency>
       <groupId>com.fasterxml.jackson.dataformat</groupId>
       <artifactId>jackson-dataformat-properties</artifactId>
     </dependency>
@@ -45,7 +40,11 @@
     </dependency>
     <dependency>
       <groupId>io.quarkus</groupId>
-      <artifactId>quarkus-rest-client</artifactId>
+      <artifactId>quarkus-resteasy-client</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-caffeine</artifactId>
     </dependency>
     <dependency>
       <groupId>org.bouncycastle</groupId>
@@ -54,6 +53,23 @@
     <dependency>
       <groupId>org.bouncycastle</groupId>
       <artifactId>bcpkix-jdk15on</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.sundr</groupId>
+      <artifactId>builder-annotations</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkiverse.jooq</groupId>
+      <artifactId>quarkus-jooq</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-jdbc-postgresql</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>jakarta.persistence</groupId>
+      <artifactId>jakarta.persistence-api</artifactId>
     </dependency>
 
     <dependency>
@@ -136,6 +152,8 @@
           <execution>
             <goals>
               <goal>build</goal>
+              <goal>generate-code</goal>
+              <goal>generate-code-tests</goal>
             </goals>
           </execution>
         </executions>
@@ -146,9 +164,6 @@
   <profiles>
     <profile>
       <id>safer</id>
-      <properties>
-        <check-operator-values>true</check-operator-values>
-      </properties>
     </profile>
     <profile>
       <id>native</id>
@@ -158,7 +173,8 @@
         </property>
       </activation>
       <properties>
-        <quarkus.package.type>native</quarkus.package.type>
+        <quarkus.native.enabled>true</quarkus.native.enabled>
+        <quarkus.package.jar.enabled>false</quarkus.package.jar.enabled>
       </properties>
     </profile>
     <profile>

@@ -29,22 +29,94 @@ spec:
   {{- end }}
   {{- if or .Values.shardedCluster.configurations .Values.cluster.configurations.backups }}
   configurations:
+    {{- with .Values.cluster.configurations.observability }}
+    observability:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- if not .Values.cluster.disableBackups }}
     {{- with .Values.cluster.configurations.backups }}
     {{- if .sgObjectStorage }}
     backups:
     - {{- toYaml . | nindent 6 }}
     {{- end }}
     {{- end }}
+    {{- end }}
+    {{- if .Values.credentials }}
+    credentials:
+      {{- with .patroni }}
+      patroni:
+        {{- with .restApiPassword }}
+        restApiPassword:
+          name: {{ .Release.Name }}-users
+          key: restapi-password
+        {{- end }}
+      {{- end }}
+      {{- with .users }}
+      users:
+        {{- with .superuser }}
+        superuser:
+          {{- with .username }}
+          username:
+            name: {{ .Release.Name }}-users
+            key: superuser-username
+          {{- end }}
+          {{- with .password }}
+          password:
+            name: {{ .Release.Name }}-users
+            key: superuser-password
+          {{- end }}
+        {{- end }}
+        {{- with .replication }}
+        replication:
+          {{- with .username }}
+          username:
+            name: {{ .Release.Name }}-users
+            key: replication-username
+          {{- end }}
+          {{- with .password }}
+          password:
+            name: {{ .Release.Name }}-users
+            key: replication-password
+          {{- end }}
+        {{- end }}
+        {{- with .authenticator }}
+        authenticator:
+          {{- with .username }}
+          username:
+            name: {{ .Release.Name }}-users
+            key: authenticator-username
+          {{- end }}
+          {{- with .password }}
+          password:
+            name: {{ .Release.Name }}-users
+            key: authenticator-password
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- else }}
     {{- with ((.Values.shardedCluster.configurations).credentials) }}
     credentials:
-    - {{- toYaml . | nindent 6 }}
+      {{- toYaml . | nindent 6 }}
     {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- with .Values.cluster.initialData }}
+  initialData:
+    {{- toYaml . | nindent 4 }}
   {{- end }}
   coordinator:
     instances: {{ .Values.cluster.instances }}
+    {{- with .Values.cluster.autoscaling }}
+    autoscaling:
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
     configurations: 
       sgPostgresConfig: {{ quote .Values.cluster.configurations.sgPostgresConfig }}
       sgPoolingConfig: {{ quote .Values.cluster.configurations.sgPoolingConfig }}
+      {{- with .Values.cluster.configurations.shardingSphere }}
+      shardingSphere:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     sgInstanceProfile: {{ quote .Values.cluster.sgInstanceProfile }}
     {{- with .Values.cluster.managedSql }}
     managedSql:
@@ -66,6 +138,34 @@ spec:
         storageClass: {{ quote .Values.cluster.pods.persistentVolume.storageClass }}
         {{- end }}
         {{- end }}
+      {{- with .Values.cluster.pods.disableConnectionPooling }}
+      disableConnectionPooling: {{ . }}
+      {{- end }}
+      {{- with .Values.cluster.pods.disablePostgresUtil }}
+      disablePostgresUtil: {{ . }}
+      {{- end }}
+      {{- with .Values.cluster.pods.disableEnvoy }}
+      disableEnvoy: {{ . }}
+      {{- end }}
+      {{- with .Values.cluster.pods.scheduling }}
+      scheduling:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cluster.pods.managementPolicy }}
+      managementPolicy: {{ . }}
+      {{- end }}
+      {{- with .Values.cluster.pods.customVolumes }}
+      customVolumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cluster.pods.customContainers }}
+      customContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cluster.pods.customInitContainers }}
+      customInitContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     {{- with ((.Values.shardedCluster.coordinator).replication) }}
     replication:
       {{- toYaml . | nindent 6 }}
@@ -73,10 +173,14 @@ spec:
   shards:
     clusters: {{ .Values.shardedCluster.shards.clusters }}
     instancesPerCluster: {{ .Values.shardedCluster.shards.instancesPerCluster }}
+    {{- with .Values.shardedCluster.shards.autoscaling }}
+    autoscaling:
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
     configurations: 
-      sgPostgresConfig: {{ quote .Values.cluster.configurations.sgPostgresConfig }}
-      sgPoolingConfig: {{ quote .Values.cluster.configurations.sgPoolingConfig }}
-    sgInstanceProfile: {{ quote .Values.cluster.sgInstanceProfile }}
+      sgPostgresConfig: {{ quote .Values.shardedCluster.shards.configurations.sgPostgresConfig }}
+      sgPoolingConfig: {{ quote .Values.shardedCluster.shards.configurations.sgPoolingConfig }}
+    sgInstanceProfile: {{ quote .Values.shardedCluster.shards.sgInstanceProfile }}
     {{- with .Values.shardedCluster.shards.managedSql }}
     managedSql:
     {{- with .continueOnSGScriptError }}
@@ -89,16 +193,48 @@ spec:
     {{- end }}
     pods:
       persistentVolume:
-        size: {{ quote .Values.cluster.pods.persistentVolume.size }}
-        {{- if .Values.cluster.pods.persistentVolume.storageClass }}
-        {{- if eq "-" .Values.cluster.pods.persistentVolume.storageClass }}
+        size: {{ quote .Values.shardedCluster.shards.pods.persistentVolume.size }}
+        {{- if .Values.shardedCluster.shards.pods.persistentVolume.storageClass }}
+        {{- if eq "-" .Values.shardedCluster.shards.pods.persistentVolume.storageClass }}
         storageClass: ""
         {{- else }}
-        storageClass: {{ quote .Values.cluster.pods.persistentVolume.storageClass }}
+        storageClass: {{ quote .Values.shardedCluster.shards.pods.persistentVolume.storageClass }}
         {{- end }}
         {{- end }}
+      {{- with .Values.shardedCluster.shards.pods.disableConnectionPooling }}
+      disableConnectionPooling: {{ . }}
+      {{- end }}
+      {{- with .Values.shardedCluster.shards.pods.disablePostgresUtil }}
+      disablePostgresUtil: {{ . }}
+      {{- end }}
+      {{- with .Values.shardedCluster.shards.pods.disableEnvoy }}
+      disableEnvoy: {{ . }}
+      {{- end }}
+      {{- with .Values.shardedCluster.shards.pods.scheduling }}
+      scheduling:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.shardedCluster.shards.pods.managementPolicy }}
+      managementPolicy: {{ . }}
+      {{- end }}
+      {{- with .Values.shardedCluster.shards.pods.customVolumes }}
+      customVolumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.shardedCluster.shards.pods.customContainers }}
+      customContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.shardedCluster.shards.pods.customInitContainers }}
+      customInitContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     {{- with .Values.shardedCluster.shards.replication }}
     replication:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.shardedCluster.shards.overrides }}
+    overrides:
       {{- toYaml . | nindent 6 }}
     {{- end }}
   {{- if .Values.distributedLogs.enabled }}

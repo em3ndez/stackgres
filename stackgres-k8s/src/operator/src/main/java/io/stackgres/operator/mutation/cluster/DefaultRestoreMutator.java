@@ -5,9 +5,6 @@
 
 package io.stackgres.operator.mutation.cluster;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
@@ -15,6 +12,8 @@ import io.stackgres.common.crd.sgcluster.StackGresClusterRestore;
 import io.stackgres.operator.common.StackGresClusterReview;
 import io.stackgres.operator.initialization.DefaultCustomResourceFactory;
 import io.stackgres.operatorframework.admissionwebhook.Operation;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class DefaultRestoreMutator implements ClusterMutator {
@@ -34,13 +33,13 @@ public class DefaultRestoreMutator implements ClusterMutator {
   @Override
   public StackGresCluster mutate(StackGresClusterReview review, StackGresCluster resource) {
     if (review.getRequest().getOperation() == Operation.CREATE
-        && resource.getSpec().getInitData() != null
-        && resource.getSpec().getInitData().getRestore() != null) {
+        && resource.getSpec().getInitialData() != null
+        && resource.getSpec().getInitialData().getRestore() != null) {
       try {
-        resource.getSpec().getInitData().setRestore(
+        resource.getSpec().getInitialData().setRestore(
             jsonMapper.readerForUpdating(defaultRestoreFactory.buildResource()).readValue(
                 jsonMapper.valueToTree(
-                    resource.getSpec().getInitData().getRestore()).toString()));
+                    resource.getSpec().getInitialData().getRestore()).toString()));
       } catch (JsonProcessingException ex) {
         throw new RuntimeException(ex);
       }

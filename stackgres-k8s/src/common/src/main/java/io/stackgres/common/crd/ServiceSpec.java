@@ -26,6 +26,7 @@ import io.sundr.builder.annotations.BuildableReference;
     refs = {
         @BuildableReference(io.fabric8.kubernetes.api.model.ServiceSpec.class),
         @BuildableReference(io.fabric8.kubernetes.api.model.ServicePort.class),
+        @BuildableReference(io.fabric8.kubernetes.api.model.SessionAffinityConfig.class),
     })
 @SuppressFBWarnings(value = "NM_SAME_SIMPLE_NAME_AS_SUPERCLASS",
     justification = "Intentional name shadowing")
@@ -43,11 +44,12 @@ public class ServiceSpec extends io.fabric8.kubernetes.api.model.ServiceSpec {
       List<String> ipFamilies, String ipFamilyPolicy, String loadBalancerClass,
       String loadBalancerIP, List<String> loadBalancerSourceRanges, List<ServicePort> ports,
       Boolean publishNotReadyAddresses, Map<String, String> selector, String sessionAffinity,
-      SessionAffinityConfig sessionAffinityConfig, String type) {
+      SessionAffinityConfig sessionAffinityConfig, String trafficDistribution, String type) {
     super(allocateLoadBalancerNodePorts, clusterIP, clusterIPs, externalIPs, externalName,
         externalTrafficPolicy, healthCheckNodePort, internalTrafficPolicy, ipFamilies,
         ipFamilyPolicy, loadBalancerClass, loadBalancerIP, loadBalancerSourceRanges, ports,
-        publishNotReadyAddresses, selector, sessionAffinity, sessionAffinityConfig, type);
+        publishNotReadyAddresses, selector, sessionAffinity, sessionAffinityConfig,
+        trafficDistribution, type);
   }
 
   @Override
@@ -233,6 +235,16 @@ public class ServiceSpec extends io.fabric8.kubernetes.api.model.ServiceSpec {
   @Override
   public String getType() {
     return super.getType();
+  }
+
+  @Override
+  public void setTrafficDistribution(String trafficDistribution) {
+    super.setTrafficDistribution(trafficDistribution);
+  }
+
+  @Override
+  public String getTrafficDistribution() {
+    return super.getTrafficDistribution();
   }
 
   @Override

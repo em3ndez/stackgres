@@ -42,7 +42,7 @@ read_mock_table(){
     esac
   done
 
-  run_query -c "$CLUSTER_NAME" -p 5432 -h "$CLUSTER_NAME$SERVER" -i "$INSTANCE" -d "test" -q "SELECT SUM(num) FROM fibonacci;"
+  run_query -c "$CLUSTER_NAME" -p 5432 -h "${CLUSTER_HOST:-$CLUSTER_NAME$SERVER}" -i "$INSTANCE" -d "test" -q "SELECT SUM(num) FROM fibonacci;"
 }
 
 check_mock_data_samehost(){
@@ -60,8 +60,9 @@ check_mock_data_samehost(){
 
 check_mock_data(){
   local CLUSTER_NAME="${1:-$CLUSTER_NAME}"
+  local INSTANCE="${2:-1}"
   local RESPONSE
-  RESPONSE="$(read_mock_table)"
+  RESPONSE="$(read_mock_table "$INSTANCE")"
   if [ "$RESPONSE" = "54" ]
   then
     echo "Mock data is present"
@@ -99,5 +100,12 @@ get_replica_index() {
 }
 
 get_primary_index() {
-  kubectl -n "$CLUSTER_NAMESPACE" get pod -l role=master | tail -n 1 | awk '{print $1}' | awk -F "-" '{print $NF}'
+  PATRONI_MAJOR_VERSION="$(kubectl exec -n "$CLUSTER_NAMESPACE" "$CLUSTER_NAME-0" -c patroni -- \
+    patronictl version 2>/dev/null | sed -n 's/^patronictl version \([0-9]\+\)\..*$/\1/p')"
+  if [ "$PATRONI_MAJOR_VERSION" -lt 4 ]
+  then
+    kubectl -n "$CLUSTER_NAMESPACE" get pod -l role=master | tail -n 1 | awk '{print $1}' | awk -F "-" '{print $NF}'
+  else
+    kubectl -n "$CLUSTER_NAMESPACE" get pod -l role=primary | tail -n 1 | awk '{print $1}' | awk -F "-" '{print $NF}'
+  fi
 }

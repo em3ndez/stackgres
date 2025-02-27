@@ -9,9 +9,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Stream;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
 import io.fabric8.kubernetes.api.model.SecretVolumeSourceBuilder;
@@ -28,6 +25,9 @@ import io.stackgres.operator.conciliation.factory.ImmutableVolumePair;
 import io.stackgres.operator.conciliation.factory.VolumeFactory;
 import io.stackgres.operator.conciliation.factory.VolumePair;
 import io.stackgres.operator.conciliation.factory.cluster.backup.BackupEnvVarFactory;
+import io.stackgres.operatorframework.resource.ResourceUtil;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jetbrains.annotations.NotNull;
 
 @Singleton
@@ -35,7 +35,7 @@ import org.jetbrains.annotations.NotNull;
 public class ReplicateSecret
     implements VolumeFactory<StackGresClusterContext> {
 
-  private LabelFactoryForCluster<StackGresCluster> labelFactory;
+  private LabelFactoryForCluster labelFactory;
 
   private BackupEnvVarFactory envVarFactory;
 
@@ -69,7 +69,8 @@ public class ReplicateSecret
 
     context.getReplicateStorage().ifPresent(
         backupStorage -> data.putAll(
-            envVarFactory.getSecretEnvVar(namespace, backupStorage)
+            envVarFactory.getSecretEnvVar(namespace, backupStorage,
+                context.getReplicateSecrets())
         ));
 
     return new SecretBuilder()
@@ -79,12 +80,12 @@ public class ReplicateSecret
         .withLabels(labelFactory.genericLabels(cluster))
         .endMetadata()
         .withType("Opaque")
-        .withStringData(StackGresUtil.addMd5Sum(data))
+        .withData(ResourceUtil.encodeSecret(StackGresUtil.addMd5Sum(data)))
         .build();
   }
 
   @Inject
-  public void setLabelFactory(LabelFactoryForCluster<StackGresCluster> labelFactory) {
+  public void setLabelFactory(LabelFactoryForCluster labelFactory) {
     this.labelFactory = labelFactory;
   }
 

@@ -16,15 +16,18 @@
 					</h2>
 				</li>
 
-				<li>
-					<ul id="ns-select" tabindex="0" class="set namespaces" :class="openNamespace && 'open'">
+				<li v-if="openNamespace">
+					<ul id="ns-select" tabindex="0" class="crdSubmenu set namespaces open">
 						<li>
-							<router-link :to="'/'" class="item">
+							<router-link :to="'/'" class="item bold">
 								Stackgres Namespaces
+							</router-link>
+							<router-link to="/namespaces/new" class="addnew" v-if="iCan('create', 'namespaces')">
+								<svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 19 19"><g transform="translate(-573 -706)"><g transform="translate(573 706)" fill="none" stroke="#00adb5" stroke-width="2"><circle cx="9.5" cy="9.5" r="9.5" stroke="none"/><circle cx="9.5" cy="9.5" r="8.5" fill="none"/></g><g transform="translate(-30.5 28.8)"><g transform="translate(609 686)" fill="#00adb5" stroke="#00adb5" stroke-width="1"><rect width="8" height="1.4" rx="0.7" stroke="none"/><rect x="0.5" y="0.5" width="7" height="0.4" rx="0.2" fill="none"/></g><g transform="translate(613.7 682.7) rotate(90)" fill="#00adb5" stroke="#00adb5" stroke-width="1"><rect width="8" height="1.4" rx="0.7" stroke="none"/><rect x="0.5" y="0.5" width="7" height="0.4" rx="0.2" fill="none"/></g></g></g></svg>
 							</router-link>
 						</li>
 						<template v-for="namespace in namespaces">
-							<li :class="{'active':(namespace == currentPath.namespace)}">
+							<li @click="openNamespace = false" :class="{'active':(namespace == currentPath.namespace)}">
 								<router-link :to="'/' + namespace" class="item namespace" :class="(namespace == currentPath.namespace) ? 'router-link-exact-active' : ''" :title="namespace">{{ namespace }}</router-link>
 							</li>
 						</template>
@@ -33,8 +36,8 @@
 			</ul>
 		</div>
 
-		<div id="sets" v-if="!notFound && currentPath.namespace.length">
-			<div v-if="iCan('any','sgclusters', currentPath.namespace)" class="set clu" :class="currentPath.component.startsWith('Cluster') ? 'active' : ''" >
+		<div id="sets" v-if="!notFound && currentPath.namespace.length" @click="openNamespace = false">
+			<div v-if="iCan('any','sgclusters', currentPath.namespace)" class="set clu" :class="isBrowsing('sgcluster') ? 'active' : ''" >
 				<ul>
 					<li class="crdName">
 						<template v-if="iCan('list', 'sgclusters', currentPath.namespace)">
@@ -72,7 +75,7 @@
 				</ul>
 			</div>
 
-			<div v-if="iCan('any','sgshardedclusters', currentPath.namespace)" class="set clu" :class="currentPath.component.includes('ShardedCluster') ? 'active' : ''" >
+			<div v-if="iCan('any','sgshardedclusters', currentPath.namespace)" class="set clu" :class="isBrowsing('sgshardedcluster') ? 'active' : ''" >
 				<ul>
 					<li class="crdName">
 						<template v-if="iCan('list', 'sgshardedclusters', currentPath.namespace)">
@@ -96,7 +99,7 @@
 					<li><ul v-if="iCan('list', 'sgshardedclusters', currentPath.namespace)" class="crdSubmenu">
 						<template v-for="cluster in shardedClusters">
 							<li v-if="cluster.data.metadata.namespace == currentPath.namespace" :class="'sgshardedcluster-'+cluster.data.metadata.namespace+'-'+cluster.name">
-								<router-link :to="'/' + cluster.data.metadata.namespace + '/sgshardedcluster/' + cluster.name" class="item cluster" :title="cluster.name" :class="(currentPath.component.includes('Cluster') && (currentPath.name == cluster.name)) ? 'router-link-exact-active' : ''">
+								<router-link :to="'/' + cluster.data.metadata.namespace + '/sgshardedcluster/' + cluster.name" class="item cluster" :title="cluster.name" :class="(currentPath.component.includes('ShardedCluster') && (currentPath.name == cluster.name)) ? 'router-link-exact-active' : ''">
 									{{ cluster.name }}
 									<template v-if="hasProp(cluster, 'data.status.conditions')">
 										<template v-for="condition in cluster.data.status.conditions" v-if="( (condition.type == 'PendingRestart') && (condition.status == 'True') )">
@@ -110,7 +113,44 @@
 				</ul>
 			</div>
 
-			<div v-if="iCan('any','sginstanceprofiles', currentPath.namespace)" class="prof set" :class="currentPath.component.includes('Profile') ? 'active' : ''">
+			<div
+				class="set"
+				 v-if="iCan('any','sgstreams', currentPath.namespace)" 
+				:class="isBrowsing('sgstream') ? 'active' : ''"
+			>
+				<ul>
+					<li class="crdName">
+						<template v-if="iCan('list', 'sgstreams', currentPath.namespace)">
+							<router-link :to="'/' + currentPath.namespace + '/sgstreams'" title="SGStreams Overview" class="view nav-item">
+								<span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><g><path d="M16.3 18.8h-4.5c-1 0-1.9-.4-2.6-1.1l-7.6-7.6c-.5-.5-.5-1.3 0-1.8s1.3-.5 1.8 0l7.6 7.6c.2.2.5.3.8.3h2.7l-12-12c-.5-.5-.7-1.3-.4-1.9S3 1.2 3.7 1.2h4.5c1 0 1.9.4 2.6 1.1l7.6 7.6c.5.5.5 1.3 0 1.8s-1.3.5-1.8 0L9 4.1c-.2-.2-.5-.3-.8-.3H5.5l12 12c.5.5.7 1.2.4 1.9s-.9 1.1-1.6 1.1M4.5 18.8c-.3 0-.6-.1-.9-.4l-2-2c-.5-.5-.5-1.3 0-1.8s1.3-.5 1.8 0l2 2c.5.5.5 1.3 0 1.8s-.6.4-.9.4M17 4.8c-1 0-1.8-.8-1.8-1.8S16 1.2 17 1.2s1.8.8 1.8 1.8S18 4.8 17 4.8" class="cls-1"/></g></svg></span>
+								<h3 :class="isCollapsed ? 'submenuTitle' : ''">StackGres Streams</h3>
+							</router-link>
+						</template>
+						<template v-else>
+							<span class="nav-item noHoverPointer">
+								<span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><g><path d="M16.3 18.8h-4.5c-1 0-1.9-.4-2.6-1.1l-7.6-7.6c-.5-.5-.5-1.3 0-1.8s1.3-.5 1.8 0l7.6 7.6c.2.2.5.3.8.3h2.7l-12-12c-.5-.5-.7-1.3-.4-1.9S3 1.2 3.7 1.2h4.5c1 0 1.9.4 2.6 1.1l7.6 7.6c.5.5.5 1.3 0 1.8s-1.3.5-1.8 0L9 4.1c-.2-.2-.5-.3-.8-.3H5.5l12 12c.5.5.7 1.2.4 1.9s-.9 1.1-1.6 1.1M4.5 18.8c-.3 0-.6-.1-.9-.4l-2-2c-.5-.5-.5-1.3 0-1.8s1.3-.5 1.8 0l2 2c.5.5.5 1.3 0 1.8s-.6.4-.9.4M17 4.8c-1 0-1.8-.8-1.8-1.8S16 1.2 17 1.2s1.8.8 1.8 1.8S18 4.8 17 4.8" class="cls-1"/></g></svg></span>
+								<h3 :class="isCollapsed ? 'submenuTitle' : ''">StackGres Streams</h3>
+							</span>
+						</template>
+
+						<router-link :to="'/' + currentPath.namespace + '/sgstreams/new'" class="addnew" v-if="iCan('create', 'sgstreams', currentPath.namespace)">
+							<svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 19 19"><g transform="translate(-573 -706)"><g transform="translate(573 706)" fill="none" stroke="#00adb5" stroke-width="2"><circle cx="9.5" cy="9.5" r="9.5" stroke="none"/><circle cx="9.5" cy="9.5" r="8.5" fill="none"/></g><g transform="translate(-30.5 28.8)"><g transform="translate(609 686)" fill="#00adb5" stroke="#00adb5" stroke-width="1"><rect width="8" height="1.4" rx="0.7" stroke="none"/><rect x="0.5" y="0.5" width="7" height="0.4" rx="0.2" fill="none"/></g><g transform="translate(613.7 682.7) rotate(90)" fill="#00adb5" stroke="#00adb5" stroke-width="1"><rect width="8" height="1.4" rx="0.7" stroke="none"/><rect x="0.5" y="0.5" width="7" height="0.4" rx="0.2" fill="none"/></g></g></g></svg>
+						</router-link>
+					</li>
+
+					<li><ul class="crdSubmenu">
+						<template v-for="stream in sgStreams">
+							<li v-if="stream.data.metadata.namespace == currentPath.namespace" :class="'sgstream-'+stream.data.metadata.namespace+'-'+stream.name">
+								<router-link :to="'/' + stream.data.metadata.namespace + '/sgstream/' + stream.name" class="item stream" :title="stream.name" :class="(currentPath.component.includes('SGStream') && (currentPath.name == stream.name)) ? 'router-link-exact-active' : ''">
+									{{ stream.name }}
+								</router-link>
+							</li>
+						</template>
+					</ul></li>
+				</ul>
+			</div>
+
+			<div v-if="iCan('any','sginstanceprofiles', currentPath.namespace)" class="prof set" :class="isBrowsing('sginstanceprofile') ? 'active' : ''">
 				<ul>
 					<li class="crdName">
 						<template v-if="iCan('list', 'sginstanceprofiles', currentPath.namespace)">
@@ -148,7 +188,7 @@
 				</div>
 			</div>
 				
-			<div v-if="iCan('any','sgpgconfigs', currentPath.namespace)" class="pg set subset" :class="currentPath.component.includes('PgConfig') ? 'active' : ''" >
+			<div v-if="iCan('any','sgpgconfigs', currentPath.namespace)" class="pg set subset" :class="isBrowsing('sgpgconfig') ? 'active' : ''" >
 				<ul>
 					<li class="crdName">
 						<template v-if="iCan('list', 'sgpgconfigs', currentPath.namespace)">
@@ -179,7 +219,7 @@
 				</ul>		
 			</div>
 
-			<div v-if="iCan('any','sgpoolconfigs', currentPath.namespace)" class="pool set subset" :class="currentPath.component.includes('PoolConfig') ? 'active' : ''" >
+			<div v-if="iCan('any','sgpoolconfigs', currentPath.namespace)" class="pool set subset" :class="isBrowsing('sgpoolconfig') ? 'active' : ''" >
 				<ul>
 					<li class="crdName">
 						<template v-if="iCan('list', 'sgpoolconfigs', currentPath.namespace)">
@@ -210,7 +250,7 @@
 				</ul>
 			</div>
 
-			<div v-if="iCan('any','sgobjectstorages', currentPath.namespace)" class="backup set subset" :class="currentPath.component.includes('ObjectStorage') ? 'active' : ''" >
+			<div v-if="iCan('any','sgobjectstorages', currentPath.namespace)" class="backup set subset" :class="isBrowsing('sgobjectstorage') ? 'active' : ''" >
 				<ul>
 					<li class="crdName">
 						<template v-if="iCan('list', 'sgobjectstorages', currentPath.namespace)">
@@ -241,7 +281,7 @@
 				</ul>
 			</div>	
 
-			<div v-if="iCan('any','sgscripts', currentPath.namespace)" class="backup set subset" :class="currentPath.component.includes('Script') ? 'active' : ''" >
+			<div v-if="iCan('any','sgscripts', currentPath.namespace)" class="backup set subset" :class="isBrowsing('sgscript') ? 'active' : ''" >
 				<ul>
 					<li class="crdName">
 						<template v-if="iCan('list', 'sgscripts', currentPath.namespace)">
@@ -272,7 +312,7 @@
 				</ul>
 			</div>	
 			
-			<div v-if="iCan('any', 'sgdistributedlogs', currentPath.namespace)" class="set logs" :class="currentPath.component.includes('LogsServer') ? 'active' : ''" >
+			<div v-if="iCan('any', 'sgdistributedlogs', currentPath.namespace)" class="set logs" :class="isBrowsing('sgdistributedlog') ? 'active' : ''" >
 				<ul>
 					<li class="crdName">
 						<template v-if="iCan('list', 'sgdistributedlogs', currentPath.namespace)">
@@ -303,7 +343,7 @@
 				</ul>
 			</div>
 
-			<div v-if="iCan('any','sgbackups', currentPath.namespace)" class="set backups" :class="( currentPath.component.includes('Backups') && !currentPath.component.includes('Cluster') ) ? 'active' : ''" >
+			<div v-if="iCan('any','sgbackups', currentPath.namespace)" class="set backups" :class="isBrowsing('sgbackup') ? 'active' : ''" >
 				<ul>
 					<li class="crdName">	
 						<template v-if="iCan('list', 'sgbackups', currentPath.namespace)">
@@ -326,7 +366,7 @@
 				</ul>
 			</div>
 
-			<div v-if="iCan('any','sgdbops', currentPath.namespace)" class="set dbops" :class="currentPath.component.includes('DbOps') ? 'active' : ''" >
+			<div v-if="iCan('any','sgdbops', currentPath.namespace)" class="set dbops" :class="isBrowsing('sgdbop') ? 'active' : ''" >
 				<ul>
 					<li class="crdName">
 						<template v-if="iCan('list', 'sgdbops', currentPath.namespace)">
@@ -348,10 +388,10 @@
 					</li>
 				</ul>
 			</div>
-			
-			<ul class="applications set" v-if="applications.length">
+
+			<ul class="applications set topBorder" v-if="applications.length" :class="isBrowsing('application') && 'active'">
 				<li class="crdName">
-					<span class="nav-item">
+					<span class="nav-item base">
 						<span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 19 19"><path fill="#36A8FF" d="M13.7 19H8.8c-.5 0-.9-.4-1-.9 0-.3 0-.7.1-1 0-.1.1-.2.1-.2.2-.3.4-.7.4-1.1 0-.3-.1-.6-.3-.8-.2-.2-.5-.3-.8-.3-.3 0-.6.1-.9.3-.2.2-.3.4-.3.7.1.4.2.7.4 1.1.1.1.1.2.1.3.1.3.1.6.1.9 0 .5-.5 1-1 1H1c-.6 0-1-.4-1-1V5.3c0-.6.4-1 1-1h3.5c-.1-.3-.2-.6-.3-1v-.1c0-.8.3-1.6.9-2.2.6-.7 1.4-1 2.2-1 .9 0 1.7.3 2.3.9.6.6.9 1.4.9 2.3v.1c-.1.3-.1.7-.3 1h3.5c.6 0 1 .4 1 1v3.5c.3-.1.6-.2 1-.3H16c.8 0 1.6.4 2.2 1s.9 1.4.8 2.2c0 .8-.4 1.6-1 2.2-.6.6-1.4.9-2.2.8h-.1c-.3-.1-.6-.1-1-.3V18c0 .6-.4 1-1 1zm-3.5-2h2.5v-3.9c0-.5.4-1 1-1 .3 0 .6 0 .9.1.1 0 .2.1.3.1.3.2.7.4 1.1.4.3 0 .5-.1.7-.3.2-.2.3-.5.4-.8 0-.3-.1-.6-.3-.8-.2-.2-.5-.3-.8-.4-.3.1-.7.2-1.1.4-.1.1-.2.1-.2.1-.3.1-.6.1-1 .1-.5 0-.9-.5-.9-1V6.2h-4c-.5 0-1-.4-1-1 0-.3 0-.6.1-.9 0 0 .1-.1.1-.2.3-.3.4-.7.5-1.1 0-.3-.1-.5-.3-.7-.2-.2-.5-.3-.8-.3-.4 0-.7.1-.9.3-.2.2-.3.5-.3.7.1.4.2.7.4 1.1.1.1.1.2.1.2.1.3.1.7.1 1 0 .5-.5.9-1 .9H2V17h2.5c-.1-.3-.2-.6-.3-1v-.1c0-.8.3-1.6.9-2.2.6-.6 1.4-.9 2.3-.9.8 0 1.6.3 2.2.9.6.6.9 1.4.9 2.3v.1l-.3.9z"/></svg></span>
 						<h3 :class="isCollapsed ? 'submenuTitle' : ''">Applications</h3>
 					</span>
@@ -503,6 +543,10 @@
 				return store.state.sgshardedclusters
 			},
 
+			sgStreams () {
+				return store.state.sgstreams
+			},
+
 			logsClusters () {
 				return store.state.sgdistributedlogs
 			},
@@ -546,6 +590,13 @@
 			isCollapsed () {
 				return store.state.view == 'collapsed'
 			}
+		},
+
+		methods: {
+
+			isBrowsing(kind) {
+				return this.$route.path.startsWith('/' + this.currentPath.namespace + '/' + kind);
+			}
 		}
 	}
 	
@@ -566,11 +617,16 @@
 	#ns-select.open {
 		display: block;
 		height: auto;
-		max-height: 100vh;
 		transition: max-height 0.5s ease-out;
+		max-height: calc(100vh - 725px);
+		overflow-y: auto;
 	}
 
-	#ns-select a {
+	#ns-select.open a.addnew {
+		display: block;
+	}
+
+	#ns-select a:not(.addnew) {
 		padding-left: 50px;
 		display: block;
 		display: block;
@@ -586,6 +642,30 @@
 	#ns-select li:hover {
 		margin-left: -50px;
 		padding-left: 50px;
+	}
+
+	#ns-select li:first-child a {
+		padding: 0 20px;
+		background: rgba(211, 211, 211, .05);
+	}
+
+	#ns-select li:first-child a.item:before, .collapsed #ns-select li a.item:before {
+		display: none;
+	}
+
+	.collapsed #ns-select li:first-child {
+		height: auto;
+	}
+
+	.collapsed #ns-select li:first-child a {
+		padding: 10px 20px;
+		height: 70px;
+	}
+
+	.collapsed #ns-select li a.addnew {
+		right: 0;
+		left: auto;
+		display: block;
 	}
 
 	h3, h4 {
@@ -676,7 +756,7 @@
 	}
 
 	.crdSubmenu {
-		max-height: calc(100vh - 728px);
+		max-height: calc(100vh - 780px);
 		overflow: auto;
 	}
 
@@ -703,7 +783,7 @@
 		margin-left: -27px;
 	}
 
-	.set.active, .crdName:hover, .crdSubmenu li:hover, a.router-link-exact-active, #ns-select li:hover, .submenuTitle:hover:before, .hovered span:not(.nav-item)  {
+	.set.active, .crdName:hover, .crdSubmenu li:hover, a.router-link-exact-active, #ns-select li:hover, .submenuTitle:hover:before, .hovered span:not(.nav-item), .set:hover  {
 		background-color: rgba(211, 211, 211, .15);
 	}
 
@@ -917,7 +997,7 @@
 		background: var(--bgColor);
 	}
 
-	.darkmode .set.active, .darkmode .crdName:hover, .darkmode .crdSubmenu li:hover, .darkmode a.router-link-exact-active, .darkmode #ns-select li:hover, .darkmode.collapsed .submenuTitle:hover:before, .darkmode .hovered span:not(.nav-item) {
+	.darkmode .set.active, .darkmode .crdName:hover, .darkmode .crdSubmenu li:hover, .darkmode a.router-link-exact-active, .darkmode #ns-select li:hover, .darkmode.collapsed .submenuTitle:hover:before, .darkmode .hovered span:not(.nav-item), .darkmode .set:hover {
 		background-color: rgba(211, 211, 211, .05);
 	}
 
@@ -929,7 +1009,7 @@
 		background-color: rgba(211, 211, 211, .02);
 	}
 
-	ul.applications, .collapsed ul.applications .crdName {
+	.collapsed ul.applications .crdName {
 		border-top: 1px solid var(--borderColor);
 		border-bottom: 1px solid var(--borderColor);
 	}
@@ -939,11 +1019,11 @@
 		top: -1px;
 	}
 
-	ul.applications .nav-item {
+	.nav-item.base {
 		padding-left: 25px;
 	}
 
-	.collapsed ul.applications .nav-item {
+	.collapsed .nav-item.base {
 		padding-left: 0;
 	}
 

@@ -5,11 +5,7 @@
 
 package io.stackgres.operator.conciliation.backup;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.context.Dependent;
-import javax.enterprise.event.Observes;
-import javax.inject.Inject;
-
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.quarkus.runtime.ShutdownEvent;
 import io.quarkus.runtime.StartupEvent;
@@ -19,12 +15,19 @@ import io.stackgres.common.event.EventEmitter;
 import io.stackgres.common.resource.CustomResourceFinder;
 import io.stackgres.common.resource.CustomResourceScanner;
 import io.stackgres.common.resource.CustomResourceScheduler;
+import io.stackgres.operator.app.OperatorLockHolder;
 import io.stackgres.operator.common.PatchResumer;
+import io.stackgres.operator.conciliation.AbstractConciliator;
 import io.stackgres.operator.conciliation.AbstractReconciliator;
-import io.stackgres.operator.conciliation.ComparisonDelegator;
-import io.stackgres.operator.conciliation.Conciliator;
+import io.stackgres.operator.conciliation.DeployedResourcesCache;
 import io.stackgres.operator.conciliation.HandlerDelegator;
+import io.stackgres.operator.conciliation.Metrics;
 import io.stackgres.operator.conciliation.ReconciliationResult;
+import io.stackgres.operator.conciliation.ReconciliatorWorkerThreadPool;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.event.Observes;
+import jakarta.inject.Inject;
 import org.slf4j.helpers.MessageFormatter;
 
 @ApplicationScoped
@@ -35,29 +38,37 @@ public class BackupReconciliator
   static class Parameters {
     @Inject CustomResourceScanner<StackGresBackup> scanner;
     @Inject CustomResourceFinder<StackGresBackup> finder;
-    @Inject Conciliator<StackGresBackup> conciliator;
+    @Inject AbstractConciliator<StackGresBackup> conciliator;
+    @Inject DeployedResourcesCache deployedResourcesCache;
     @Inject HandlerDelegator<StackGresBackup> handlerDelegator;
     @Inject KubernetesClient client;
     @Inject EventEmitter<StackGresBackup> eventController;
-    @Inject ComparisonDelegator<StackGresBackup> resourceComparator;
     @Inject CustomResourceScheduler<StackGresBackup> backupScheduler;
     @Inject BackupStatusManager statusManager;
+    @Inject ObjectMapper objectMapper;
+    @Inject OperatorLockHolder operatorLockReconciliator;
+    @Inject ReconciliatorWorkerThreadPool reconciliatorWorkerThreadPool;
+    @Inject Metrics metrics;
   }
 
   private final EventEmitter<StackGresBackup> eventController;
-  private final PatchResumer<StackGresBackup> patchResumer;
   private final CustomResourceScheduler<StackGresBackup> backupScheduler;
   private final BackupStatusManager statusManager;
+  private final PatchResumer<StackGresBackup> patchResumer;
 
   @Inject
   public BackupReconciliator(Parameters parameters) {
     super(parameters.scanner, parameters.finder,
-        parameters.conciliator, parameters.handlerDelegator,
-        parameters.client, StackGresBackup.KIND);
+        parameters.conciliator, parameters.deployedResourcesCache,
+        parameters.handlerDelegator, parameters.client,
+        parameters.operatorLockReconciliator,
+        parameters.reconciliatorWorkerThreadPool,
+        parameters.metrics,
+        StackGresBackup.KIND);
     this.eventController = parameters.eventController;
-    this.patchResumer = new PatchResumer<>(parameters.resourceComparator);
     this.backupScheduler = parameters.backupScheduler;
     this.statusManager = parameters.statusManager;
+    this.patchResumer = new PatchResumer<>(parameters.objectMapper);
   }
 
   void onStart(@Observes StartupEvent ev) {
@@ -69,8 +80,8 @@ public class BackupReconciliator
   }
 
   @Override
-  protected void reconciliationCycle(StackGresBackup configKey, boolean load) {
-    super.reconciliationCycle(configKey, load);
+  protected void reconciliationCycle(StackGresBackup configKey, int retry, boolean load) {
+    super.reconciliationCycle(configKey, retry, load);
   }
 
   @Override
@@ -86,7 +97,7 @@ public class BackupReconciliator
   protected void onConfigCreated(StackGresBackup backup, ReconciliationResult result) {
     final String resourceChanged = patchResumer.resourceChanged(backup, result);
     eventController.sendEvent(BackupEventReason.BACKUP_CREATED,
-        "Backup " + backup.getMetadata().getNamespace() + "."
+        "SGBackup " + backup.getMetadata().getNamespace() + "."
             + backup.getMetadata().getName() + " created: " + resourceChanged, backup);
   }
 
@@ -94,14 +105,14 @@ public class BackupReconciliator
   protected void onConfigUpdated(StackGresBackup backup, ReconciliationResult result) {
     final String resourceChanged = patchResumer.resourceChanged(backup, result);
     eventController.sendEvent(BackupEventReason.BACKUP_UPDATED,
-        "Backup " + backup.getMetadata().getNamespace() + "."
+        "SGBackup " + backup.getMetadata().getNamespace() + "."
             + backup.getMetadata().getName() + " updated: " + resourceChanged, backup);
   }
 
   @Override
   protected void onError(Exception ex, StackGresBackup backup) {
     String message = MessageFormatter.arrayFormat(
-        "Backup reconciliation cycle failed",
+        "SGBackup reconciliation cycle failed",
         new String[]{
         }).getMessage();
     eventController.sendEvent(BackupEventReason.BACKUP_CONFIG_ERROR,

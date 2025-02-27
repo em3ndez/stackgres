@@ -9,17 +9,18 @@ import static io.stackgres.common.StackGresUtil.getPostgresFlavorComponent;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import io.stackgres.common.BackupStorageUtil;
 import io.stackgres.common.StackGresContext;
-import io.stackgres.common.StackGresShardedClusterForCitusUtil;
+import io.stackgres.common.StackGresShardedClusterUtil;
 import io.stackgres.common.StackGresVersion;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedCluster;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterBackupConfiguration;
-import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterConfiguration;
+import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterConfigurations;
 import io.stackgres.operator.common.StackGresShardedClusterReview;
 import io.stackgres.operator.common.fixture.AdmissionReviewFixtures;
 import io.stackgres.testutil.JsonUtil;
@@ -36,15 +37,17 @@ class DefaultBackupPathsMutatorTest {
 
   private StackGresShardedClusterReview review;
   private DefaultBackupPathsMutator mutator;
+  private Instant defaultTimestamp;
 
   @BeforeEach
   void setUp() throws NoSuchFieldException, IOException {
     review = AdmissionReviewFixtures.shardedCluster().loadCreate().get();
     review.getRequest().getObject().getSpec()
-        .setConfiguration(new StackGresShardedClusterConfiguration());
+        .setConfigurations(new StackGresShardedClusterConfigurations());
     review.getRequest().getObject().getSpec().getPostgres().setVersion(POSTGRES_VERSION);
 
-    mutator = new DefaultBackupPathsMutator();
+    defaultTimestamp = Instant.now();
+    mutator = new DefaultBackupPathsMutator(defaultTimestamp);
   }
 
   @Test
@@ -59,8 +62,8 @@ class DefaultBackupPathsMutatorTest {
     cluster.getMetadata().setAnnotations(
         Map.of(StackGresContext.VERSION_KEY, StackGresVersion.LATEST.getVersion()));
     var backupConfiguration = new StackGresShardedClusterBackupConfiguration();
-    backupConfiguration.setObjectStorage("backupconf");
-    cluster.getSpec().getConfiguration().setBackups(List.of(backupConfiguration));
+    backupConfiguration.setSgObjectStorage("backupconf");
+    cluster.getSpec().getConfigurations().setBackups(List.of(backupConfiguration));
 
     final StackGresShardedCluster actualCluster = mutate(review);
 
@@ -73,18 +76,19 @@ class DefaultBackupPathsMutatorTest {
         Seq.range(0, cluster.getSpec().getShards().getClusters() + 1)
         .map(index -> BackupStorageUtil.getPath(
             cluster.getMetadata().getNamespace(),
-            StackGresShardedClusterForCitusUtil.getClusterName(cluster, index),
+            StackGresShardedClusterUtil.getClusterName(cluster, index),
+            defaultTimestamp,
             postgresMajorVersion))
         .toList(),
-        actualCluster.getSpec().getConfiguration().getBackups().get(0).getPaths());
+        actualCluster.getSpec().getConfigurations().getBackups().get(0).getPaths());
   }
 
   @Test
   void clusterWithBackupsPath_shouldSetNothing() {
-    review.getRequest().getObject().getSpec().getConfiguration().setBackups(new ArrayList<>());
-    review.getRequest().getObject().getSpec().getConfiguration().getBackups()
+    review.getRequest().getObject().getSpec().getConfigurations().setBackups(new ArrayList<>());
+    review.getRequest().getObject().getSpec().getConfigurations().getBackups()
         .add(new StackGresShardedClusterBackupConfiguration());
-    review.getRequest().getObject().getSpec().getConfiguration().getBackups()
+    review.getRequest().getObject().getSpec().getConfigurations().getBackups()
         .get(0).setPaths(List.of("test-0", "test-1", "test-2"));
     StackGresShardedCluster actualCluster = mutate(review);
 
@@ -94,10 +98,10 @@ class DefaultBackupPathsMutatorTest {
   @Test
   void clusterWithPartialBackupsPath_shouldSetNewOnes() {
     final StackGresShardedCluster cluster = review.getRequest().getObject();
-    review.getRequest().getObject().getSpec().getConfiguration().setBackups(new ArrayList<>());
-    review.getRequest().getObject().getSpec().getConfiguration().getBackups()
+    review.getRequest().getObject().getSpec().getConfigurations().setBackups(new ArrayList<>());
+    review.getRequest().getObject().getSpec().getConfigurations().getBackups()
         .add(new StackGresShardedClusterBackupConfiguration());
-    review.getRequest().getObject().getSpec().getConfiguration().getBackups()
+    review.getRequest().getObject().getSpec().getConfigurations().getBackups()
         .get(0).setPaths(List.of("test-0", "test-1"));
     StackGresShardedCluster actualCluster = mutate(review);
 
@@ -111,10 +115,11 @@ class DefaultBackupPathsMutatorTest {
         .append(Seq.range(2, cluster.getSpec().getShards().getClusters() + 1)
             .map(index -> BackupStorageUtil.getPath(
                 cluster.getMetadata().getNamespace(),
-                StackGresShardedClusterForCitusUtil.getClusterName(cluster, index),
+                StackGresShardedClusterUtil.getClusterName(cluster, index),
+                defaultTimestamp,
                 postgresMajorVersion)))
         .toList(),
-        actualCluster.getSpec().getConfiguration().getBackups().get(0).getPaths());
+        actualCluster.getSpec().getConfigurations().getBackups().get(0).getPaths());
   }
 
   private StackGresShardedCluster mutate(StackGresShardedClusterReview review) {

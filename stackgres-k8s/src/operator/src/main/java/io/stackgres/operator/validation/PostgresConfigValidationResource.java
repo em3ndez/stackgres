@@ -5,32 +5,31 @@
 
 package io.stackgres.operator.validation;
 
-import javax.enterprise.event.Observes;
-import javax.inject.Inject;
-import javax.ws.rs.Consumes;
-import javax.ws.rs.POST;
-import javax.ws.rs.Path;
-import javax.ws.rs.Produces;
-import javax.ws.rs.core.MediaType;
-
 import io.quarkus.runtime.StartupEvent;
 import io.stackgres.common.CdiUtil;
-import io.stackgres.operator.common.PgConfigReview;
+import io.stackgres.operator.common.StackGresPostgresConfigReview;
 import io.stackgres.operatorframework.admissionwebhook.AdmissionReviewResponse;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationPipeline;
+import jakarta.enterprise.event.Observes;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.MediaType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @Path(ValidationUtil.PGCONFIG_VALIDATION_PATH)
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-public class PostgresConfigValidationResource extends AbstractValidationResource<PgConfigReview> {
+public class PostgresConfigValidationResource extends AbstractValidationResource<StackGresPostgresConfigReview> {
 
   private static final Logger LOGGER = LoggerFactory
       .getLogger(PostgresConfigValidationResource.class);
 
   @Inject
-  public PostgresConfigValidationResource(ValidationPipeline<PgConfigReview> pipeline) {
+  public PostgresConfigValidationResource(ValidationPipeline<StackGresPostgresConfigReview> pipeline) {
     super(pipeline);
   }
 
@@ -48,7 +47,7 @@ public class PostgresConfigValidationResource extends AbstractValidationResource
    */
   @POST
   @Override
-  public AdmissionReviewResponse validate(PgConfigReview admissionReview) {
+  public AdmissionReviewResponse validate(StackGresPostgresConfigReview admissionReview) {
     return super.validate(admissionReview);
   }
 }

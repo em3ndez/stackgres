@@ -7,13 +7,12 @@ package io.stackgres.operator.conversion;
 
 import java.util.List;
 
-import javax.inject.Inject;
-
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.quarkus.test.junit.QuarkusTest;
 import io.stackgres.common.crd.sgpooling.StackGresPoolingConfig;
 import io.stackgres.common.fixture.Fixtures;
 import io.stackgres.testutil.JsonUtil;
+import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
 @QuarkusTest
@@ -45,7 +44,7 @@ class SgPoolingConfigConversionPipelineTest {
     ObjectNode toVersion1 = getToVersion1Resource();
 
     var converted = pipeline.convert(ConversionUtil.API_VERSION_1, List.of(fromVersion1beta1));
-    JsonUtil.assertJsonEquals(toVersion1, converted.get(0));
+    JsonUtil.assertJsonEquals(toVersion1, converted.getFirst());
   }
 
   @Test
@@ -54,7 +53,9 @@ class SgPoolingConfigConversionPipelineTest {
     ObjectNode toVersion1beta1 = getToVersion1beta1Resource();
 
     var converted = pipeline.convert(ConversionUtil.API_VERSION_1BETA1, List.of(fromVersion1));
-    JsonUtil.assertJsonEquals(toVersion1beta1, converted.get(0));
+    JsonUtil.sortArray(toVersion1beta1.get("status").get("pgBouncer").get("defaultParameters"));
+    JsonUtil.sortArray(converted.getFirst().get("status").get("pgBouncer").get("defaultParameters"));
+    JsonUtil.assertJsonEquals(toVersion1beta1, converted.getFirst());
   }
 
 }

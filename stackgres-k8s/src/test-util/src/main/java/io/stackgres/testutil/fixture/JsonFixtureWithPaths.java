@@ -74,6 +74,8 @@ public interface JsonFixtureWithPaths {
 
   String SECRET_SECRET_JSON = "secret/secret.json";
 
+  String SECRET_USER_JSON = "secret/user.json";
+
   String SERVICE_DEPLOYED_JSON = "service/deployed.json";
 
   String SERVICE_PATRONI_REST_JSON = "service/patroni-rest.json";
@@ -146,6 +148,9 @@ public interface JsonFixtureWithPaths {
 
   String STACKGRES_BACKUP_ADMISSION_REVIEW_CREATE_JSON =
       "stackgres/backup/admission_review/create.json";
+
+  String STACKGRES_BACKUP_ADMISSION_REVIEW_DELETE_JSON =
+      "stackgres/backup/admission_review/delete.json";
 
   String STACKGRES_BACKUP_ADMISSION_REVIEW_UPDATE_JSON =
       "stackgres/backup/admission_review/update.json";
@@ -276,6 +281,21 @@ public interface JsonFixtureWithPaths {
   String STACKGRES_CLUSTER_WITHOUT_DISTRIBUTED_LOGS_JSON =
       "stackgres/cluster/without_distributed_logs.json";
 
+  String STACKGRES_CONFIG_ADMISSION_REVIEW_CREATE_JSON =
+      "stackgres/config/admission_review/create.json";
+
+  String STACKGRES_CONFIG_ADMISSION_REVIEW_DELETE_JSON =
+      "stackgres/config/admission_review/delete.json";
+
+  String STACKGRES_CONFIG_ADMISSION_REVIEW_UPDATE_JSON =
+      "stackgres/config/admission_review/update.json";
+
+  String STACKGRES_CONFIG_DEFAULT_JSON =
+      "stackgres/config/default.json";
+
+  String STACKGRES_DB_OPS_ADMISSION_REVIEW_DELETE_JSON =
+      "stackgres/db_ops/admission_review/delete.json";
+
   String STACKGRES_DB_OPS_ADMISSION_REVIEW_MAJOR_VERSION_UPGRADE_CREATE_JSON =
       "stackgres/db_ops/admission_review/major_version_upgrade_create.json";
 
@@ -291,11 +311,18 @@ public interface JsonFixtureWithPaths {
   String STACKGRES_DB_OPS_ADMISSION_REVIEW_RESTART_CREATE_JSON =
       "stackgres/db_ops/admission_review/restart_create.json";
 
+  String STACKGRES_DB_OPS_ADMISSION_REVIEW_SAMPLING_CREATE_JSON =
+      "stackgres/db_ops/admission_review/sampling_create.json";
+
   String STACKGRES_DB_OPS_ADMISSION_REVIEW_SECURITY_UPGRADE_CREATE_JSON =
       "stackgres/db_ops/admission_review/security_upgrade_create.json";
 
   String STACKGRES_DB_OPS_ADMISSION_REVIEW_VACUUM_CREATE_JSON =
       "stackgres/db_ops/admission_review/vacuum_create.json";
+
+  String STACKGRES_DB_OPS_DTO_JSON = "stackgres/db_ops/dto.json";
+
+  String STACKGRES_DB_OPS_LIST_JSON = "stackgres/db_ops/list.json";
 
   String STACKGRES_DB_OPS_BENCHMARK_JSON = "stackgres/db_ops/benchmark.json";
 
@@ -352,7 +379,7 @@ public interface JsonFixtureWithPaths {
 
   String STACKGRES_INSTANCE_PROFILE_SIZE_S_JSON = "stackgres/instance_profile/size-s.json";
 
-  String STACKGRES_INSTANCE_PROFILE_SIZE_XS_JSON = "stackgres/instance_profile/size-xs.json";
+  String STACKGRES_INSTANCE_PROFILE_SIZE_M_JSON = "stackgres/instance_profile/size-m.json";
 
   String STACKGRES_OBJECT_STORAGE_ADMISSION_REVIEW_CREATE_JSON =
       "stackgres/object_storage/admission_review/create.json";
@@ -364,6 +391,13 @@ public interface JsonFixtureWithPaths {
       "stackgres/object_storage/admission_review/update.json";
 
   String STACKGRES_OBJECT_STORAGE_DEFAULT_JSON = "stackgres/object_storage/default.json";
+
+  String STACKGRES_OBJECT_STORAGE_DTO_JSON = "stackgres/object_storage/dto.json";
+
+  String STACKGRES_OBJECT_STORAGE_GOOGLE_IDENTITY_CONFIG_JSON =
+      "stackgres/object_storage/google_identity_config.json";
+
+  String STACKGRES_OBJECT_STORAGE_LIST_JSON = "stackgres/object_storage/list.json";
 
   String STACKGRES_POOLING_CONFIG_ADMISSION_REVIEW_CREATE_JSON =
       "stackgres/pooling_config/admission_review/create.json";
@@ -472,6 +506,9 @@ public interface JsonFixtureWithPaths {
   String STACKGRES_SHARDED_CLUSTER_ADMISSION_REVIEW_PROFILE_CONFIG_UPDATE_JSON =
       "stackgres/sharded_cluster/admission_review/profile_config_update.json";
 
+  String STACKGRES_SHARDED_CLUSTER_ADMISSION_REVIEW_RESTORE_CONFIG_UPDATE_JSON =
+      "stackgres/sharded_cluster/admission_review/restore_config_update.json";
+
   String STACKGRES_SHARDED_CLUSTER_ADMISSION_REVIEW_STORAGE_CLASS_CONFIG_UPDATE_JSON =
       "stackgres/sharded_cluster/admission_review/storage_class_config_update.json";
 
@@ -495,6 +532,77 @@ public interface JsonFixtureWithPaths {
       "stackgres/sharded_cluster/inline_scripts.json";
 
   String STACKGRES_SHARDED_CLUSTER_LIST_JSON = "stackgres/sharded_cluster/list.json";
+
+  String STACKGRES_SHARDED_BACKUP_ADMISSION_REVIEW_CREATE_JSON =
+      "stackgres/sharded_backup/admission_review/create.json";
+
+  String STACKGRES_SHARDED_BACKUP_ADMISSION_REVIEW_DELETE_JSON =
+      "stackgres/sharded_backup/admission_review/delete.json";
+
+  String STACKGRES_SHARDED_BACKUP_ADMISSION_REVIEW_UPDATE_JSON =
+      "stackgres/sharded_backup/admission_review/update.json";
+
+  String STACKGRES_SHARDED_BACKUP_DEFAULT_JSON = "stackgres/sharded_backup/default.json";
+
+  String STACKGRES_SHARDED_BACKUP_DTO_JSON = "stackgres/sharded_backup/dto.json";
+
+  String STACKGRES_SHARDED_BACKUP_LIST_JSON = "stackgres/sharded_backup/list.json";
+
+  String STACKGRES_SHARDED_DB_OPS_ADMISSION_REVIEW_DELETE_JSON =
+      "stackgres/sharded_db_ops/admission_review/delete.json";
+
+  String STACKGRES_SHARDED_DB_OPS_ADMISSION_REVIEW_MAJOR_VERSION_UPGRADE_CREATE_JSON =
+      "stackgres/sharded_db_ops/admission_review/major_version_upgrade_create.json";
+
+  String STACKGRES_SHARDED_DB_OPS_ADMISSION_REVIEW_MINOR_VERSION_UPGRADE_CREATE_JSON =
+      "stackgres/sharded_db_ops/admission_review/minor_version_upgrade_create.json";
+
+  String STACKGRES_SHARDED_DB_OPS_ADMISSION_REVIEW_RESHARDING_CREATE_JSON =
+      "stackgres/sharded_db_ops/admission_review/resharding_create.json";
+
+  String STACKGRES_SHARDED_DB_OPS_ADMISSION_REVIEW_RESTART_CREATE_JSON =
+      "stackgres/sharded_db_ops/admission_review/restart_create.json";
+
+  String STACKGRES_SHARDED_DB_OPS_ADMISSION_REVIEW_SECURITY_UPGRADE_CREATE_JSON =
+      "stackgres/sharded_db_ops/admission_review/security_upgrade_create.json";
+
+  String STACKGRES_SHARDED_DB_OPS_DTO_JSON = "stackgres/sharded_db_ops/dto.json";
+
+  String STACKGRES_SHARDED_DB_OPS_LIST_JSON = "stackgres/sharded_db_ops/list.json";
+
+  String STACKGRES_SHARDED_DB_OPS_MAJOR_VERSION_UPGRADE_JSON =
+      "stackgres/sharded_db_ops/major_version_upgrade.json";
+
+  String STACKGRES_SHARDED_DB_OPS_MINOR_VERSION_UPGRADE_JSON =
+      "stackgres/sharded_db_ops/minor_version_upgrade.json";
+
+  String STACKGRES_SHARDED_DB_OPS_RESHARDING_JSON = "stackgres/sharded_db_ops/resharding.json";
+
+  String STACKGRES_SHARDED_DB_OPS_RESTART_JSON = "stackgres/sharded_db_ops/restart.json";
+
+  String STACKGRES_SHARDED_DB_OPS_SCHEDULING_JSON = "stackgres/sharded_db_ops/scheduling.json";
+
+  String STACKGRES_SHARDED_DB_OPS_SECURITY_UPGRADE_JSON =
+      "stackgres/sharded_db_ops/security_upgrade.json";
+
+  String STACKGRES_STREAM_DTO_JSON = "stackgres/stream/dto.json";
+
+  String STACKGRES_STREAM_SCHEDULING_JSON = "stackgres/db_ops/scheduling.json";
+
+  String STACKGRES_STREAM_SGCLUSTER_TO_CLOUDEVENT_JSON = "stackgres/stream/sgcluster_to_cloud_event.json";
+
+  String STACKGRES_STREAM_LIST_JSON = "stackgres/stream/list.json";
+
+  String STACKGRES_STREAM_ADMISSION_REVIEW_CREATE_JSON =
+      "stackgres/stream/admission_review/create.json";
+
+  String STACKGRES_STREAM_ADMISSION_REVIEW_DELETE_JSON =
+      "stackgres/stream/admission_review/delete.json";
+
+  String STACKGRES_STREAM_ADMISSION_REVIEW_UPDATE_JSON =
+      "stackgres/stream/admission_review/update.json";
+
+  String STACKGRES_USER_DTO_JSON = "stackgres/user/dto.json";
 
   String STATEFULSET_0_9_5_JSON = "statefulset/0.9.5.json";
 

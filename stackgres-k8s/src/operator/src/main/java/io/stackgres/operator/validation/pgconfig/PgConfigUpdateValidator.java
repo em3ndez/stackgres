@@ -5,10 +5,6 @@
 
 package io.stackgres.operator.validation.pgconfig;
 
-import javax.annotation.PostConstruct;
-import javax.inject.Singleton;
-
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.Status;
 import io.fabric8.kubernetes.api.model.StatusBuilder;
@@ -17,10 +13,12 @@ import io.stackgres.common.ErrorType;
 import io.stackgres.common.crd.CommonDefinition;
 import io.stackgres.common.crd.sgpgconfig.StackGresPostgresConfig;
 import io.stackgres.common.crd.sgpgconfig.StackGresPostgresConfigSpec;
-import io.stackgres.operator.common.PgConfigReview;
+import io.stackgres.operator.common.StackGresPostgresConfigReview;
 import io.stackgres.operator.validation.ValidationType;
 import io.stackgres.operatorframework.admissionwebhook.Operation;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.annotation.PostConstruct;
+import jakarta.inject.Singleton;
 
 @Singleton
 @ValidationType(ErrorType.FORBIDDEN_CR_UPDATE)
@@ -30,17 +28,13 @@ public class PgConfigUpdateValidator implements PgConfigValidator {
 
   @PostConstruct
   public void init() throws NoSuchFieldException {
-
-    String pgVersionJsonField = StackGresPostgresConfigSpec.class
-        .getDeclaredField("postgresVersion")
-        .getAnnotation(JsonProperty.class).value();
-
-    this.pgVersionPath = "spec." + pgVersionJsonField;
+    this.pgVersionPath = getFieldPath(
+        StackGresPostgresConfig.class, "spec",
+        StackGresPostgresConfigSpec.class, "postgresVersion");
   }
 
   @Override
-  public void validate(PgConfigReview review) throws ValidationFailed {
-
+  public void validate(StackGresPostgresConfigReview review) throws ValidationFailed {
     if (review.getRequest().getOperation() == Operation.UPDATE) {
       String oldPgVersion = review.getRequest().getOldObject().getSpec().getPostgresVersion();
       String newPgVersion = review.getRequest().getObject().getSpec().getPostgresVersion();
@@ -63,6 +57,5 @@ public class PgConfigUpdateValidator implements PgConfigValidator {
         throw new ValidationFailed(failedStatus);
       }
     }
-
   }
 }

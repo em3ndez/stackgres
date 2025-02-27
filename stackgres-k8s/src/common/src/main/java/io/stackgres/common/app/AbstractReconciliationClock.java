@@ -10,6 +10,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import io.stackgres.common.OperatorProperty;
+import org.jooq.lambda.Unchecked;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,8 +18,16 @@ public abstract class AbstractReconciliationClock implements ReconciliationClock
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AbstractReconciliationClock.class);
 
-  private final ScheduledExecutorService scheduledExecutorService =
-      Executors.newScheduledThreadPool(1, r -> new Thread(r, "ReconciliationScheduler"));
+  private final ScheduledExecutorService scheduledExecutorService;
+
+  public AbstractReconciliationClock() {
+    this("ReconciliationScheduler");
+  }
+
+  public AbstractReconciliationClock(String threadName) {
+    this.scheduledExecutorService =
+        Executors.newScheduledThreadPool(1, r -> new Thread(r, threadName));
+  }
 
   @Override
   public void start() {
@@ -40,7 +49,7 @@ public abstract class AbstractReconciliationClock implements ReconciliationClock
     return OperatorProperty.RECONCILIATION_PERIOD
         .get()
         .map(Integer::valueOf)
-        .orElse(10);
+        .orElse(60);
   }
 
   protected TimeUnit getTimeUnit() {
@@ -50,5 +59,6 @@ public abstract class AbstractReconciliationClock implements ReconciliationClock
   @Override
   public void stop() {
     scheduledExecutorService.shutdown();
+    Unchecked.runnable(() -> scheduledExecutorService.awaitTermination(60, TimeUnit.SECONDS)).run();
   }
 }

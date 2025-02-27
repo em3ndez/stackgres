@@ -2,6 +2,12 @@
     <div id="create-scripts" v-if="iCanLoad">
         <!-- Vue reactivity hack -->
         <template v-if="Object.keys(script).length > 0"></template>
+
+        <template v-if="editMode && !editReady">
+            <span class="warningText">
+                Loading data...
+            </span>
+        </template>
         
         <form id="createScripts" class="form" @submit.prevent v-if="!editMode || editReady">
             <div class="header">
@@ -18,7 +24,7 @@
                 </div>
             </div>
 
-            <span class="warning topLeft" v-if="nameColission && !editMode">
+            <span class="warning topLeft" v-if="nameCollision && !editMode">
                 There's already an <strong>SGScript</strong> with the same name on this namespace. Please specify a different name or create the resource on another namespace
             </span>
 
@@ -207,8 +213,30 @@
             <button @click="cancel()" class="btn border">Cancel</button>
             
             <button type="button" class="btn floatRight" @click="createResource(true)">View Summary</button>
+            <button
+                data-field="dryRun"
+                type="button"
+                class="btn border floatRight"
+                title="Dry run mode helps to evaluate a request through the typical request stages without any storage persistance or resource allocation."
+                @click="
+                    dryRun = true;
+                    createResource();
+                "
+            >
+                Dry Run
+            </button>
         </form>
-        <CRDSummary :crd="previewCRD" kind="SGScript" v-if="showSummary" @closeSummary="showSummary = false"></CRDSummary>
+        <CRDSummary
+            v-if="showSummary"
+            :crd="previewCRD"
+            :dryRun="dryRun"
+            kind="SGScript"
+            @closeSummary="
+                showSummary = false;
+                dryRun = false;
+                previewCRD = {};
+            "
+        ></CRDSummary>
     </div>
 </template>
 
@@ -235,6 +263,7 @@
             return {
                 editMode: (vc.$route.name === 'EditScript'),
                 editReady: false,
+                dryRun: false,
                 previewCRD: {},
                 showSummary: false,
                 currentScriptIndex: 0,
@@ -263,16 +292,20 @@
 
         computed: {
 
-            nameColission() {
-                const vc = this;
-                return typeof store.state.sgscripts.find(s => (s.data.metadata.namespace == vc.sgscript.metadata.namespace) && (s.data.metadata.name == vc.sgscript.metadata.name) ) != 'undefined'
+            nameCollision() {
+                if(store.state.sgscripts !== null) {
+                    const vc = this;
+                    return typeof store.state.sgscripts.find(s => (s.data.metadata.namespace == vc.sgscript.metadata.namespace) && (s.data.metadata.name == vc.sgscript.metadata.name) ) != 'undefined'
+                } else {
+                    return false;
+                }
             },
 
             script() {
                 const vc = this;
                 let sgscript = {};
 
-                if( vc.editMode && !vc.editReady ) {
+                if( vc.editMode && !vc.editReady && (store.state.sgscripts !== null)) {
                     store.state.sgscripts.forEach( function(s) {
                         if( (s.data.metadata.namespace == vc.$route.params.namespace) && (s.data.metadata.name == vc.$route.params.name) ) {
                             vc.scriptSource = [];
@@ -306,37 +339,57 @@
             createResource(preview = false) {
                 const vc = this;
 
-                if(vc.checkRequired()) {
+                if(!vc.checkRequired()) {
+                    vc.dryRun = false;
+                    vc.showSummary = false;
+                    return;
+                }
 
-                    vc.sgscript.spec.scripts = vc.cleanupScripts([...vc.sgscript.spec.scripts]);
+                store.commit('loading', true);
 
-                    if(preview) {
+                vc.sgscript.spec.scripts = vc.cleanupScripts([...vc.sgscript.spec.scripts]);
 
-                        vc.previewCRD = {};
-                        vc.previewCRD['data'] = vc.sgscript;
-                        vc.showSummary = true;
+                if(preview) {
 
-                    } else {
+                    vc.previewCRD = {};
+                    vc.previewCRD['data'] = vc.sgscript;
+                    vc.showSummary = true;
+                    store.commit('loading', false);
 
-                        if(this.editMode) {
-                            sgApi
-                            .update('sgscripts', vc.sgscript)
-                            .then(function (response) {
+                } else {
+
+                    if(this.editMode) {
+                        sgApi
+                        .update('sgscripts', vc.sgscript, vc.dryRun)
+                        .then(function (response) {
+
+                            if(vc.dryRun) {
+                                vc.showSummary = true;
+                                vc.validateDryRun(response.data);
+                            } else {
                                 vc.notify('Script configuration <strong>"' + vc.sgscript.metadata.name + '"</strong> updated successfully', 'message','sgscripts');
 
                                 vc.fetchAPI('sgscripts');
                                 router.push('/' + vc.sgscript.metadata.namespace + '/sgscript/' + vc.sgscript.metadata.name);
-                            })
-                            .catch(function (error) {
-                                console.log(error.response);
-                                vc.notify(error.response.data,'error','sgscript');
-                            });
+                            }
+                            store.commit('loading', false);
+                        })
+                        .catch(function (error) {
+                            console.log(error.response);
+                            vc.notify(error.response.data,'error','sgscript');
+                            store.commit('loading', false);
+                        });
 
-                        } else {
-                            sgApi
-                            .create('sgscripts', vc.sgscript)
-                            .then(function (response) {
-                                
+                    } else {
+                        sgApi
+                        .create('sgscripts', vc.sgscript, vc.dryRun)
+                        .then(function (response) {
+
+                            if(vc.dryRun) {
+                                vc.showSummary = true;
+                                vc.validateDryRun(response.data);
+                            } else {
+                            
                                 var urlParams = new URLSearchParams(window.location.search);
                                 if(urlParams.has('newtab')) {
                                     opener.fetchParentAPI('sgscripts');
@@ -347,12 +400,14 @@
 
                                 vc.fetchAPI('sgscripts');
                                 router.push('/' + vc.sgscript.metadata.namespace + '/sgscripts');
-                            })
-                            .catch(function (error) {
-                                console.log(error.response);
-                                vc.notify(error.response.data,'error','sgscripts');
-                            });
-                        }
+                            }
+                            store.commit('loading', false);
+                        })
+                        .catch(function (error) {
+                            console.log(error.response);
+                            vc.notify(error.response.data,'error','sgscripts');
+                            store.commit('loading', false);
+                        });
                     }
                 }
 

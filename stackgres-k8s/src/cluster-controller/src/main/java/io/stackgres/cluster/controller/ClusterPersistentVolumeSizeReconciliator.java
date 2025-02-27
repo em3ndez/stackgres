@@ -5,15 +5,14 @@
 
 package io.stackgres.cluster.controller;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.apps.StatefulSet;
 import io.stackgres.cluster.configuration.ClusterControllerPropertyContext;
 import io.stackgres.common.controller.PersistentVolumeSizeReconciliator;
 import io.stackgres.common.resource.ResourceFinder;
 import io.stackgres.common.resource.ResourceWriter;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class ClusterPersistentVolumeSizeReconciliator extends
@@ -25,18 +24,14 @@ public class ClusterPersistentVolumeSizeReconciliator extends
 
   private final ResourceWriter<PersistentVolumeClaim> pvcWriter;
 
-  private final ClusterControllerPropertyContext propertyContext;
-
   @Inject
   public ClusterPersistentVolumeSizeReconciliator(
       ResourceFinder<StatefulSet> stsFinder,
       ResourceFinder<PersistentVolumeClaim> pvcFinder,
-      ResourceWriter<PersistentVolumeClaim> pvcWriter,
-      ClusterControllerPropertyContext propertyContext) {
+      ResourceWriter<PersistentVolumeClaim> pvcWriter) {
     this.stsFinder = stsFinder;
     this.pvcFinder = pvcFinder;
     this.pvcWriter = pvcWriter;
-    this.propertyContext = propertyContext;
   }
 
   @Override
@@ -52,11 +47,6 @@ public class ClusterPersistentVolumeSizeReconciliator extends
   @Override
   protected ResourceWriter<PersistentVolumeClaim> getPvcWriter() {
     return pvcWriter;
-  }
-
-  @Override
-  protected ClusterControllerPropertyContext getComponentContext() {
-    return propertyContext;
   }
 
 }

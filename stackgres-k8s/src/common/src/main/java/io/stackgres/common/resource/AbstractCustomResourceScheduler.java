@@ -5,11 +5,7 @@
 
 package io.stackgres.common.resource;
 
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.Function;
-
-import javax.inject.Inject;
 
 import io.fabric8.kubernetes.api.model.DefaultKubernetesResourceList;
 import io.fabric8.kubernetes.client.CustomResource;
@@ -18,10 +14,11 @@ import io.fabric8.kubernetes.client.dsl.Namespaceable;
 import io.fabric8.kubernetes.client.dsl.NonNamespaceOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.stackgres.common.kubernetesclient.KubernetesClientUtil;
+import jakarta.inject.Inject;
 import org.jetbrains.annotations.NotNull;
 
 public abstract class AbstractCustomResourceScheduler<T extends CustomResource<?, ?>,
-    L extends DefaultKubernetesResourceList<T>>
+        L extends DefaultKubernetesResourceList<T>>
     implements CustomResourceScheduler<T> {
 
   @NotNull
@@ -40,18 +37,20 @@ public abstract class AbstractCustomResourceScheduler<T extends CustomResource<?
   }
 
   @Override
-  public T create(T resource) {
+  public T create(T resource, boolean dryRun) {
     return getCustomResourceEndpoints()
         .inNamespace(resource.getMetadata().getNamespace())
         .resource(resource)
+        .dryRun(dryRun)
         .create();
   }
 
   @Override
-  public T update(T resource) {
+  public T update(T resource, boolean dryRun) {
     return getCustomResourceEndpoints()
         .inNamespace(resource.getMetadata().getNamespace())
         .resource(resource)
+        .dryRun(dryRun)
         .patch();
   }
 
@@ -76,34 +75,33 @@ public abstract class AbstractCustomResourceScheduler<T extends CustomResource<?
               .inNamespace(resource.getMetadata().getNamespace())
               .resource(resourceToUpdate)
               .lockResourceVersion(resourceToUpdate.getMetadata().getResourceVersion())
-              .replace();
+              .update();
         });
   }
 
   @Override
-  public <S> T updateStatus(T resource, Function<T, S> statusGetter,
-      BiConsumer<T, S> statusSetter) {
+  public <S> T updateStatus(T resource, Consumer<T> setter) {
     return KubernetesClientUtil.retryOnConflict(
         () -> {
           var resourceToUpdate = getCustomResourceEndpoints()
               .inNamespace(resource.getMetadata().getNamespace())
               .withName(resource.getMetadata().getName())
               .get();
-          var resourceStatus = statusGetter.apply(resource);
-          statusSetter.accept(resourceToUpdate, resourceStatus);
+          setter.accept(resourceToUpdate);
           return getCustomResourceEndpoints()
               .inNamespace(resource.getMetadata().getNamespace())
               .resource(resourceToUpdate)
               .lockResourceVersion(resourceToUpdate.getMetadata().getResourceVersion())
-              .replace();
+              .updateStatus();
         });
   }
 
   @Override
-  public void delete(T resource) {
+  public void delete(T resource, boolean dryRun) {
     getCustomResourceEndpoints()
         .inNamespace(resource.getMetadata().getNamespace())
         .resource(resource)
+        .dryRun(dryRun)
         .delete();
   }
 

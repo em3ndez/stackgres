@@ -2,6 +2,22 @@
 
 export E2E_PULLED_IMAGES_PATH="${E2E_PULLED_IMAGES_PATH:-$TARGET_PATH/pulled-images}"
 
+start_background_repository_cache() {
+  if [ "$E2E_DISABLE_CACHE" = "true" ]
+  then
+    echo "Repository cache disabled"
+    return
+  fi
+  notrace_function traceable_start_background_repository_cache "$@"
+}
+
+traceable_start_background_repository_cache() {
+  cache_pulled_images_to_local_repository &
+  trap_kill "$!"
+  load_failed_images_pull_from_local_repository &
+  trap_kill "$!"
+}
+
 setup_repository_cache() {
   if [ "$E2E_DISABLE_CACHE" = "true" ]
   then
@@ -13,10 +29,6 @@ setup_repository_cache() {
 
 traceable_setup_repository_cache() {
   load_cached_images_from_local_repository
-  cache_pulled_images_to_local_repository &
-  trap_kill "$!"
-  load_failed_images_pull_from_local_repository &
-  trap_kill "$!"
 }
 
 set_up_private_repository() {
@@ -27,7 +39,7 @@ set_up_private_repository() {
   export PRIVATE_ADMINUI_IMAGE_NAME="${PRIVATE_REPO_URI}${OPERATOR_PUBLIC_REGISTRY_PATH%/}/admin-ui:$ADMINUI_IMAGE_TAG"
   export PRIVATE_JOBS_IMAGE_NAME="${PRIVATE_REPO_URI}${OPERATOR_PUBLIC_REGISTRY_PATH%/}/jobs:$IMAGE_TAG"
   export PRIVATE_CLUSTER_CONTROLLER_IMAGE_NAME="${PRIVATE_REPO_URI}${OPERATOR_PUBLIC_REGISTRY_PATH%/}/cluster-controller:$IMAGE_TAG"
-  export PRIVATE_DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME="${PRIVATE_REPO_URI}${OPERATOR_PUBLIC_REGISTRY_PATH%/}/distributedlogs-controller:$IMAGE_TAG"
+  export PRIVATE_STREAM_IMAGE_NAME="${PRIVATE_REPO_URI}${OPERATOR_PUBLIC_REGISTRY_PATH%/}/stream:$IMAGE_TAG"
 
   if ! use_alternative_registry
   then
@@ -39,10 +51,11 @@ set_up_private_repository() {
     docker tag "$ADMINUI_IMAGE_NAME" "$PRIVATE_ADMINUI_IMAGE_NAME"
     docker tag "$CLUSTER_CONTROLLER_IMAGE_NAME" "$PRIVATE_CLUSTER_CONTROLLER_IMAGE_NAME"
     docker tag "$DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME" "$PRIVATE_DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME"
+    docker tag "$STREAM_IMAGE_NAME" "$PRIVATE_STREAM_IMAGE_NAME"
 
     local NAME
     for NAME in operator restapi admin-ui jobs \
-      cluster-controller distributedlogs-controller
+      cluster-controller stream
     do
       if ! aws ecr describe-repositories --repository-name "stackgres/$NAME" > /dev/null 2>&1
       then
@@ -56,6 +69,7 @@ set_up_private_repository() {
     docker push "$PRIVATE_ADMINUI_IMAGE_NAME"  
     docker push "$PRIVATE_CLUSTER_CONTROLLER_IMAGE_NAME"
     docker push "$PRIVATE_DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME"
+    docker push "$PRIVATE_STREAM_IMAGE_NAME"
   fi
 
   if kubectl get namespace "$OPERATOR_NAMESPACE" > /dev/null 2>&1
@@ -181,6 +195,7 @@ cache_pulled_images_to_local_repository() {
   then
     touch "$E2E_PULLED_IMAGES_PATH"
   fi
+  wait_until kubectl get event --all-namespaces -o json >/dev/null 2>&1
   event_watch --follow \
     | stdbuf -o0 grep '\sSuccessfully pulled image "[^"]\+"' \
     | stdbuf -o0 sed 's/^.*\sSuccessfully pulled image "\([^"]\+\)".*$/\1/' \
@@ -193,7 +208,9 @@ cache_pulled_images_to_local_repository() {
           -lt "$(($(date +%s)-30))" ]
         then
           echo "Pulling image $IMAGE_NAME to cache"
-          if docker pull -q "$IMAGE_NAME"
+          local EXIT_CODE RESULT
+          try_function docker_pull "$IMAGE_NAME"
+          if "$RESULT"
           then
             echo "$(date +%s):$IMAGE_NAME" >> "$E2E_PULLED_IMAGES_PATH"
           else
@@ -206,19 +223,24 @@ cache_pulled_images_to_local_repository() {
 
 load_failed_images_pull_from_local_repository() {
   echo "Looking for failed images pull to load from local repository"
-  event_watch  --follow \
+  wait_until kubectl get event --all-namespaces -o json >/dev/null 2>&1
+  event_watch --follow \
     | stdbuf -o0 grep '\s\(Failed to pull image\|Back-off pulling image\) "[^"]\+"' \
     | stdbuf -o0 sed 's/^.*\s\(Failed to pull image\|Back-off pulling image\) "\([^"]\+\)".*$/\2/' \
     | (
       while read IMAGE_NAME
       do
         echo "Detected failed to pull image $IMAGE_NAME to k8s env $E2E_ENV"
-        if docker image inspect "$IMAGE_NAME" >/dev/null 2>&1 \
-          || docker pull -q "$IMAGE_NAME"
+        if docker image inspect "$IMAGE_NAME" >/dev/null 2>&1
         then
           load_image_k8s "$IMAGE_NAME"
         else
-          echo "Image $IMAGE_NAME not found in cache and can not be pulled!"
+          local EXIT_CODE RESULT
+          try_function docker_pull "$IMAGE_NAME"
+          if ! "$RESULT"
+          then
+            echo "Image $IMAGE_NAME not found in cache and can not be pulled!"
+          fi
         fi
       done
       )

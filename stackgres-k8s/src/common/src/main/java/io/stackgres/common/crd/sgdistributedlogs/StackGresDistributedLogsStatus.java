@@ -9,16 +9,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-import javax.validation.Valid;
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.crd.Condition;
 import io.stackgres.common.crd.sgcluster.StackGresClusterPodStatus;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.Valid;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -28,34 +26,32 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresDistributedLogsStatus {
 
-  @JsonProperty("conditions")
   @JsonInclude(JsonInclude.Include.NON_EMPTY)
   @Valid
   private List<Condition> conditions = new ArrayList<>();
 
-  @JsonProperty("podStatuses")
   @Valid
   private List<StackGresClusterPodStatus> podStatuses;
 
-  @JsonProperty("databases")
   @Valid
   private List<StackGresDistributedLogsStatusDatabase> databases = new ArrayList<>();
 
-  @JsonProperty("connectedClusters")
   @Valid
   private List<StackGresDistributedLogsStatusCluster> connectedClusters = new ArrayList<>();
 
-  @JsonProperty("fluentdConfigHash")
+  private String postgresVersion;
+
+  private String timescaledbVersion;
+
   private String fluentdConfigHash;
 
-  @JsonProperty("arch")
   private String arch;
 
-  @JsonProperty("os")
   private String os;
 
-  @JsonProperty("labelPrefix")
   private String labelPrefix;
+
+  private Boolean oldConfigMapRemoved;
 
   public List<Condition> getConditions() {
     return conditions;
@@ -87,6 +83,22 @@ public class StackGresDistributedLogsStatus {
 
   public void setConnectedClusters(List<StackGresDistributedLogsStatusCluster> connectedClusters) {
     this.connectedClusters = connectedClusters;
+  }
+
+  public String getPostgresVersion() {
+    return postgresVersion;
+  }
+
+  public void setPostgresVersion(String postgresVersion) {
+    this.postgresVersion = postgresVersion;
+  }
+
+  public String getTimescaledbVersion() {
+    return timescaledbVersion;
+  }
+
+  public void setTimescaledbVersion(String timescaledbVersion) {
+    this.timescaledbVersion = timescaledbVersion;
   }
 
   public String getFluentdConfigHash() {
@@ -121,10 +133,18 @@ public class StackGresDistributedLogsStatus {
     this.labelPrefix = labelPrefix;
   }
 
+  public Boolean getOldConfigMapRemoved() {
+    return oldConfigMapRemoved;
+  }
+
+  public void setOldConfigMapRemoved(Boolean oldConfigMapRemoved) {
+    this.oldConfigMapRemoved = oldConfigMapRemoved;
+  }
+
   @Override
   public int hashCode() {
     return Objects.hash(arch, conditions, connectedClusters, databases, fluentdConfigHash,
-        labelPrefix, os, podStatuses);
+        labelPrefix, oldConfigMapRemoved, os, podStatuses, postgresVersion, timescaledbVersion);
   }
 
   @Override
@@ -140,8 +160,11 @@ public class StackGresDistributedLogsStatus {
         && Objects.equals(connectedClusters, other.connectedClusters)
         && Objects.equals(databases, other.databases)
         && Objects.equals(fluentdConfigHash, other.fluentdConfigHash)
-        && Objects.equals(labelPrefix, other.labelPrefix) && Objects.equals(os, other.os)
-        && Objects.equals(podStatuses, other.podStatuses);
+        && Objects.equals(labelPrefix, other.labelPrefix)
+        && Objects.equals(oldConfigMapRemoved, other.oldConfigMapRemoved)
+        && Objects.equals(os, other.os) && Objects.equals(podStatuses, other.podStatuses)
+        && Objects.equals(postgresVersion, other.postgresVersion)
+        && Objects.equals(timescaledbVersion, other.timescaledbVersion);
   }
 
   @Override

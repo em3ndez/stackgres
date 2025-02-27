@@ -9,9 +9,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Stream;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.Volume;
@@ -26,6 +23,8 @@ import io.stackgres.operator.conciliation.cluster.StackGresClusterContext;
 import io.stackgres.operator.conciliation.factory.ImmutableVolumePair;
 import io.stackgres.operator.conciliation.factory.VolumeFactory;
 import io.stackgres.operator.conciliation.factory.VolumePair;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jetbrains.annotations.NotNull;
 
 @Singleton
@@ -33,7 +32,7 @@ import org.jetbrains.annotations.NotNull;
 public class BackupConfigMap extends AbstractBackupConfigMap
     implements VolumeFactory<StackGresClusterContext> {
 
-  private LabelFactoryForCluster<StackGresCluster> labelFactory;
+  private LabelFactoryForCluster labelFactory;
 
   public static String name(ClusterContext clusterContext) {
     final String clusterName = clusterContext.getCluster().getMetadata().getName();
@@ -83,6 +82,7 @@ public class BackupConfigMap extends AbstractBackupConfigMap
     context.getBackupConfiguration()
         .ifPresent(config -> data.putAll(
                 getBackupEnvVars(
+                    context,
                     config
                 )
             )
@@ -98,7 +98,7 @@ public class BackupConfigMap extends AbstractBackupConfigMap
   }
 
   @Inject
-  public void setLabelFactory(LabelFactoryForCluster<StackGresCluster> labelFactory) {
+  public void setLabelFactory(LabelFactoryForCluster labelFactory) {
     this.labelFactory = labelFactory;
   }
 

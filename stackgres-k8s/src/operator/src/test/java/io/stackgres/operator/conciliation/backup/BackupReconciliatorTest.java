@@ -16,17 +16,18 @@ import java.util.stream.Collectors;
 
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.stackgres.common.crd.sgbackup.StackGresBackup;
-import io.stackgres.common.crd.sgbackupconfig.StackGresBackupConfig;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.event.EventEmitter;
 import io.stackgres.common.fixture.Fixtures;
 import io.stackgres.common.resource.CustomResourceFinder;
 import io.stackgres.common.resource.CustomResourceScheduler;
-import io.stackgres.operator.conciliation.ComparisonDelegator;
-import io.stackgres.operator.conciliation.Conciliator;
+import io.stackgres.operator.conciliation.AbstractConciliator;
+import io.stackgres.operator.conciliation.DeployedResourcesCache;
 import io.stackgres.operator.conciliation.HandlerDelegator;
+import io.stackgres.operator.conciliation.Metrics;
 import io.stackgres.operator.conciliation.ReconciliationResult;
 import io.stackgres.operator.conciliation.factory.cluster.KubernetessMockResourceGenerationUtil;
+import io.stackgres.testutil.JsonUtil;
 import org.jooq.lambda.tuple.Tuple;
 import org.jooq.lambda.tuple.Tuple2;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,7 +43,9 @@ class BackupReconciliatorTest {
   @Mock
   CustomResourceFinder<StackGresBackup> finder;
   @Mock
-  Conciliator<StackGresBackup> conciliator;
+  AbstractConciliator<StackGresBackup> conciliator;
+  @Mock
+  DeployedResourcesCache deployedResourcesCache;
   @Mock
   HandlerDelegator<StackGresBackup> handlerDelegator;
   @Mock
@@ -50,13 +53,11 @@ class BackupReconciliatorTest {
   @Mock
   CustomResourceScheduler<StackGresBackup> backupScheduler;
   @Mock
-  ComparisonDelegator<StackGresBackup> resourceComparator;
-  @Mock
   CustomResourceFinder<StackGresCluster> clusterFinder;
   @Mock
-  CustomResourceFinder<StackGresBackupConfig> backupConfigFinder;
-  @Mock
   BackupStatusManager statusManager;
+  @Mock
+  Metrics metrics;
 
   private BackupReconciliator reconciliator;
 
@@ -66,11 +67,13 @@ class BackupReconciliatorTest {
     parameters.finder = finder;
     parameters.backupScheduler = backupScheduler;
     parameters.conciliator = conciliator;
+    parameters.deployedResourcesCache = deployedResourcesCache;
     parameters.handlerDelegator = handlerDelegator;
     parameters.eventController = eventController;
     parameters.backupScheduler = backupScheduler;
-    parameters.resourceComparator = resourceComparator;
+    parameters.objectMapper = JsonUtil.jsonMapper();
     parameters.statusManager = statusManager;
+    parameters.metrics = metrics;
     reconciliator = spy(new BackupReconciliator(parameters));
   }
 
@@ -88,7 +91,7 @@ class BackupReconciliatorTest {
             Collections.emptyList(),
             Collections.emptyList()));
 
-    reconciliator.reconciliationCycle(backup, false);
+    reconciliator.reconciliationCycle(backup, 0, false);
 
     verify(conciliator).evalReconciliationState(backup);
     creations.forEach(resource -> verify(handlerDelegator).create(backup, resource));
@@ -110,7 +113,7 @@ class BackupReconciliatorTest {
             patches,
             Collections.emptyList()));
 
-    reconciliator.reconciliationCycle(backup, false);
+    reconciliator.reconciliationCycle(backup, 0, false);
 
     verify(conciliator).evalReconciliationState(backup);
     patches.forEach(resource -> verify(handlerDelegator).patch(backup, resource.v1, resource.v2));
@@ -129,7 +132,7 @@ class BackupReconciliatorTest {
             Collections.emptyList(),
             deletions));
 
-    reconciliator.reconciliationCycle(backup, false);
+    reconciliator.reconciliationCycle(backup, 0, false);
 
     verify(conciliator).evalReconciliationState(backup);
     deletions.forEach(resource -> verify(handlerDelegator).delete(backup, resource));

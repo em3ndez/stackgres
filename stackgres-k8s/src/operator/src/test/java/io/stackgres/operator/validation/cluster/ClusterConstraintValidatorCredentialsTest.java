@@ -5,8 +5,6 @@
 
 package io.stackgres.operator.validation.cluster;
 
-import javax.validation.constraints.AssertTrue;
-
 import io.stackgres.common.crd.SecretKeySelector;
 import io.stackgres.common.crd.sgcluster.StackGresClusterCredentials;
 import io.stackgres.common.crd.sgcluster.StackGresClusterPatroniCredentials;
@@ -14,56 +12,57 @@ import io.stackgres.common.crd.sgcluster.StackGresClusterUserSecretKeyRef;
 import io.stackgres.common.crd.sgcluster.StackGresClusterUsersCredentials;
 import io.stackgres.operator.common.StackGresClusterReview;
 import io.stackgres.operator.common.fixture.AdmissionReviewFixtures;
+import io.stackgres.operator.validation.AbstractConstraintValidator;
 import io.stackgres.operator.validation.ConstraintValidationTest;
-import io.stackgres.operator.validation.ConstraintValidator;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.validation.constraints.AssertTrue;
 import org.junit.jupiter.api.Test;
 
 class ClusterConstraintValidatorCredentialsTest
     extends ConstraintValidationTest<StackGresClusterReview> {
 
   @Override
-  protected ConstraintValidator<StackGresClusterReview> buildValidator() {
+  protected AbstractConstraintValidator<StackGresClusterReview> buildValidator() {
     return new ClusterConstraintValidator();
   }
 
   @Override
   protected StackGresClusterReview getValidReview() {
     var review = AdmissionReviewFixtures.cluster().loadCreate().get();
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .setCredentials(new StackGresClusterCredentials());
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().setUsers(new StackGresClusterUsersCredentials());
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers()
         .setSuperuser(new StackGresClusterUserSecretKeyRef());
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getSuperuser()
         .setUsername(new SecretKeySelector("test", "test"));
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getSuperuser()
         .setPassword(new SecretKeySelector("test", "test"));
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers()
         .setReplication(new StackGresClusterUserSecretKeyRef());
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getReplication()
         .setUsername(new SecretKeySelector("test", "test"));
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getReplication()
         .setPassword(new SecretKeySelector("test", "test"));
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers()
         .setAuthenticator(new StackGresClusterUserSecretKeyRef());
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getAuthenticator()
         .setUsername(new SecretKeySelector("test", "test"));
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getAuthenticator()
         .setPassword(new SecretKeySelector("test", "test"));
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().setPatroni(new StackGresClusterPatroniCredentials());
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getPatroni()
         .setRestApiPassword(new SecretKeySelector("test", "test"));
     return review;
@@ -82,7 +81,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullUsers_shouldPass() throws ValidationFailed {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().setUsers(null);
 
     validator.validate(review);
@@ -92,7 +91,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullpatroni_shouldPass() throws ValidationFailed {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().setPatroni(null);
 
     validator.validate(review);
@@ -102,7 +101,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullSuperuser_shouldPass() throws ValidationFailed {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().setSuperuser(null);
 
     validator.validate(review);
@@ -112,7 +111,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullSuperuserUsername_shouldPass() throws ValidationFailed {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getSuperuser().setUsername(null);
 
     validator.validate(review);
@@ -122,7 +121,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullSuperuserPassword_shouldPass() throws ValidationFailed {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getSuperuser().setPassword(null);
 
     validator.validate(review);
@@ -132,7 +131,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullSuperuserUsernameSecretName_shouldFail() {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getSuperuser().getUsername().setName(null);
 
     checkErrorCause(SecretKeySelector.class,
@@ -144,7 +143,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullSuperuserUsernameSecretKey_shouldFail() {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getSuperuser().getUsername().setKey(null);
 
     checkErrorCause(SecretKeySelector.class,
@@ -156,7 +155,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullSuperuserPasswordSecretName_shouldFail() {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getSuperuser().getPassword().setName(null);
 
     checkErrorCause(SecretKeySelector.class,
@@ -168,7 +167,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullSuperuserPasswordSecretKey_shouldFail() {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getSuperuser().getPassword().setKey(null);
 
     checkErrorCause(SecretKeySelector.class,
@@ -180,7 +179,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullReplication_shouldPass() throws ValidationFailed {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().setReplication(null);
 
     validator.validate(review);
@@ -190,7 +189,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullReplicationUsername_shouldPass() throws ValidationFailed {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getReplication().setUsername(null);
 
     validator.validate(review);
@@ -200,7 +199,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullReplicationPassword_shouldPass() throws ValidationFailed {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getReplication().setPassword(null);
 
     validator.validate(review);
@@ -210,7 +209,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullReplicationUsernameSecretName_shouldFail() {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getReplication().getUsername().setName(null);
 
     checkErrorCause(SecretKeySelector.class,
@@ -222,7 +221,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullReplicationUsernameSecretKey_shouldFail() {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getReplication().getUsername().setKey(null);
 
     checkErrorCause(SecretKeySelector.class,
@@ -234,7 +233,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullReplicationPasswordSecretName_shouldFail() {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getReplication().getPassword().setName(null);
 
     checkErrorCause(SecretKeySelector.class,
@@ -246,7 +245,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullReplicationPasswordSecretKey_shouldFail() {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getReplication().getPassword().setKey(null);
 
     checkErrorCause(SecretKeySelector.class,
@@ -258,7 +257,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullAuthenticator_shouldPass() throws ValidationFailed {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().setAuthenticator(null);
 
     validator.validate(review);
@@ -268,7 +267,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullAuthenticatorUsername_shouldPass() throws ValidationFailed {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getAuthenticator().setUsername(null);
 
     validator.validate(review);
@@ -278,7 +277,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullAuthenticatorPassword_shouldPass() throws ValidationFailed {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getAuthenticator().setPassword(null);
 
     validator.validate(review);
@@ -288,7 +287,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullAuthenticatorUsernameSecretName_shouldFail() {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getAuthenticator().getUsername().setName(null);
 
     checkErrorCause(SecretKeySelector.class,
@@ -300,7 +299,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullAuthenticatorUsernameSecretKey_shouldFail() {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getAuthenticator().getUsername().setKey(null);
 
     checkErrorCause(SecretKeySelector.class,
@@ -312,7 +311,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullAuthenticatorPasswordSecretName_shouldFail() {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getAuthenticator().getPassword().setName(null);
 
     checkErrorCause(SecretKeySelector.class,
@@ -324,7 +323,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullAuthenticatorPasswordSecretKey_shouldFail() {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getUsers().getAuthenticator().getPassword().setKey(null);
 
     checkErrorCause(SecretKeySelector.class,
@@ -336,7 +335,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullPatroniRestApiPassword_shouldPass() throws ValidationFailed {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getPatroni().setRestApiPassword(null);
 
     validator.validate(review);
@@ -346,7 +345,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullPatroniRestApiPasswordSecretName_shouldFail() {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getPatroni().getRestApiPassword().setName(null);
 
     checkErrorCause(SecretKeySelector.class,
@@ -358,7 +357,7 @@ class ClusterConstraintValidatorCredentialsTest
   void nullPatroniRestApiPasswordSecretKey_shouldFail() {
     StackGresClusterReview review = getValidReview();
 
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getCredentials().getPatroni().getRestApiPassword().setKey(null);
 
     checkErrorCause(SecretKeySelector.class,

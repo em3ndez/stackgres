@@ -53,7 +53,7 @@ class StorageClassValidatorTest {
     final StackGresClusterReview review = AdmissionReviewFixtures.cluster().loadCreate().get();
 
     String storageClass =
-        review.getRequest().getObject().getSpec().getPod().getPersistentVolume().getStorageClass();
+        review.getRequest().getObject().getSpec().getPods().getPersistentVolume().getStorageClass();
     when(storageClassFinder.findByName(storageClass))
         .thenReturn(Optional.of(DEFAULT_STORAGE_CLASS));
 
@@ -69,7 +69,7 @@ class StorageClassValidatorTest {
     final StackGresClusterReview review = AdmissionReviewFixtures.cluster().loadCreate().get();
 
     String storageClass =
-        review.getRequest().getObject().getSpec().getPod().getPersistentVolume().getStorageClass();
+        review.getRequest().getObject().getSpec().getPods().getPersistentVolume().getStorageClass();
 
     when(storageClassFinder.findByName(storageClass))
         .thenReturn(Optional.empty());
@@ -80,7 +80,7 @@ class StorageClassValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Storage class " + storageClass + " not found", resultMessage);
+    assertEquals("StorageClass " + storageClass + " not found", resultMessage);
 
   }
 
@@ -91,7 +91,7 @@ class StorageClassValidatorTest {
         .loadStorageClassConfigUpdate().get();
 
     String storageClass =
-        review.getRequest().getObject().getSpec().getPod().getPersistentVolume().getStorageClass();
+        review.getRequest().getObject().getSpec().getPods().getPersistentVolume().getStorageClass();
 
     when(storageClassFinder.findByName(storageClass))
         .thenReturn(Optional.empty());
@@ -102,7 +102,7 @@ class StorageClassValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Cannot update to storage class " + storageClass
+    assertEquals("Cannot update to StorageClass " + storageClass
         + " because it doesn't exists", resultMessage);
 
     verify(storageClassFinder).findByName(eq(storageClass));
@@ -116,7 +116,7 @@ class StorageClassValidatorTest {
         .loadStorageClassConfigUpdate().get();
 
     String storageClass =
-        review.getRequest().getObject().getSpec().getPod().getPersistentVolume().getStorageClass();
+        review.getRequest().getObject().getSpec().getPods().getPersistentVolume().getStorageClass();
 
     when(storageClassFinder.findByName(storageClass))
         .thenReturn(Optional.of(DEFAULT_STORAGE_CLASS));

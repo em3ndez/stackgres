@@ -5,13 +5,9 @@
 
 package io.stackgres.operator.conciliation.dbops;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
 
 import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.fabric8.kubernetes.api.model.batch.v1.JobStatus;
@@ -23,6 +19,8 @@ import io.stackgres.common.crd.sgdbops.StackGresDbOpsStatus;
 import io.stackgres.common.resource.ResourceFinder;
 import io.stackgres.operator.conciliation.StatusManager;
 import io.stackgres.operatorframework.resource.ConditionUpdater;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,23 +44,21 @@ public class DbOpsStatusManager
 
   @Override
   public StackGresDbOps refreshCondition(StackGresDbOps source) {
-    final boolean isJobFailedAndStatusNotUpdated;
+    final boolean isJobFinishedAndStatusNotUpdated;
     if (Optional.of(source)
         .map(StackGresDbOps::getStatus)
         .map(StackGresDbOpsStatus::getConditions)
         .stream()
         .flatMap(List::stream)
         .filter(condition -> Objects.equals(condition.getType(),
-            DbOpsStatusCondition.Type.COMPLETED.getType())
-            || Objects.equals(condition.getType(),
-                DbOpsStatusCondition.Type.FAILED.getType()))
+            DbOpsStatusCondition.Type.COMPLETED.getType()))
         .anyMatch(condition -> Objects.equals(condition.getStatus(), "True"))) {
-      isJobFailedAndStatusNotUpdated = false;
+      isJobFinishedAndStatusNotUpdated = false;
     } else {
       final Optional<Job> job = jobFinder.findByNameAndNamespace(
           DbOpsUtil.jobName(source),
           source.getMetadata().getNamespace());
-      isJobFailedAndStatusNotUpdated = job
+      isJobFinishedAndStatusNotUpdated = job
           .map(Job::getStatus)
           .map(JobStatus::getConditions)
           .stream()
@@ -81,29 +77,43 @@ public class DbOpsStatusManager
           .map(Job::getStatus)
           .map(JobStatus::getFailed)
           .orElse(0);
-      source.getStatus().setOpRetries(Math.max(0, failed - 1) + (failed > 0 ? active : 0));
+      source.getStatus().setOpRetries(
+          Math.max(0, failed - 1) + (failed > 0 ? active : 0));
     }
 
-    if (isJobFailedAndStatusNotUpdated) {
-      LOGGER.debug("DbOps {} failed since the job failed but status condition"
-          + " is neither completed or failed", getDbOpsId(source));
+    if (isJobFinishedAndStatusNotUpdated) {
+      if (source.getStatus() == null) {
+        source.setStatus(new StackGresDbOpsStatus());
+      }
       updateCondition(getFalseRunning(), source);
-      updateCondition(getFalseCompleted(), source);
-      updateCondition(getFailedDueToUnexpectedFailure(), source);
+      updateCondition(getCompleted(), source);
+      if (Optional.of(source)
+          .map(StackGresDbOps::getStatus)
+          .map(StackGresDbOpsStatus::getConditions)
+          .stream()
+          .flatMap(List::stream)
+          .filter(condition -> Objects.equals(condition.getType(),
+              DbOpsStatusCondition.Type.FAILED.getType()))
+          .noneMatch(condition -> Objects.equals(condition.getStatus(), "True"))) {
+        LOGGER.warn(
+            "DbOps {} failed since the job completed but status condition is neither completed or failed",
+            getDbOpsId(source));
+        updateCondition(getFailedDueToUnexpectedFailure(), source);
+      }
     }
     return source;
   }
 
   protected Condition getFalseRunning() {
-    return DbOpsStatusCondition.DB_OPS_FALSE_RUNNING.getCondition();
+    return DbOpsStatusCondition.DBOPS_FALSE_RUNNING.getCondition();
   }
 
-  protected Condition getFalseCompleted() {
-    return DbOpsStatusCondition.DB_OPS_FALSE_COMPLETED.getCondition();
+  protected Condition getCompleted() {
+    return DbOpsStatusCondition.DBOPS_COMPLETED.getCondition();
   }
 
   protected Condition getFailedDueToUnexpectedFailure() {
-    var failed = DbOpsStatusCondition.DB_OPS_FAILED.getCondition();
+    var failed = DbOpsStatusCondition.DBOPS_FAILED.getCondition();
     failed.setMessage("Unexpected failure");
     return failed;
   }
@@ -112,7 +122,7 @@ public class DbOpsStatusManager
   protected List<Condition> getConditions(StackGresDbOps context) {
     return Optional.ofNullable(context.getStatus())
         .map(StackGresDbOpsStatus::getConditions)
-        .orElseGet(ArrayList::new);
+        .orElse(List.of());
   }
 
   @Override

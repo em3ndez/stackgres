@@ -7,12 +7,10 @@ package io.stackgres.operator.conversion;
 
 import java.util.List;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.inject.Instance;
-import javax.inject.Inject;
-
-import com.google.common.collect.ImmutableList;
 import io.stackgres.common.crd.sgdbops.StackGresDbOps;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
 @Conversion(StackGresDbOps.KIND)
@@ -23,7 +21,7 @@ public class SgDbOpsConversionPipeline implements ConversionPipeline {
   @Inject
   public SgDbOpsConversionPipeline(
       @Conversion(StackGresDbOps.KIND) Instance<Converter> converters) {
-    this.converters = converters.stream().collect(ImmutableList.toImmutableList());
+    this.converters = converters.stream().toList();
   }
 
   @Override

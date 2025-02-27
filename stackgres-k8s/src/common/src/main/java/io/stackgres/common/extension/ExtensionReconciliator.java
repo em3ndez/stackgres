@@ -8,6 +8,7 @@ package io.stackgres.common.extension;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import com.google.common.collect.ImmutableList;
@@ -22,23 +23,24 @@ import io.stackgres.common.crd.sgcluster.StackGresClusterStatus;
 import io.stackgres.common.extension.ExtensionManager.ExtensionInstaller;
 import io.stackgres.common.extension.ExtensionManager.ExtensionUninstaller;
 import io.stackgres.operatorframework.reconciliation.ReconciliationResult;
-import org.jooq.lambda.tuple.Tuple;
+import io.stackgres.operatorframework.reconciliation.SafeReconciliator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public abstract class ExtensionReconciliator<T extends ExtensionReconciliatorContext> {
+public abstract class ExtensionReconciliator<T extends ExtensionReconciliatorContext>
+    extends SafeReconciliator<T, Boolean> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ExtensionReconciliator.class);
 
   private final String podName;
   private final ExtensionManager extensionManager;
-  private final boolean skipSharedLibrariesOverwrites;
+  private final Supplier<Boolean> skipSharedLibrariesOverwrites;
   private final ExtensionEventEmitter extensionEventEmitter;
 
   protected ExtensionReconciliator(
       String podName,
       ExtensionManager extensionManager,
-      boolean skipSharedLibrariesOverwrites,
+      Supplier<Boolean> skipSharedLibrariesOverwrites,
       ExtensionEventEmitter extensionEventEmitter) {
     this.podName = podName;
     this.extensionManager = extensionManager;
@@ -50,14 +52,15 @@ public abstract class ExtensionReconciliator<T extends ExtensionReconciliatorCon
     CdiUtil.checkPublicNoArgsConstructorIsCalledToCreateProxy(getClass());
     this.podName = null;
     this.extensionManager = null;
-    this.skipSharedLibrariesOverwrites = false;
+    this.skipSharedLibrariesOverwrites = null;
     this.extensionEventEmitter = null;
   }
 
   @SuppressFBWarnings(value = "REC_CATCH_EXCEPTION",
       justification = "False positives")
-  public ReconciliationResult<Boolean> reconcile(KubernetesClient client, T context)
+  public ReconciliationResult<Boolean> safeReconcile(KubernetesClient client, T context)
       throws Exception {
+    final boolean skipSharedLibrariesOverwrites = this.skipSharedLibrariesOverwrites.get();
     final ImmutableList.Builder<Exception> exceptions = ImmutableList.builder();
     final StackGresCluster cluster = context.getCluster();
     final ImmutableList<StackGresClusterInstalledExtension> toInstallExtensions =
@@ -83,7 +86,7 @@ public abstract class ExtensionReconciliator<T extends ExtensionReconciliatorCon
     }
     final List<StackGresClusterInstalledExtension> installedExtensions =
         podStatus.getInstalledPostgresExtensions();
-    LOGGER.info("Reconcile postgres extensions...");
+    LOGGER.debug("Reconcile postgres extensions...");
     boolean clusterUpdated = false;
     final List<StackGresClusterInstalledExtension> extensionToUninstall = installedExtensions
         .stream()
@@ -184,27 +187,31 @@ public abstract class ExtensionReconciliator<T extends ExtensionReconciliatorCon
             extensionInstaller.installExtension();
             extensionEventEmitter.emitExtensionDeployed(extension);
           }
-        } else {
+        }
+        if (extensionInstaller.isExtensionInstalled()) {
           if (!extensionInstaller.areLinksCreated()) {
             LOGGER.info("Create links for extension {}",
                 ExtensionUtil.getDescription(cluster, extension, true));
             extensionInstaller.createExtensionLinks();
           }
-        }
-        if (installedExtensions
-            .stream()
-            .noneMatch(anInstalledExtension -> anInstalledExtension.equals(extension))) {
-          installedExtensions.stream()
-              .filter(anInstalledExtension -> anInstalledExtension.same(extension))
-              .peek(previousInstalledExtension -> LOGGER.info("Extension upgraded from {} to {}",
-                  ExtensionUtil.getDescription(cluster, previousInstalledExtension, true),
-                  ExtensionUtil.getDescription(cluster, extension, true)))
-              .peek(previousInstalledExtension -> extensionEventEmitter
-                  .emitExtensionChanged(previousInstalledExtension, extension))
-              .findAny()
-              .ifPresent(installedExtensions::remove);
-          installedExtensions.add(extension);
-          clusterUpdated = true;
+          if (installedExtensions
+              .stream()
+              .noneMatch(anInstalledExtension -> anInstalledExtension.equals(extension))) {
+            installedExtensions.stream()
+                .filter(anInstalledExtension -> anInstalledExtension.same(extension))
+                .map(previousInstalledExtension -> {
+                  LOGGER.info("Extension upgraded from {} to {}",
+                      ExtensionUtil.getDescription(cluster, previousInstalledExtension, true),
+                      ExtensionUtil.getDescription(cluster, extension, true));
+                  extensionEventEmitter.emitExtensionChanged(
+                      previousInstalledExtension, extension);
+                  return previousInstalledExtension;
+                })
+                .findAny()
+                .ifPresent(installedExtensions::remove);
+            installedExtensions.add(extension);
+            clusterUpdated = true;
+          }
         }
       } catch (Exception ex) {
         exceptions.add(ex);
@@ -217,27 +224,7 @@ public abstract class ExtensionReconciliator<T extends ExtensionReconciliatorCon
       podStatus.setPendingRestart(false);
       clusterUpdated = true;
     }
-    if (context.getCluster().getStatus() != null
-        && context.getCluster().getStatus().getArch() != null
-        && context.getCluster().getStatus().getOs() != null) {
-      if (context.getCluster().getSpec().getToInstallPostgresExtensions().stream().anyMatch(
-          toInstallExtension -> podStatus.getInstalledPostgresExtensions().stream().noneMatch(
-              toInstallExtension::equals))) {
-        LOGGER.info("Setting missing build for some extensions required to install");
-        context.getCluster().getSpec().getToInstallPostgresExtensions().stream().filter(
-            toInstallExtension -> podStatus.getInstalledPostgresExtensions().stream().noneMatch(
-                toInstallExtension::equals))
-            .map(toInstallExtension -> Tuple.tuple(toInstallExtension,
-                podStatus.getInstalledPostgresExtensions().stream().filter(
-                    installedExtension -> installedExtension.getName().equals(
-                        toInstallExtension.getName())).findFirst()))
-            .filter(t -> t.v2.isPresent())
-            .map(t -> t.map2(Optional::get))
-            .forEach(t -> t.v1.setBuild(t.v2.getBuild()));
-        clusterUpdated = true;
-      }
-    }
-    LOGGER.info("Reconciliation of postgres extensions completed");
+    LOGGER.debug("Reconciliation of postgres extensions completed");
     return new ReconciliationResult<>(clusterUpdated, exceptions.build());
   }
 

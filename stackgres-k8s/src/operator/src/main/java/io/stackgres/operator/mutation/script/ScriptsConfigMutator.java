@@ -10,8 +10,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-import javax.enterprise.context.ApplicationScoped;
-
 import io.stackgres.common.crd.sgscript.StackGresScript;
 import io.stackgres.common.crd.sgscript.StackGresScriptEntry;
 import io.stackgres.common.crd.sgscript.StackGresScriptEntryStatus;
@@ -19,6 +17,7 @@ import io.stackgres.common.crd.sgscript.StackGresScriptSpec;
 import io.stackgres.common.crd.sgscript.StackGresScriptStatus;
 import io.stackgres.operator.common.StackGresScriptReview;
 import io.stackgres.operatorframework.admissionwebhook.Operation;
+import jakarta.enterprise.context.ApplicationScoped;
 import org.jooq.lambda.Seq;
 
 @ApplicationScoped
@@ -47,6 +46,13 @@ public class ScriptsConfigMutator
   }
 
   private void fillScriptsRequiredFields(StackGresScript resource) {
+    Optional.of(resource)
+        .map(StackGresScript::getSpec)
+        .map(StackGresScriptSpec::getScripts)
+        .stream()
+        .flatMap(List::stream)
+        .filter(scriptEntry -> Objects.equals(scriptEntry.getId(), -1))
+        .forEach(scriptEntry -> scriptEntry.setId(null));
     int lastId = Optional.of(resource)
         .map(StackGresScript::getSpec)
         .map(StackGresScriptSpec::getScripts)

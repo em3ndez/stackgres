@@ -1,5 +1,6 @@
 #!/bin/sh
 
+RETRY_LIMIT=0
 LOCAL_BIN_SHELL_UTILS_PATH="$PROJECT_PATH/src/main/resources/templates/shell-utils"
 CLUSTER_NAMESPACE=test
 CLUSTER_NAME=test
@@ -24,7 +25,14 @@ PATRONI_ROLE_KEY=role
 PATRONI_PRIMARY_ROLE=master
 PATRONI_REPLICA_ROLE=replica
 BACKUP_ENV=backup
+LOCK_RESOURCE=sgclusters.stackgres.io
+LOCK_RESOURCE_NAME=test
 LOCK_SLEEP=0
+LOCK_TIMEOUT_KEY=stackgres.io/lockTimeout
+LOCK_POD_KEY=stackgres.io/lockPod
+VOLUME_SNAPSHOT_CRD_NAME=volumesnapshot
+PG_DATA_PATH=/var/lib/postgresql/data
+POSTGRES_VERSION=17.2
 
 shell_unit_test_backup() {
   . "$PROJECT_PATH/src/main/resources/templates/create-backup.sh"
@@ -35,18 +43,18 @@ mock kubectl kubectl_mock
 kubectl_mock() {
   mokked
   case "$*" in
-    ("get cronjob.batch "*" --template="'
-  LOCK_POD={{ if .metadata.annotations.lockPod }}{{ .metadata.annotations.lockPod }}{{ else }}{{ end }}
-  LOCK_TIMESTAMP={{ if .metadata.annotations.lockTimestamp }}{{ .metadata.annotations.lockTimestamp }}{{ else }}0{{ end }}
+    ("get sgclusters.stackgres.io "*" --template="'
+  LOCK_POD='*'
+  LOCK_TIMEOUT='*'
   RESOURCE_VERSION={{ .metadata.resourceVersion }}
   ')
     echo '
       LOCK_POD=test
-      LOCK_TIMESTAMP=$(date +%s)
+      LOCK_TIMEOUT='"$(( $(date +%s) + 1 ))"'
       RESOURCE_VERSION=test
       '
     ;;
-    ("annotate cronjob.batch "*)
+    ("annotate sgclusters.stackgres.io "*)
     ;;
     ("get $CLUSTER_CRD_NAME -n $CLUSTER_NAMESPACE $CLUSTER_NAME --template={{ if .spec.configurations.backupPath }}{{ .spec.configurations.backupPath }}{{ else }}{{ (index .spec.configurations.backups 0).path }}{{ end }}")
     echo test
@@ -56,42 +64,33 @@ kubectl_mock() {
     ;;
     ("get $BACKUP_CRD_NAME -n $CLUSTER_NAMESPACE --template=$BACKUP_CR_TEMPLATE")
     ;;
+    ("get $BACKUP_CONFIG_CRD_NAME -n $CLUSTER_NAMESPACE $BACKUP_CONFIG -o json")
+    printf %s '{}'
+    ;;
     ("get $BACKUP_CRD_NAME -A --template=$BACKUP_CR_TEMPLATE")
     ;;
-    ("get $BACKUP_CONFIG_CRD_NAME -n $CLUSTER_NAMESPACE $BACKUP_CONFIG --template=$BACKUP_CONFIG_YAML")
+    ("get $BACKUP_CONFIG_CRD_NAME -n $CLUSTER_NAMESPACE $BACKUP_CONFIG -o json")
     cat << EOF
-    baseBackups:
-      compression: "lz4"
-    storage:
-      type: "s3Compatible"
-      s3Compatible:
-        awsCredentials:
-          secretKeySelectors:
-            accessKeyId:
-              key: "accesskey"
-              name: "minio"
-            secretAccessKey:
-              key: "secretkey"
-              name: "minio"
-        endpoint: "http://minio.stackgres:9000"
-        enablePathStyleAddressing: true
-        bucket: "stackgres"
-        region: "k8s"
+{"spec":{"storage":{"type":"s3Compatible","s3Compatible":{"awsCredentials":{"secretKeySelectors":{"accessKeyId":{"key":"accesskey","name":"minio"},"secretAccessKey":{"key":"secretkey","name":"minio"}}},"endpoint":"http://minio.stackgres:9000","enablePathStyleAddressing":true,"bucket":"stackgres","region":"k8s"}}}}
 EOF
     ;;
     ("get $BACKUP_CRD_NAME -n $CLUSTER_NAMESPACE $BACKUP_NAME -o name")
     return 1
     ;;
-    ("create -f - -o yaml")
+    ("create -f /tmp/backup-to-create -o json")
+    printf %s '{"metadata":{"uid":"test"}}'
     ;;
     ("get $BACKUP_CRD_NAME -n $CLUSTER_NAMESPACE $BACKUP_NAME --template={{ .status.sgBackupConfig.storage }}")
     echo test
     ;;
-    ("get pod -n $CLUSTER_NAMESPACE -l ${CLUSTER_LABELS},${PATRONI_ROLE_KEY}=${PATRONI_PRIMARY_ROLE} -o name")
-    echo pod/test-0
+    ("get pod -n $CLUSTER_NAMESPACE -l ${CLUSTER_LABELS},${PATRONI_ROLE_KEY}=${PATRONI_PRIMARY_ROLE} --template "*)
+    echo test-0
     ;;
-    ("get pod -n $CLUSTER_NAMESPACE -l ${CLUSTER_LABELS},${PATRONI_ROLE_KEY}=${PATRONI_REPLICA_ROLE} -o name")
-    echo pod/test-1
+    ("get pod -n $CLUSTER_NAMESPACE -l ${CLUSTER_LABELS},${PATRONI_ROLE_KEY}=${PATRONI_REPLICA_ROLE} --template "*)
+    echo test-1
+    ;;
+    ("get pod -n $CLUSTER_NAMESPACE test-0 --template "*)
+    echo test-0
     ;;
     ("patch $BACKUP_CRD_NAME -n $CLUSTER_NAMESPACE $BACKUP_NAME --type json --patch "*)
     ;;
@@ -100,7 +99,7 @@ EOF
     ("get $BACKUP_CRD_NAME -n $CLUSTER_NAMESPACE $BACKUP_NAME --template={{ .status.backupPath }}")
     echo test
     ;;
-    ("exec -i -n $CLUSTER_NAMESPACE pod/test-0 -c $PATRONI_CONTAINER_NAME -- sh -e"*)
+    ("exec -i -n $CLUSTER_NAMESPACE test-0 -c $PATRONI_CONTAINER_NAME -- sh -e"*)
     STDIN="$(cat)"
     case "$STDIN" in
       (*" wal-g backup-push "*)
@@ -113,7 +112,7 @@ EOF
       ;;
     esac
     ;;
-    ("exec -i -n $CLUSTER_NAMESPACE pod/test-1 -c $PATRONI_CONTAINER_NAME -- sh -e"*)
+    ("exec -i -n $CLUSTER_NAMESPACE test-1 -c $PATRONI_CONTAINER_NAME -- sh -e"*)
     STDIN="$(cat)"
     case "$STDIN" in
       (*" for each existing backup"*)
@@ -122,6 +121,33 @@ EOF
       cat "$TEST_SHELL_PATH/backup/wal-g-backup-list"
       ;;
     esac
+    ;;
+    ("exec -i -n $CLUSTER_NAMESPACE test-0 -c $PATRONI_CONTAINER_NAME -- psql -v ON_ERROR_STOP=1 -t -A")
+    while read -r LINE
+    do
+      case "$LINE" in
+        ("SELECT 'Backup bootstrap';")
+        echo 'Backup bootstrap'
+        ;;
+        ("SELECT 'Backup started';")
+        echo 'SET'
+        echo '7328135472075981416|160001|f|0000000100000000000000C2|50331688'
+        echo 'Backup started'
+        ;;
+        ("SELECT 'Backup stopped';")
+        echo 'SET'
+        echo '50420392|U1RBUlQgV0FMIExPQ0FUSU9OOiAwLzMwMDAwMjggKGZpbGUgMDAwMDAwMDEwMDAwMDAwMDAwMDAwMDAzKQpDSEVDS1BPSU5UIExPQ0FUSU9OOiAwLzMwMDAwNjAKQkFDS1VQIE1FVEhPRDogc3RyZWFtZWQKQkFDS1VQIEZST006IHByaW1hcnkKU1RBUlQgVElNRTogMjAyNC0wMS0yNSAyMDoyOToyOSBVVEMKTEFCRUw6IHRlc3QKU1RBUlQgVElNRUxJTkU6IDEK|'
+        echo 'Backup stopped'
+        ;;
+      esac
+    done
+    ;;
+    ("exec -n $CLUSTER_NAMESPACE $(cat /tmp/current-primary) -c patroni -- rm -rf "*)
+    ;;
+    ("create -f /tmp/snapshot-to-create")
+    ;;
+    ("get $VOLUME_SNAPSHOT_CRD_NAME -n $CLUSTER_NAMESPACE $BACKUP_NAME -o json")
+    printf '%s\n' '{"status":{"readyToUse":"true","restoreSize":"1Gi"}}'
     ;;
     *)
     not_mokked

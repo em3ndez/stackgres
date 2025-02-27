@@ -11,7 +11,6 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 import java.util.Map;
 
-import io.stackgres.common.StackGresShardedClusterForCitusUtil;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedCluster;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterShardBuilder;
@@ -19,6 +18,7 @@ import io.stackgres.common.labels.LabelFactoryForShardedCluster;
 import io.stackgres.common.resource.CustomResourceScanner;
 import io.stackgres.operator.common.StackGresShardedClusterReview;
 import io.stackgres.operator.common.fixture.AdmissionReviewFixtures;
+import io.stackgres.operator.conciliation.factory.shardedcluster.StackGresShardedClusterForCitusUtil;
 import io.stackgres.operator.validation.PersistentVolumeSizeExpansionValidatorTest;
 import io.stackgres.operatorframework.admissionwebhook.validating.Validator;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,17 +41,19 @@ class OverridesShardsPersistentVolumeSizeExpansionValidatorTest extends
     var review = AdmissionReviewFixtures.shardedCluster().loadUpdate().get();
     review.getRequest().getObject().getSpec().getShards().setOverrides(List.of(
         new StackGresShardedClusterShardBuilder()
-        .withNewPodForShards()
+        .withIndex(0)
+        .withNewPodsForShards()
         .withNewPersistentVolume()
         .endPersistentVolume()
-        .endPodForShards()
+        .endPodsForShards()
         .build()));
     review.getRequest().getOldObject().getSpec().getShards().setOverrides(List.of(
         new StackGresShardedClusterShardBuilder()
-        .withNewPodForShards()
+        .withIndex(0)
+        .withNewPodsForShards()
         .withNewPersistentVolume()
         .endPersistentVolume()
-        .endPodForShards()
+        .endPodsForShards()
         .build()));
     return review;
   }
@@ -70,19 +72,19 @@ class OverridesShardsPersistentVolumeSizeExpansionValidatorTest extends
   @Override
   protected void setVolumeSize(StackGresShardedCluster cluster, String size) {
     cluster.getSpec().getShards().getOverrides().get(0)
-        .getPodForShards().getPersistentVolume().setSize(size);
+        .getPodsForShards().getPersistentVolume().setSize(size);
   }
 
   @Override
   protected void setStorageClassName(StackGresShardedCluster cluster, String storageClassName) {
     cluster.getSpec().getShards().getOverrides().get(0)
-        .getPodForShards().getPersistentVolume().setStorageClass(storageClassName);
+        .getPodsForShards().getPersistentVolume().setStorageClass(storageClassName);
   }
 
   @Override
   protected String getStorageClassName(StackGresShardedCluster cluster) {
     return cluster.getSpec().getShards().getOverrides().get(0)
-        .getPodForShards().getPersistentVolume().getStorageClass();
+        .getPodsForShards().getPersistentVolume().getStorageClass();
   }
 
   @Override

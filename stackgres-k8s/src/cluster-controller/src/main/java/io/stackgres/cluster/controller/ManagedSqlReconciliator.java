@@ -9,14 +9,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.context.Dependent;
-import javax.inject.Inject;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.fabric8.kubernetes.api.model.ConfigMap;
-import io.fabric8.kubernetes.api.model.Endpoints;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.stackgres.cluster.common.ClusterControllerEventReason;
@@ -38,27 +33,32 @@ import io.stackgres.common.crd.sgscript.StackGresScriptEntry;
 import io.stackgres.common.crd.sgscript.StackGresScriptEntryStatus;
 import io.stackgres.common.crd.sgscript.StackGresScriptSpec;
 import io.stackgres.common.crd.sgscript.StackGresScriptStatus;
+import io.stackgres.common.patroni.PatroniCtl;
+import io.stackgres.common.patroni.StackGresPasswordKeys;
 import io.stackgres.common.resource.CustomResourceFinder;
 import io.stackgres.common.resource.CustomResourceScheduler;
 import io.stackgres.common.resource.ResourceFinder;
 import io.stackgres.operatorframework.reconciliation.ReconciliationResult;
+import io.stackgres.operatorframework.reconciliation.SafeReconciliator;
 import io.stackgres.operatorframework.resource.ResourceUtil;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.Dependent;
+import jakarta.inject.Inject;
 import org.jooq.lambda.tuple.Tuple;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @ApplicationScoped
-public class ManagedSqlReconciliator {
+public class ManagedSqlReconciliator extends SafeReconciliator<StackGresClusterContext, Boolean> {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ManagedSqlReconciliator.class);
 
   private final ManagedSqlScriptEntryExecutor managedSqlScriptEntryExecutor;
-  private final boolean reconcileManagedSql;
-  private final ResourceFinder<Endpoints> endpointsFinder;
+  private final Supplier<Boolean> reconcileManagedSql;
+  private final PatroniCtl patroniCtl;
   private final CustomResourceFinder<StackGresScript> scriptFinder;
   private final ResourceFinder<Secret> secretFinder;
   private final ResourceFinder<ConfigMap> configMapFinder;
-  private final ObjectMapper objectMapper;
   private final CustomResourceScheduler<StackGresCluster> clusterScheduler;
   private final String podName;
   private final EventController eventController;
@@ -67,11 +67,10 @@ public class ManagedSqlReconciliator {
   public static class Parameters {
     @Inject ManagedSqlScriptEntryExecutor managedSqlScriptEntryExecutor;
     @Inject ClusterControllerPropertyContext propertyContext;
-    @Inject ResourceFinder<Endpoints> endpointsFinder;
+    @Inject PatroniCtl patroniCtl;
     @Inject CustomResourceFinder<StackGresScript> scriptFinder;
     @Inject ResourceFinder<Secret> secretFinder;
     @Inject ResourceFinder<ConfigMap> configMapFinder;
-    @Inject ObjectMapper objectMapper;
     @Inject CustomResourceScheduler<StackGresCluster> clusterScheduler;
     @Inject EventController eventController;
   }
@@ -79,23 +78,23 @@ public class ManagedSqlReconciliator {
   @Inject
   public ManagedSqlReconciliator(Parameters parameters) {
     this.managedSqlScriptEntryExecutor = parameters.managedSqlScriptEntryExecutor;
-    this.reconcileManagedSql = parameters.propertyContext
+    this.reconcileManagedSql = () -> parameters.propertyContext
         .getBoolean(ClusterControllerProperty.CLUSTER_CONTROLLER_RECONCILE_MANAGED_SQL);
-    this.endpointsFinder = parameters.endpointsFinder;
+    this.patroniCtl = parameters.patroniCtl;
     this.scriptFinder = parameters.scriptFinder;
     this.secretFinder = parameters.secretFinder;
     this.configMapFinder = parameters.configMapFinder;
-    this.objectMapper = parameters.objectMapper;
     this.clusterScheduler = parameters.clusterScheduler;
     this.podName = parameters.propertyContext
         .getString(ClusterControllerProperty.CLUSTER_CONTROLLER_POD_NAME);
     this.eventController = parameters.eventController;
   }
 
-  public ReconciliationResult<Boolean> reconcile(KubernetesClient client,
-      StackGresClusterContext context) {
+  @Override
+  public ReconciliationResult<Boolean> safeReconcile(KubernetesClient client,
+      StackGresClusterContext context) throws Exception {
     StackGresClusterManagedSqlStatus managedSqlStatus = getManagedSqlStatus(context);
-    if (!reconcileManagedSql || managedSqlStatus == null) {
+    if (!reconcileManagedSql.get() || managedSqlStatus == null) {
       return new ReconciliationResult<>(false);
     }
     try {
@@ -138,6 +137,15 @@ public class ManagedSqlReconciliator {
         || !isBootstrappedLeader(context)) {
       return;
     }
+    String superuserUsername = secretFinder.findByNameAndNamespace(
+        PatroniUtil.secretName(context.getCluster().getMetadata().getName()),
+        context.getCluster().getMetadata().getNamespace())
+        .map(Secret::getData)
+        .map(ResourceUtil::decodeSecret)
+        .map(data -> data.get(StackGresPasswordKeys.SUPERUSER_USERNAME_KEY))
+        .orElseThrow(() -> new RuntimeException("Can not find secret with name "
+            + PatroniUtil.secretName(context.getCluster().getMetadata().getName())
+            + " or can not find key " + StackGresPasswordKeys.SUPERUSER_USERNAME_KEY));
     var scriptsStatus = Optional.of(context.getCluster())
         .map(StackGresCluster::getStatus)
         .map(StackGresClusterStatus::getManagedSql)
@@ -172,8 +180,12 @@ public class ManagedSqlReconciliator {
             .scriptEntryStatus(managedScriptEntry.v5)
             .build();
         ManagedSqlScriptEntryReconciliator scriptEntryReconciliator =
-            new ManagedSqlScriptEntryReconciliator(this, client, context,
-                managedSqlScriptEntry);
+            new ManagedSqlScriptEntryReconciliator(
+                this,
+                client,
+                context,
+                managedSqlScriptEntry,
+                superuserUsername);
         boolean result = scriptEntryReconciliator.reconcile();
         scriptResult = scriptResult && result;
         if (!result && !doesScriptEntryContinueOnError(managedScriptEntry.v2)) {
@@ -200,16 +212,10 @@ public class ManagedSqlReconciliator {
   }
 
   private boolean isBootstrappedLeader(StackGresClusterContext context) {
-    Optional<Endpoints> patroniEndpoints = endpointsFinder
-        .findByNameAndNamespace(PatroniUtil.readWriteName(context.getCluster()),
-            context.getCluster().getMetadata().getNamespace());
-    Optional<Endpoints> patroniConfigEndpoints = endpointsFinder
-        .findByNameAndNamespace(PatroniUtil.configName(context.getCluster()),
-            context.getCluster().getMetadata().getNamespace());
-    final boolean isBootstrapped = PatroniUtil.isBootstrapped(patroniConfigEndpoints);
-    final boolean isPodPrimary = PatroniUtil.isPrimary(podName, patroniEndpoints);
-    final boolean isStandbyCluster =
-        PatroniUtil.isStandbyCluster(patroniConfigEndpoints, objectMapper);
+    var patroniCtl = this.patroniCtl.instanceFor(context.getCluster());
+    final boolean isBootstrapped = PatroniUtil.isBootstrapped(patroniCtl);
+    final boolean isPodPrimary = PatroniUtil.isPrimary(podName, patroniCtl);
+    final boolean isStandbyCluster = PatroniUtil.isStandbyCluster(patroniCtl);
     return isPodPrimary && isBootstrapped && !isStandbyCluster;
   }
 

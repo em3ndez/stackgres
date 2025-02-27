@@ -9,19 +9,21 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-import javax.validation.Valid;
-import javax.validation.constraints.AssertTrue;
-
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
+import io.stackgres.common.StackGresVersion;
+import io.stackgres.common.StackGresVersion.DeprecatedVersionPlaceholder;
+import io.stackgres.common.crd.postgres.service.StackGresPostgresServices;
 import io.stackgres.common.validation.FieldReference;
 import io.stackgres.common.validation.FieldReference.ReferencedField;
+import io.stackgres.common.validation.ValidEnum;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -31,60 +33,53 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresClusterSpec {
 
-  @JsonProperty("postgres")
+  @ValidEnum(enumClass = StackGresClusterProfile.class, allowNulls = true,
+      message = "profile must be production, testing or development")
+  private String profile;
+
   @Valid
   private StackGresClusterPostgres postgres;
 
-  @JsonProperty("instances")
-  private int instances;
+  private Integer instances;
 
-  @JsonProperty("replication")
+  @Valid
+  private StackGresClusterAutoscaling autoscaling;
+
   @Valid
   private StackGresClusterReplication replication;
 
-  @JsonProperty("configurations")
   @Valid
-  private StackGresClusterConfiguration configuration;
+  private StackGresClusterConfigurations configurations;
 
-  @JsonProperty("sgInstanceProfile")
-  private String resourceProfile;
+  private String sgInstanceProfile;
 
-  @JsonProperty("initialData")
   @Valid
-  private StackGresClusterInitData initData;
+  private StackGresClusterInitialData initialData;
 
-  @JsonProperty("replicateFrom")
   @Valid
   private StackGresClusterReplicateFrom replicateFrom;
 
-  @JsonProperty("managedSql")
   @Valid
   private StackGresClusterManagedSql managedSql;
 
-  @JsonProperty("pods")
   @Valid
-  private StackGresClusterPod pod;
+  private StackGresClusterPods pods;
 
-  @JsonProperty("distributedLogs")
   @Valid
   private StackGresClusterDistributedLogs distributedLogs;
 
-  @JsonProperty("toInstallPostgresExtensions")
   @Valid
   private List<StackGresClusterInstalledExtension> toInstallPostgresExtensions;
 
-  @JsonProperty("prometheusAutobind")
+  @DeprecatedVersionPlaceholder(StackGresVersion.V_1_14)
   private Boolean prometheusAutobind;
 
-  @JsonProperty("nonProductionOptions")
   @Valid
   private StackGresClusterNonProduction nonProductionOptions;
 
-  @JsonProperty("postgresServices")
   @Valid
-  private StackGresClusterPostgresServices postgresServices;
+  private StackGresPostgresServices postgresServices;
 
-  @JsonProperty("metadata")
   @Valid
   private StackGresClusterSpecMetadata metadata;
 
@@ -97,8 +92,11 @@ public class StackGresClusterSpec {
   @ReferencedField("instances")
   interface Instances extends FieldReference { }
 
-  @ReferencedField("resourceProfile")
-  interface ResourceProfile extends FieldReference { }
+  @ReferencedField("autoscaling.minInstances")
+  interface MinInstances extends FieldReference { }
+
+  @ReferencedField("sgInstanceProfile")
+  interface SgInstanceProfile extends FieldReference { }
 
   @ReferencedField("postgresServices")
   interface PostgresServices extends FieldReference { }
@@ -110,9 +108,9 @@ public class StackGresClusterSpec {
   interface Pods extends FieldReference { }
 
   @JsonIgnore
-  @AssertTrue(message = "resourceProfile is required", payload = { ResourceProfile.class })
+  @AssertTrue(message = "sgInstanceProfile is required", payload = { SgInstanceProfile.class })
   public boolean isResourceProfilePresent() {
-    return resourceProfile != null;
+    return sgInstanceProfile != null;
   }
 
   @JsonIgnore
@@ -124,20 +122,20 @@ public class StackGresClusterSpec {
   @JsonIgnore
   @AssertTrue(message = "configurations is required", payload = { Configurations.class })
   public boolean isConfigurationsSectionPresent() {
-    return configuration != null;
+    return configurations != null;
   }
 
   @JsonIgnore
   @AssertTrue(message = "pods is required", payload = { Pods.class })
   public boolean isPodsSectionPresent() {
-    return pod != null;
+    return pods != null;
   }
 
   @JsonIgnore
-  @AssertTrue(message = "You need at least 1 instance in the cluster",
+  @AssertTrue(message = "instances can not be negative",
       payload = { Instances.class })
   public boolean isInstancesPositive() {
-    return instances > 0;
+    return instances >= 0;
   }
 
   @JsonIgnore
@@ -157,7 +155,18 @@ public class StackGresClusterSpec {
   @AssertTrue(message = "The total number of instances must be greather than the number of"
       + " instances in replication groups", payload = { Instances.class })
   public boolean isSupportingInstancesForInstancesInReplicationGroups() {
-    return instances > getInstancesInReplicationGroups();
+    return instances == 0
+        || instances > getInstancesInReplicationGroups();
+  }
+
+  @JsonIgnore
+  @AssertTrue(message = "The total number of minInstances must be greather than the number of"
+      + " autoscaling minInstances in replication groups", payload = { MinInstances.class })
+  public boolean isSupportingMinInstancesForMinInstancesInReplicationGroups() {
+    return instances == 0
+        || autoscaling == null
+        || autoscaling.getMinInstances() == null
+        || autoscaling.getMinInstances() > getMinInstancesInReplicationGroups();
   }
 
   @JsonIgnore
@@ -167,12 +176,13 @@ public class StackGresClusterSpec {
     return replication == null
         || !replication.isSynchronousMode()
         || replication.getSyncInstances() == null
+        || instances == 0
         || instances > replication.getSyncInstances();
   }
 
   @JsonIgnore
   public int getInstancesInImplicitReplicationGroup() {
-    return instances - getInstancesInReplicationGroups();
+    return Math.max(0, instances - getInstancesInReplicationGroups());
   }
 
   @JsonIgnore
@@ -187,6 +197,18 @@ public class StackGresClusterSpec {
   }
 
   @JsonIgnore
+  public int getMinInstancesInReplicationGroups() {
+    if (replication == null
+        || replication.getGroups() == null) {
+      return 0;
+    }
+    return replication.getGroups().stream()
+        .map(StackGresClusterReplicationGroup::getMinInstances)
+        .filter(Objects::nonNull)
+        .reduce(0, (sum, minInstances) -> sum + minInstances, (u, v) -> v);
+  }
+
+  @JsonIgnore
   public List<StackGresClusterReplicationGroup> getReplicationGroups() {
     StackGresClusterReplicationGroup implicitGroup = new StackGresClusterReplicationGroup();
     implicitGroup.setRole(Optional.ofNullable(replication)
@@ -197,8 +219,21 @@ public class StackGresClusterSpec {
         .add(implicitGroup)
         .addAll(Optional.ofNullable(replication)
             .map(StackGresClusterReplication::getGroups)
-            .orElse(ImmutableList.of()))
+            .stream()
+            .flatMap(List::stream)
+            .map(group -> new StackGresClusterReplicationGroupBuilder(group)
+                .withInstances(instances == 0 ? instances : group.getInstances())
+                .build())
+            .toList())
         .build();
+  }
+
+  public String getProfile() {
+    return profile;
+  }
+
+  public void setProfile(String profile) {
+    this.profile = profile;
   }
 
   public StackGresClusterPostgres getPostgres() {
@@ -209,12 +244,20 @@ public class StackGresClusterSpec {
     this.postgres = postgres;
   }
 
-  public int getInstances() {
+  public Integer getInstances() {
     return instances;
   }
 
-  public void setInstances(int instances) {
+  public void setInstances(Integer instances) {
     this.instances = instances;
+  }
+
+  public StackGresClusterAutoscaling getAutoscaling() {
+    return autoscaling;
+  }
+
+  public void setAutoscaling(StackGresClusterAutoscaling autoscaling) {
+    this.autoscaling = autoscaling;
   }
 
   public StackGresClusterReplication getReplication() {
@@ -225,28 +268,28 @@ public class StackGresClusterSpec {
     this.replication = replication;
   }
 
-  public StackGresClusterConfiguration getConfiguration() {
-    return configuration;
+  public StackGresClusterConfigurations getConfigurations() {
+    return configurations;
   }
 
-  public void setConfiguration(StackGresClusterConfiguration configuration) {
-    this.configuration = configuration;
+  public void setConfigurations(StackGresClusterConfigurations configurations) {
+    this.configurations = configurations;
   }
 
-  public String getResourceProfile() {
-    return resourceProfile;
+  public String getSgInstanceProfile() {
+    return sgInstanceProfile;
   }
 
-  public void setResourceProfile(String resourceProfile) {
-    this.resourceProfile = resourceProfile;
+  public void setSgInstanceProfile(String sgInstanceProfile) {
+    this.sgInstanceProfile = sgInstanceProfile;
   }
 
-  public StackGresClusterInitData getInitData() {
-    return initData;
+  public StackGresClusterInitialData getInitialData() {
+    return initialData;
   }
 
-  public void setInitData(StackGresClusterInitData initData) {
-    this.initData = initData;
+  public void setInitialData(StackGresClusterInitialData initialData) {
+    this.initialData = initialData;
   }
 
   public StackGresClusterReplicateFrom getReplicateFrom() {
@@ -265,12 +308,12 @@ public class StackGresClusterSpec {
     this.managedSql = managedSql;
   }
 
-  public StackGresClusterPod getPod() {
-    return pod;
+  public StackGresClusterPods getPods() {
+    return pods;
   }
 
-  public void setPod(StackGresClusterPod pod) {
-    this.pod = pod;
+  public void setPods(StackGresClusterPods pods) {
+    this.pods = pods;
   }
 
   public StackGresClusterDistributedLogs getDistributedLogs() {
@@ -306,11 +349,11 @@ public class StackGresClusterSpec {
     this.nonProductionOptions = nonProduction;
   }
 
-  public StackGresClusterPostgresServices getPostgresServices() {
+  public StackGresPostgresServices getPostgresServices() {
     return postgresServices;
   }
 
-  public void setPostgresServices(StackGresClusterPostgresServices postgresServices) {
+  public void setPostgresServices(StackGresPostgresServices postgresServices) {
     this.postgresServices = postgresServices;
   }
 
@@ -324,9 +367,9 @@ public class StackGresClusterSpec {
 
   @Override
   public int hashCode() {
-    return Objects.hash(configuration, distributedLogs, initData, instances, managedSql, metadata,
-        nonProductionOptions, pod, postgres, postgresServices, prometheusAutobind, replicateFrom,
-        replication, resourceProfile, toInstallPostgresExtensions);
+    return Objects.hash(autoscaling, configurations, distributedLogs, initialData, instances, managedSql, metadata,
+        nonProductionOptions, pods, postgres, postgresServices, profile, prometheusAutobind, replicateFrom, replication,
+        sgInstanceProfile, toInstallPostgresExtensions);
   }
 
   @Override
@@ -338,17 +381,15 @@ public class StackGresClusterSpec {
       return false;
     }
     StackGresClusterSpec other = (StackGresClusterSpec) obj;
-    return Objects.equals(configuration, other.configuration)
-        && Objects.equals(distributedLogs, other.distributedLogs)
-        && Objects.equals(initData, other.initData) && instances == other.instances
-        && Objects.equals(managedSql, other.managedSql) && Objects.equals(metadata, other.metadata)
-        && Objects.equals(nonProductionOptions, other.nonProductionOptions)
-        && Objects.equals(pod, other.pod) && Objects.equals(postgres, other.postgres)
-        && Objects.equals(postgresServices, other.postgresServices)
+    return Objects.equals(autoscaling, other.autoscaling) && Objects.equals(configurations, other.configurations)
+        && Objects.equals(distributedLogs, other.distributedLogs) && Objects.equals(initialData, other.initialData)
+        && Objects.equals(instances, other.instances) && Objects.equals(managedSql, other.managedSql)
+        && Objects.equals(metadata, other.metadata) && Objects.equals(nonProductionOptions, other.nonProductionOptions)
+        && Objects.equals(pods, other.pods) && Objects.equals(postgres, other.postgres)
+        && Objects.equals(postgresServices, other.postgresServices) && Objects.equals(profile, other.profile)
         && Objects.equals(prometheusAutobind, other.prometheusAutobind)
-        && Objects.equals(replicateFrom, other.replicateFrom)
-        && Objects.equals(replication, other.replication)
-        && Objects.equals(resourceProfile, other.resourceProfile)
+        && Objects.equals(replicateFrom, other.replicateFrom) && Objects.equals(replication, other.replication)
+        && Objects.equals(sgInstanceProfile, other.sgInstanceProfile)
         && Objects.equals(toInstallPostgresExtensions, other.toInstallPostgresExtensions);
   }
 

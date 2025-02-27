@@ -10,7 +10,7 @@
   <parent>
     <groupId>io.stackgres</groupId>
     <artifactId>stackgres-parent</artifactId>
-    <version>1.6.0-SNAPSHOT</version>
+    <version>1.16.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>stackgres-common</artifactId>
@@ -24,6 +24,11 @@
       <version>${project.version}</version>
     </dependency>
     <dependency>
+      <groupId>com.ongres.pgconfig</groupId>
+      <artifactId>pgconfig-validator</artifactId>
+      <version>${pgconfig-validator.version}</version>
+    </dependency>
+    <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-kubernetes-client</artifactId>
     </dependency>
@@ -34,7 +39,19 @@
     <dependency>
       <groupId>io.sundr</groupId>
       <artifactId>builder-annotations</artifactId>
-      <scope>compile</scope>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.ongres</groupId>
+      <artifactId>fluent-process</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-micrometer-registry-prometheus</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.prometheus.jmx</groupId>
+      <artifactId>collector</artifactId>
     </dependency>
 
     <dependency>
@@ -102,7 +119,7 @@
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>templating-maven-plugin</artifactId>
-        <version>1.0.0</version>
+        <version>3.0.0</version>
         <executions>
           <execution>
             <goals>

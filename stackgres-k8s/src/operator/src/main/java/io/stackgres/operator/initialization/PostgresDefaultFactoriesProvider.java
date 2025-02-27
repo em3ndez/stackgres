@@ -7,14 +7,12 @@ package io.stackgres.operator.initialization;
 
 import java.util.List;
 
-import javax.annotation.PostConstruct;
-import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.inject.Instance;
-import javax.inject.Inject;
-
-import com.google.common.collect.ImmutableList;
 import io.stackgres.common.StackGresComponent;
 import io.stackgres.common.crd.sgpgconfig.StackGresPostgresConfig;
+import jakarta.annotation.PostConstruct;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
 import org.jooq.lambda.Seq;
 
 @ApplicationScoped
@@ -32,17 +30,20 @@ public class PostgresDefaultFactoriesProvider
 
   public List<PostgresConfigurationFactory> buildFactories() {
     return Seq.seq(StackGresComponent.POSTGRESQL.getLatest().streamOrderedMajorVersions())
-        .map(majorVersion -> {
+        .<PostgresConfigurationFactory>map(majorVersion -> {
           DefaultPostgresFactory factory = resourceFactories.get();
           factory.setPostgresVersion(majorVersion);
           factory.init();
           return factory;
-        }).collect(ImmutableList.toImmutableList());
+        })
+        .toList();
   }
 
   public List<DefaultCustomResourceFactory<StackGresPostgresConfig>> getFactories() {
-    return factories.stream()
-        .collect(ImmutableList.toImmutableList());
+    return factories
+        .stream()
+        .map(factory -> (DefaultCustomResourceFactory<StackGresPostgresConfig>) factory)
+        .toList();
   }
 
   public List<PostgresConfigurationFactory> getPostgresFactories() {

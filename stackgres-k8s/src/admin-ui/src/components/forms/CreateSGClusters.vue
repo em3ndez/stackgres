@@ -2,251 +2,504 @@
     <div id="create-cluster" class="createCluster noSubmit" v-if="iCanLoad">
         <!-- Vue reactivity hack -->
         <template v-if="Object.keys(cluster).length > 0"></template>
-
+        
+        <template v-if="editMode && !editReady">
+            <span class="warningText">
+                Loading data...
+            </span>
+        </template>
+        
         <form id="createCluster" class="form" @submit.prevent v-if="!editMode || editReady">
+
             <div class="header stickyHeader">
                 <h2>
                     <span>{{ editMode ? 'Edit' :  'Create' }} Cluster</span>
                 </h2>
-                <label for="advancedMode" class="floatRight">
+                
+                <label for="advancedMode" class="floatRight" v-if="formTemplate == 'custom'">
                     <span>ADVANCED OPTIONS </span>
-                    <input type="checkbox" id="advancedMode" name="advancedMode" v-model="advancedMode" class="switch" @change="( (!advancedMode && (currentStepIndex > 2)) && (currentStep = formSteps[0]))">
+                    <input type="checkbox" id="advancedMode" name="advancedMode" v-model="advancedMode" class="switch" @change="( (!advancedMode && (currentStepIndex > 2)) && (currentStep = formSteps.custom[0]))">
                 </label>
             </div>
-            <div class="stepsContainer">
+
+            <div
+                id="wizard"
+                v-if="isNull(formTemplate) && !editMode"
+            >
+                <br/><br/>
+                <p>
+                    To create your cluster easily, you can choose a template from our predefined express setups or select <strong>"Custom"</strong> for personalized and advanced settings.
+                </p>
+                <br/><br/>
+
+                <div class="optionBoxes withLogos">
+                    <label for="minimalWizard" data-field="formTemplate.minimal" :class="( (formTemplate == 'minimal') && 'active' )" tabindex="0">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="39.999" height="40"><g fill="#36a8ff" transform="translate(17620 11563)"><rect width="10.37" height="26.667" rx="2" transform="translate(-17620 -11549.667)"/><rect width="10.37" height="32.593" opacity=".25" rx="2" transform="translate(-17605.186 -11555.593)"/><rect width="10.37" height="40" opacity=".25" rx="2" transform="translate(-17590.371 -11563)"/></g></svg>
+                        Minimal
+                        <input type="radio" name="flavor" v-model="formTemplate" value="minimal" id="minimalWizard" @change="setupTemplate()">
+                    </label>
+                    <label for="basicWizard" data-field="formTemplate.basic" :class="( (formTemplate == 'basic') && 'active' )" tabindex="0">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="39.999" height="40"><g fill="#36a8ff" transform="translate(17620 11563)"><rect width="10.37" height="26.667" rx="2" transform="translate(-17620 -11549.667)"/><rect width="10.37" height="32.593" rx="2" transform="translate(-17605.186 -11555.593)"/><rect width="10.37" height="40" opacity=".25" rx="2" transform="translate(-17590.371 -11563)"/></g></svg>
+                        Basic
+                        <input type="radio" name="flavor" v-model="formTemplate" value="basic" id="basicWizard" @change="setupTemplate()">
+                    </label>
+                    <label for="fullWizard" data-field="formTemplate.full" :class="( (formTemplate == 'full') && 'active' )">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="39.999" height="40"><g fill="#36a8ff" transform="translate(17620 11563)"><rect width="10.37" height="26.667" rx="2" transform="translate(-17620 -11549.667)"/><rect width="10.37" height="32.593" rx="2" transform="translate(-17605.186 -11555.593)"/><rect width="10.37" height="40" rx="2" transform="translate(-17590.371 -11563)"/></g></svg>
+                        Full
+                        <input type="radio" name="flavor" v-model="formTemplate" value="full" id="fullWizard" @change="setupTemplate()">
+                    </label>
+                    <label for="customWizard" data-field="formTemplate.custom" :class="( (formTemplate == 'custom') && 'active' )">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="44.007" height="44.28"><defs><clipPath id="a"><path fill="none" d="M0 0h44.007v44.28H0z"/></clipPath></defs><g fill="#05aafe" clip-path="url(#a)"><path d="M26.227 10.421A10.422 10.422 0 0 1 15.805 0 10.422 10.422 0 0 1 5.382 10.421a10.422 10.422 0 0 1 10.423 10.422 10.422 10.422 0 0 1 10.422-10.422M44.008 25.049a6.908 6.908 0 0 1-6.909-6.909 6.908 6.908 0 0 1-6.909 6.909 6.908 6.908 0 0 1 6.909 6.909 6.908 6.908 0 0 1 6.909-6.909M29.02 36.207a8.074 8.074 0 0 1-8.073-8.073 8.074 8.074 0 0 1-8.073 8.073 8.074 8.074 0 0 1 8.073 8.073 8.074 8.074 0 0 1 8.073-8.073M10.764 27.44a5.382 5.382 0 0 1-5.382-5.382A5.382 5.382 0 0 1 0 27.44a5.383 5.383 0 0 1 5.382 5.382 5.383 5.383 0 0 1 5.382-5.382"/></g></svg>
+                        Custom
+                        <input type="radio" name="flavor" v-model="formTemplate" value="custom" id="customWizard" @change="setupTemplate()">
+                    </label>
+                    <span class="helpTooltip" :data-tooltip="`Express templates provide predefined specs to suit most needs:
+                                \n* **Minimal:** includes basic features, ideal for development or testing purposes on minimal environments
+                                    \n  * **Cluster Profile:** Development
+                                    \n  * **Instance Profile:** Cores: 1, RAM: 2GiB
+                                    \n  * **Volume Size:** 1GiB
+                                    \n  * **Connection Pooling:** Disabled
+                                    \n  * **Postgres Extensions:** Not available
+                                \n* **Basic:** includes the most standard features and some customizable specs, ideal for testing purposes
+                                    \n  * **Cluster Profile:** Testing (customizable)
+                                    \n  * **Instance Profile:** Cores: 1, RAM: 2GiB (customizable)
+                                    \n  * **Volume Size:** 1GiB
+                                    \n  * **Distributed Logs:** Enabled
+                                    \n  * **Connection Pooling:** Enabled
+                                    \n  * **Postgres Extensions:** Available
+                                \n* **Full:** packed with fully customizable standard features, ideal for testing or production purposes
+                                    \n  * **Cluster Profile:** Production (customizable)
+                                    \n  * **Instance Profile:** Cores: 1, RAM: 2GiB (customizable)
+                                    \n  * **Volume Size:** 1Gib (customizable)
+                                    \n  * **Distributed Logs:** Enabled (customizable)
+                                    \n  * **Postgres Extensions:** Available
+                                    \n  * **Postgres Configuration:** Customizable
+                                    \n  * **Connection Pooling:** Enabled
+                                    \n  * **Connection Pooling Configuration:** Customizable
+                                \n* **Custom:** fully customizable cluster creation packed with every feature available. Includes both, basic and advanced specs, ideal for development, testing or production environments.
+                        `
+                    "></span>
+                </div>
+            </div>
+            <div class="stepsContainer" v-if="!isNull(formTemplate) && (formTemplate !== 'minimal')">
                 <ul class="steps">
-                    <button type="button" class="btn arrow prev" @click="currentStep = formSteps[(currentStepIndex - 1)]" :disabled="( currentStepIndex == 0 )"></button>
+                    <button type="button" class="btn arrow prev" @click="currentStep = formSteps[formTemplate][(currentStepIndex - 1)]" :disabled="( currentStepIndex == 0 )"></button>
             
-                    <template v-for="(step, index) in formSteps"  v-if="( ((index < 3) && !advancedMode) || advancedMode)">
+                    <template v-for="(step, index) in formSteps[formTemplate]"  v-if="( ((index < 3) && !advancedMode) || advancedMode)">
                         <li @click="currentStep = step; checkValidSteps(_data, 'steps')" :class="[( (currentStep == step) && 'active'), ( (index < 3) && 'basic' ), (errorStep.includes(step) && 'notValid')]" v-if="!( editMode && (step == 'initialization') && !restoreBackup.length )" :data-step="step">
                             {{ step }}
                         </li>
                     </template>
 
-                    <button type="button" class="btn arrow next" @click="currentStep = formSteps[(currentStepIndex + 1)]" :disabled="(!advancedMode && ( currentStepIndex == 2 ) ) || ( (advancedMode && ( currentStepIndex == (formSteps.length - 1) )) )"></button>
+                    <button type="button" class="btn arrow next" @click="currentStep = formSteps[formTemplate][(currentStepIndex + 1)]" :disabled="( currentStepIndex == (formSteps[formTemplate].length - 1) ) || (!advancedMode && ( currentStepIndex == 2 ) )"></button>
                 </ul>
             </div>
 
             <div class="clearfix"></div>
 
-            <fieldset class="step" :class="(currentStep == 'cluster') && 'active'" data-fieldset="cluster">
-                <div class="header">
-                    <h2>Cluster Information</h2>
-                </div>
-
-                <div class="fields">
-                    <div class="row-50">
-                        <div class="col">
-                            <label for="metadata.name">Cluster Name <span class="req">*</span></label>
-                            <input v-model="name" :disabled="editMode" required data-field="metadata.name" autocomplete="off">
-                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.metadata.name')"></span>
-                        </div>
-
-                        <span class="warning topAnchor" v-if="nameColission && !editMode">
-                            There's already a <strong>SGCluster</strong> with the same name on this namespace. Please specify a different name or create the cluster on another namespace
-                        </span>
+            <template v-if="formTemplate !== 'custom'">
+                <fieldset class="step" :class="(currentStep == 'information') && 'active'" data-fieldset="information">
+                    <div class="header" v-if="formTemplate !== 'minimal'">
+                        <h2>Cluster Information</h2>
                     </div>
 
-                    <hr/>
-                    
-                    <div class="row-50">
-                        <h3>Instances</h3>
-
-                        <div class="col">
-                            <label for="spec.instances">Number of Instances <span class="req">*</span></label>
-                            <input type="number" v-model="instances" required data-field="spec.instances" min="0">
-                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.instances')"></span>
-                        </div>
-                        <div class="col">
-                            <label for="spec.sgInstanceProfile">Instance Profile</label>  
-                            <select v-model="resourceProfile" class="resourceProfile" data-field="spec.sgInstanceProfile" @change="(resourceProfile == 'createNewResource') && createNewResource('sginstanceprofiles')" :set="( (resourceProfile == 'createNewResource') && (resourceProfile = '') )">
-                                <option selected value="">Default (Cores: 1, RAM: 2GiB)</option>
-                                <option v-for="prof in profiles" v-if="prof.data.metadata.namespace == namespace" :value="prof.name">{{ prof.name }} (Cores: {{ prof.data.spec.cpu }}, RAM: {{ prof.data.spec.memory }}B)</option>
-                                <template v-if="iCan('create', 'sginstanceprofiles', $route.params.namespace)">
-                                    <option value="" disabled>– OR –</option>
-                                    <option value="createNewResource">Create new profile</option>
-                                </template>
-                            </select>
-                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.sgInstanceProfile')"></span>
-                        </div>
-                    </div>
-
-                    <hr/>
-
-                    <div class="row-50">
-                        <h3>Postgres</h3>
-
-                        <div class="col">
-                            <label for="spec.postgres.flavor">Postgres Flavor <span class="req">*</span></label>
-                            <div class="optionBoxes withLogos">
-                                <label for="vanilla" data-field="spec.postgres.flavor.vanilla" :class="( (flavor == 'vanilla') && 'active' )" tabindex="0">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50" xml:space="preserve"><path d="M49.1 30c-.3-.9-1.1-1.5-2-1.7-.5-.1-1 0-1.6.1-1.1.2-1.9.3-2.5.3 2.2-3.8 4.1-8.1 5.1-12.2 1.7-6.6.8-9.6-.3-10.9C45 2 40.9.1 35.9 0c-2.6 0-5 .5-6.2.9-1.1-.2-2.3-.3-3.6-.3-2.4 0-4.5.5-6.3 1.5-1-.3-2.6-.8-4.4-1.1C11.1.3 7.6.8 5 2.6 2 4.8.5 8.6.8 13.9c.1 1.7 1 6.8 2.5 11.7.9 2.8 1.8 5.1 2.7 6.9 1.3 2.5 2.8 4 4.4 4.5.9.3 2.5.5 4.2-.9.2.3.5.5.9.8.5.3 1.1.6 1.7.7 2.2.5 4.2.4 5.9-.3v2.1c.1 2.5.3 4.5.8 5.9 0 .1.1.2.1.3.3.8.7 2.1 1.8 3.1 1.1 1.1 2.5 1.4 3.7 1.4.6 0 1.2-.1 1.7-.2 1.9-.4 4-1 5.5-3.2 1.4-2.1 2.2-5.2 2.3-10.1v-.7h.4c1.9.1 4.2-.3 5.6-1 1.4-.5 5-2.4 4.1-4.9z"/><path fill="#336791" d="M45.9 30.5c-5.6 1.2-6-.8-6-.8 6-8.8 8.5-20.1 6.3-22.8-5.9-7.5-16-4-16.2-3.9h-.1c-1.1-.2-2.4-.4-3.8-.4-2.6 0-4.5.7-6 1.8 0 0-18.1-7.5-17.3 9.4.3 3.6 5.2 27.2 11.1 20 2.2-2.6 4.3-4.8 4.3-4.8 1 .7 2.3 1 3.6.9l.1-.1v1c-1.5 1.7-1.1 2-4.1 2.6-3.1.6-1.3 1.8-.1 2.1 1.4.4 4.7.9 7-2.3l-.1.4c.6.5 1 3.1.9 5.5-.1 2.4-.1 4 .3 5.3.5 1.3.9 4.2 4.9 3.3C34 47 35.8 45.1 36 42c.2-2.2.6-1.9.6-3.9l.3-.9c.4-3 .1-4 2.1-3.5h.5c1.5.1 3.5-.2 4.7-.8 2.7-1 4.1-3 1.7-2.4z"/><g fill="#FFF"><path d="M47.7 30.3c-.2-.7-.9-.9-2.1-.6-3.4.7-4.6.2-5-.1 2.7-4.1 4.8-8.9 6-13.5.6-2.2.9-4.2.9-5.8 0-1.8-.3-3.1-.9-3.9-2.5-3.3-6.3-5-10.8-5-3.1 0-5.7.8-6.2 1-1.1-.3-2.2-.4-3.5-.4-2.3 0-4.3.5-6 1.7-.8-.3-2.6-.9-4.9-1.3-4-.6-7.1-.2-9.4 1.4-2.7 1.8-3.9 5.2-3.7 10 .1 1.6 1 6.6 2.4 11.3 1.9 6.3 4 9.8 6.2 10.5.3.1.6.1.9.1.8 0 1.8-.4 2.8-1.6 1.7-2 3.3-3.7 3.9-4.4.9.5 1.8.7 2.8.7v.1c-.2.2-.3.4-.5.6-.7.9-.8 1-3 1.5-.6.1-2.2.5-2.3 1.6 0 1.2 1.9 1.8 2.1 1.8.8.2 1.5.3 2.2.3 1.7 0 3.2-.6 4.5-1.7 0 4.4.1 8.8.7 10.2.4 1.1 1.5 3.8 4.9 3.8.5 0 1-.1 1.6-.2 3.5-.8 5-2.3 5.6-5.7.3-1.8.9-6.2 1.1-8.6.5.2 1.2.2 2 .2 1.6 0 3.4-.3 4.5-.9 1.4-.4 3.7-1.8 3.2-3.1zm-8.3-15.8c0 .7-.1 1.3-.2 2s-.2 1.4-.2 2.3c0 .9.1 1.8.2 2.6.2 1.8.4 3.5-.4 5.3-.1-.2-.3-.5-.4-.8-.1-.2-.3-.7-.6-1.2-1.2-2.2-4.1-7.3-2.6-9.4.3-.5 1.4-1.2 4.2-.8zM36 2.7c4.1.1 7.3 1.6 9.5 4.5 1.7 2.2-.2 12.3-5.7 21.1l-.2-.2s0-.1-.1-.1c1.4-2.4 1.2-4.7.9-6.8-.1-.9-.2-1.7-.2-2.4 0-.8.1-1.5.2-2.2.1-.8.3-1.7.2-2.7v-.4c-.1-1-1.2-3.8-3.4-6.4-1.2-1.4-3-3-5.4-4.1 1.2-.1 2.6-.3 4.2-.3zM13.4 33.3c-1.1 1.3-1.9 1.1-2.1 1-1.7-.6-3.6-4.1-5.3-9.6-1.5-4.8-2.3-9.6-2.4-11-.3-4.3.8-7.3 3-8.9 3.7-2.6 9.7-1 12.2-.3l-.1.1c-4 4-3.9 10.9-3.9 11.4v.7c.1 1.2.2 3.3-.1 5.8-.3 2.3.4 4.5 1.9 6.1l.5.5c-.7.7-2.2 2.3-3.7 4.2zm4.2-5.7c-1.2-1.3-1.8-3.1-1.5-4.9.4-2.6.2-4.8.2-6v-.4c.6-.5 3.3-2 5.2-1.5.9.2 1.4.8 1.6 1.8 1.2 5.3.2 7.6-.7 9.4-.2.4-.3.7-.5 1.1l-.1.3c-.3.7-.5 1.4-.7 2-1.2-.2-2.5-.8-3.5-1.8zm.2 7.2c-.4-.1-.7-.3-.9-.4.2-.1.5-.2 1-.3 2.5-.5 2.9-.9 3.8-2 .2-.2.4-.5.7-.9.5-.5.7-.4 1-.3.3.1.6.5.7.9.1.2.1.6-.1.9-1.7 2.6-4.3 2.6-6.2 2.1zm13.3 12.3c-3.1.7-4.2-.9-4.9-2.7-.5-1.2-.7-6.4-.5-12.2V32c0-.1 0-.3-.1-.4-.2-.8-.8-1.5-1.5-1.8-.3-.1-.8-.3-1.4-.2.1-.6.4-1.2.6-1.8l.1-.3c.1-.3.3-.6.4-1 .8-1.9 2-4.4.7-10.2-.5-2.2-2-3.2-4.4-3-1.4.1-2.7.7-3.4 1.1-.1.1-.3.1-.4.2.2-2.2.9-6.3 3.4-8.8 1.6-1.6 3.8-2.4 6.4-2.4 5.2.1 8.5 2.7 10.3 4.9 1.6 1.9 2.5 3.8 2.8 4.8-2.6-.3-4.4.2-5.3 1.5-2 2.8 1.1 8.2 2.5 10.8.3.5.5.9.6 1.1.5 1.1 1.1 1.9 1.5 2.5.1.2.3.3.4.5-.8.2-2.2.8-2.1 3.4-.1 1.3-.8 7.5-1.2 9.7-.5 2.8-1.5 3.9-4.5 4.5zM44 32.3c-.8.4-2.2.7-3.4.7-1.4.1-2.1-.2-2.3-.3-.1-1.6.5-1.8 1.2-2 .1 0 .2-.1.3-.1.1 0 .1.1.2.1 1.1.8 3.2.8 6.1.2-.5.5-1.1 1-2.1 1.4z"/><path d="M22.4 16.2c.1-.4-.6-.7-1.2-.8-.5-.1-1 0-1.2.2-.1.1-.2.2-.2.3 0 .2.1.4.2.6.3.3.6.6 1 .6h.2c.6 0 1.2-.5 1.2-.9zM36.8 15.1c-.6.1-1.2.3-1.1.7 0 .3.5.7 1.1.7h.1c.4-.1.7-.3.8-.4.2-.2.3-.5.3-.6 0-.4-.6-.5-1.2-.4z"/></g></svg>
-                                    PostgreSQL Community
-                                    <input type="radio" name="flavor" v-model="flavor" value="vanilla" id="vanilla" @change="validatePostgresSpecs()">
-                                </label>
-                                <label for="babelfish" data-field="spec.postgres.flavor.babelfish" :class="( (flavor == 'babelfish') && 'active' )">
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50" xml:space="preserve"><path fill="#3BF" d="M28.6 32c-.7-1.3-2.1-1.9-3.5-1.7-1.4.1-2.7-.9-2.9-2.3-.2-1.8.5-1.2 1.7-6.1.4-1.8.2-3.8-.9-5.4-.8-1.3-2.2-2-3.4-1.2-1.2.8-2 1.9-2.5 3.2-1.9 5 .9 8.8 3.5 10.9 1.1.9 1.6 2.4 1.3 3.9-.2 1.2.4 2.1 1.3 3 1.4-1.2 1.4-2.8.7-4.5l.2-.2c1.3 1.5 3.2 1.5 4.5.4zm-7.5-12.8c-.4.2-.9.1-1.2-.3-.2-.4-.1-.9.3-1.3.4-.2.9-.1 1.3.3.1.6 0 1.1-.4 1.3z"/><path fill="#FFF" d="M32.3 2.5h-.7c-1.5.2-3 .5-4.4 1-1.5.4-11.3-7-20.6-1.4C1.2 5.5-.6 12.6 2.8 18c.4.7.9 1.3 1.5 1.9 1.6 1.9 2.4 4.4 2.1 6.8-.7 5.2 2.3 9.1 7 9.1 2.1.1 4.1-.3 6.1-1.1.6-.3 1.1-.9 1.3-1.6.2-.9-.2-1.9-.9-2.5-4.2-3.6-5.6-8-3.9-12.5.5-1.6 1.6-3 3-3.9.5-.4 1.3-.5 1.9-.5 1.5.1 2.8.9 3.5 2.2 1.2 2 1.5 4.2 1 6.4-.3 1.5-.9 3-1.5 4.5-.6 1.4.2 2 1.3 2.2 1 .2 2.1.1 3-.2 3.7-1.3 8-.3 9.4 6.4.5 3.2-.2 6.6-3.4 7.7 0 0-6.3 2.2-5-8.4v-.4c0-.2-.2-.3-.4-.3-.1 0-.2.1-.2.1-.6.4-1.3.6-2 .5-.4 0-.7.3-.8.7-.2 1-.8 2-1.6 2.7l-.5.4c-.2.2-.3.5-.3.7 1.8 13.1 12 11 12 11 5.8-.4 13.5-7 13.5-30.7 0-8.3-7.4-16.7-16.6-16.7zm8.1 20.1c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
-                                    Babelfish (Experimental)
-                                    <input type="radio" name="flavor" v-model="flavor" value="babelfish" id="babelfish" @change="validatePostgresSpecs()">
-                                </label>
-                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.postgres.flavor')"></span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="warning orange babelfish topAnchor right" v-if="( (flavor == 'babelfish') && !editMode )" tabindex="0">
+                    <div class="fields">
                         <div class="row-50">
                             <div class="col">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 18"><g transform="translate(0 -183)"><path d="M18.994,201H1.006a1,1,0,0,1-.871-.516,1.052,1.052,0,0,1,0-1.031l8.993-15.974a1.033,1.033,0,0,1,1.744,0l8.993,15.974a1.052,1.052,0,0,1,0,1.031A1,1,0,0,1,18.994,201ZM2.75,198.937h14.5L10,186.059Z"/><rect width="2" height="5.378" rx="0.947" transform="translate(9 189.059)"/><rect width="2" height="2" rx="1" transform="translate(9 195.437)"/></g></svg>
-                                <p>StackGres packs Babelfish for PostgreSQL as an <strong>experimental feature</strong>. Its use is <strong>not recommended for production environments</strong>. Please enable the Babelfish Experimental Feature flag to acknowledge.</strong></p>
+                                <label for="metadata.name">Cluster Name <span class="req">*</span></label>
+                                <input v-model="name" :disabled="editMode" required data-field="metadata.name" autocomplete="off">
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.metadata.name')"></span>
+                                
+                                <span class="warning topAnchor" v-if="nameCollision && !editMode">
+                                    There's already a <strong>SGCluster</strong> with the same name on this namespace. Please specify a different name or create the cluster on another namespace
+                                </span>
                             </div>
-                            <div class="col">                    
-                                <label for="spec.nonProductionOptions.enabledFeatureGates.babelfish">Babelfish Experimental Feature</label>  
-                                <label for="babelfishFeatureGates" class="switch yes-no">
-                                    Enable
-                                    <input type="checkbox" id="babelfishFeatureGates" v-model="babelfishFeatureGates" data-switch="NO" data-field="spec.nonProductionOptions.enabledFeatureGates.babelfish" required>
-                                </label>
-                                <span class="helpTooltip" data-tooltip="Enables Babelfish for PostgreSQL project, from <a href='https://babelfishpg.org' target='_blank'>babelfishpg.org</a>, adding a SQL Server compatibility layer"></span>
-                            </div>
-                        </div>
-                    </div>
 
-                    <div class="row-50">
-                        <div class="col">                    
-                            <div class="versionContainer">
-                                <label for="spec.postgres.version">Postgres Version <span class="req">*</span></label>
-                                <ul class="select" id="postgresVersion" data-field="spec.postgres.version" tabindex="0">
-                                    <li class="selected">
-                                        {{ (postgresVersion == 'latest') ? 'Latest' : 'Postgres '+postgresVersion }}
-                                    </li>
-                                    <li>
-                                        <a @click="setVersion('latest')" data-val="latest" class="active">Latest</a>
-                                    </li>
-
-                                    <li v-for="version in Object.keys(postgresVersionsList[flavor]).reverse()">
-                                        <strong>Postgres {{ version }}</strong>
-                                        <ul>
-                                            <li>
-                                                <a @click="setVersion(version)" :data-val="version">Postgres {{ version }} (Latest)</a>
-                                            </li>
-                                            <li v-for="minorVersion in postgresVersionsList[flavor][version]">
-                                                <a @click="setVersion(minorVersion)" :data-val="minorVersion">Postgres {{ minorVersion }}</a>
-                                            </li>
-                                        </ul>
-                                    </li>
-                                </ul>
-                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.postgres.version')"></span>
-
-                                <input v-model="postgresVersion" required class="hide">
-                            </div>
-                        </div>
-
-                        <div class="col">
-                            <label for="spec.configurations.sgPostgresConfig">Postgres Configuration</label>
-                            <select v-model="pgConfig" class="pgConfig" data-field="spec.configurations.sgPostgresConfig" @change="(pgConfig == 'createNewResource') && createNewResource('sgpgconfigs')" :set="( (pgConfig == 'createNewResource') && (pgConfig = '') )">
-                                <option value="" selected>Default</option>
-                                <option v-for="conf in pgConf" v-if="( (conf.data.metadata.namespace == namespace) && (conf.data.spec.postgresVersion == shortPostgresVersion) )">{{ conf.name }}</option>
-                                <template v-if="iCan('create', 'sgpgconfigs', $route.params.namespace)">
-                                    <option value="" disabled>– OR –</option>
-                                    <option value="createNewResource">Create new configuration</option>
-                                </template>
-                            </select>
-                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.configurations.sgPostgresConfig')"></span>
-                        </div>
-                    </div>
-
-                    <div class="row-50">
-                        <h3>SSL Connections</h3>
-                        <p>
-                            By default, support for SSL connections to Postgres is disabled, to enable it configure this section. SSL connections will be handled by Envoy using Postgres filter’s SSL termination.
-                        </p>
-                        <div class="col">
-                            <label>SSL Connections</label>  
-                            <label for="enableSSL" class="switch yes-no">
-                                Enable
-                                <input type="checkbox" id="enableSSL" v-model="ssl.enabled" data-switch="YES" data-field="spec.postgres.ssl.enabled">
-                            </label>
-                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.postgres.ssl.enabled')"></span>
-                        </div>
-                    </div>
-                    <div class="row-50" v-if="ssl.enabled">
-                        <div class="col">
-                            <label for="spec.postgres.ssl.certificateSecretKeySelector.name">
-                                SSL Certificate Secret Name
-                                <span class="req">*</span>
-                            </label>
-                            <input required v-model="ssl.certificateSecretKeySelector.name" data-field="spec.postgres.ssl.certificateSecretKeySelector.name" autocomplete="off">
-                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.postgres.ssl.certificateSecretKeySelector.name')"></span>
-                        </div>
-                        <div class="col">
-                            <label for="spec.postgres.ssl.certificateSecretKeySelector.key">
-                                SSL Certificate Secret Key
-                                <span class="req">*</span>
-                            </label>
-                            <input required v-model="ssl.certificateSecretKeySelector.key" data-field="spec.postgres.ssl.certificateSecretKeySelector.key" autocomplete="off">
-                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.postgres.ssl.certificateSecretKeySelector.key')"></span>
-                        </div>
-                        <div class="col">
-                            <label for="spec.postgres.ssl.privateKeySecretKeySelector.name">
-                                SSL Private Key Secret Name
-                                <span class="req">*</span>
-                            </label>
-                            <input required v-model="ssl.privateKeySecretKeySelector.name" data-field="spec.postgres.ssl.privateKeySecretKeySelector.name" autocomplete="off">
-                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.postgres.ssl.privateKeySecretKeySelector.name')"></span>
-                        </div>
-                        <div class="col">
-                            <label for="spec.postgres.ssl.privateKeySecretKeySelector.key">
-                                SSL Private Key Secret Key
-                                <span class="req">*</span>
-                            </label>
-                            <input required v-model="ssl.privateKeySecretKeySelector.key" data-field="spec.postgres.ssl.privateKeySecretKeySelector.key" autocomplete="off">
-                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.postgres.ssl.privateKeySecretKeySelector.key')"></span>
-                        </div>
-                    </div>
-
-                    <hr/>
-
-                    <div class="row-50">
-                        <h3>Pods Storage</h3>
-
-                        <div class="col">
-                            <div class="unit-select">
-                                <label for="spec.pods.persistentVolume.size">Volume Size <span class="req">*</span></label>  
-                                <input v-model="volumeSize" class="size" required data-field="spec.pods.persistentVolume.size" type="number">
-                                <select v-model="volumeUnit" class="unit" required data-field="spec.pods.persistentVolume.size" >
-                                    <option disabled value="">Select Unit</option>
-                                    <option value="Mi">MiB</option>
-                                    <option value="Gi">GiB</option>
-                                    <option value="Ti">TiB</option>   
+                            <div class="col" v-if="formTemplate !== 'minimal'">
+                                <label for="spec.profile">Profile</label>
+                                <select v-model="profile" data-field="spec.profile" class="capitalize">
+                                    <option v-for="profile in clusterProfiles">{{ profile }}</option>
                                 </select>
-                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.persistentVolume.size')"></span>
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.profile')"></span>
                             </div>
                         </div>
 
-                        <div class="col">
-                            <label for="spec.pods.persistentVolume.storageClass">Storage Class</label>
-                            <select v-model="storageClass" data-field="spec.pods.persistentVolume.storageClass" :disabled="!storageClasses.length">
-                                <option value=""> {{ storageClasses.length ? 'Select Storage Class' : 'No storage classes available' }}</option>
-                                <option v-for="sClass in storageClasses">{{ sClass }}</option>
-                            </select>
-                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.persistentVolume.storageClass')"></span>
+                        <hr/>
+                        
+                        <div class="row-50">
+                            <h3>Instances</h3>
+
+                            <div class="col">
+                                <label for="spec.instances">Number of Instances <span class="req">*</span></label>
+                                <input type="number" v-model="instances" required data-field="spec.instances" min="0">
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.instances')"></span>
+                            </div>
+                            <div class="col" v-if="formTemplate !== 'minimal'">
+                                <label for="spec.sgInstanceProfile">Instance Profile</label>  
+                                <select v-model="resourceProfile" class="resourceProfile" data-field="spec.sgInstanceProfile" @change="(resourceProfile == 'createNewResource') && createNewResource('sginstanceprofiles')" :set="( (resourceProfile == 'createNewResource') && (resourceProfile = '') )">
+                                    <option selected value="">Default (Cores: 1, RAM: 2GiB)</option>
+                                    <option v-for="prof in profiles" v-if="prof.data.metadata.namespace == namespace" :value="prof.name">{{ prof.name }} (Cores: {{ prof.data.spec.cpu }}, RAM: {{ prof.data.spec.memory }}B)</option>
+                                    <template v-if="iCan('create', 'sginstanceprofiles', $route.params.namespace)">
+                                        <option value="" disabled>– OR –</option>
+                                        <option value="createNewResource">Create new profile</option>
+                                    </template>
+                                </select>
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.sgInstanceProfile')"></span>
+                            </div>
+                        </div>
+
+                        <hr/>
+
+                        <div class="row-50">
+                            <h3>Postgres</h3>
+
+                            <div class="col">                    
+                                <div class="versionContainer">
+                                    <label for="spec.postgres.version">Postgres Version <span class="req">*</span></label>
+                                    <ul class="select" id="postgresVersion" data-field="spec.postgres.version" tabindex="0">
+                                        <li class="selected">
+                                            {{ (postgresVersion == 'latest') ? 'Latest' : 'Postgres '+postgresVersion }}
+                                        </li>
+                                        <li>
+                                            <a @click="setVersion('latest')" data-val="latest" class="active">Latest</a>
+                                        </li>
+
+                                        <li v-for="version in Object.keys(postgresVersionsList[flavor]).reverse()">
+                                            <strong>Postgres {{ version }}</strong>
+                                            <ul>
+                                                <li>
+                                                    <a @click="setVersion(version)" :data-val="version">Postgres {{ version }} (Latest)</a>
+                                                </li>
+                                                <li v-for="minorVersion in postgresVersionsList[flavor][version]">
+                                                    <a @click="setVersion(minorVersion)" :data-val="minorVersion">Postgres {{ minorVersion }}</a>
+                                                </li>
+                                            </ul>
+                                        </li>
+                                    </ul>
+                                    <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.postgres.version')"></span>
+
+                                    <input v-model="postgresVersion" required class="hide">
+                                </div>
+                            </div>
+                        </div>
+
+                        <template v-if="formTemplate === 'full'">
+                            <hr style="margin-top: -15px;" />
+
+                            
+                            <div class="row-50">
+                                <h3>Pods Storage</h3>
+
+                                <div class="col">
+                                    <div class="unit-select">
+                                        <label for="spec.pods.persistentVolume.size">Volume Size <span class="req">*</span></label>  
+                                        <input v-model="volumeSize" class="size" required data-field="spec.pods.persistentVolume.size" type="number">
+                                        <select v-model="volumeUnit" class="unit" required data-field="spec.pods.persistentVolume.size" >
+                                            <option disabled value="">Select Unit</option>
+                                            <option value="Mi">MiB</option>
+                                            <option value="Gi">GiB</option>
+                                            <option value="Ti">TiB</option>   
+                                        </select>
+                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.persistentVolume.size')"></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <hr/>
+                        
+                            <div class="row-50">
+                                <h3>Sidecars</h3>
+
+                                <div class="col">
+                                    <label>Monitoring</label>  
+                                    <label for="enableMonitoring" class="switch yes-no">Enable<input type="checkbox" id="enableMonitoring" v-model="enableMonitoring" data-switch="YES" @change="checkenableMonitoring()"></label>
+                                    <span class="helpTooltip" data-tooltip="StackGres supports enabling automatic monitoring for your Postgres cluster, but you need to provide or install the <a href='https://stackgres.io/doc/latest/install/prerequisites/monitoring/' target='_blank'>Prometheus stack as a pre-requisite</a>. Then, check this option to configure automatically sending metrics to the Prometheus stack."></span>
+                                </div>
+
+                                <div class="col">
+                                    <label>Distributed Logs</label>  
+                                    <label for="enableDistributedLogs" class="switch yes-no">Enable<input type="checkbox" id="enableDistributedLogs" v-model="enableDistributedLogs" data-switch="YES"></label>
+                                    <span class="helpTooltip" data-tooltip="Allows sending Postgres and Patroni logs to a central SGDistributedLogs instance. Optional: if not enabled, logs are sent to the standard output."></span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </fieldset>
+            </template>
+            <template v-else>
+                <fieldset class="step" :class="(currentStep == 'cluster') && 'active'" data-fieldset="cluster">
+                    <div class="header">
+                        <h2>Cluster Information</h2>
+                    </div>
+
+                    <div class="fields">
+                        <div class="row-50">
+                            <div class="col">
+                                <label for="metadata.name">Cluster Name <span class="req">*</span></label>
+                                <input v-model="name" :disabled="editMode" required data-field="metadata.name" autocomplete="off">
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.metadata.name')"></span>
+                                
+                                <span class="warning topAnchor" v-if="nameCollision && !editMode">
+                                    There's already a <strong>SGCluster</strong> with the same name on this namespace. Please specify a different name or create the cluster on another namespace
+                                </span>
+                            </div>
+
+                            <div class="col">
+                                <label for="spec.profile">Profile</label>
+                                <select v-model="profile" data-field="spec.profile" class="capitalize">
+                                    <option v-for="profile in clusterProfiles">{{ profile }}</option>
+                                </select>
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.profile')"></span>
+
+                                <div class="warning topAnchor" v-if="profile != 'production'">
+                                    By choosing this Profile, the following defaults are overwritten:
+                                    <ul>
+                                        <li><strong>Cluster Pod Anti Affinity</strong> is set to <strong>Disable</strong>.</li>
+                                        <template v-if="profile == 'development'">
+                                            <li><strong>Patroni Resource Requirements</strong> is set to <strong>Disable</strong>.</li>
+                                            <li><strong>Cluster Resource Requirements</strong> is set to <strong>Disable</strong>.</li>
+                                        </template>
+                                    </ul>     
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr/>
+                        
+                        <div class="row-50">
+                            <h3>Instances</h3>
+
+                            <div class="col">
+                                <label for="spec.instances">Number of Instances <span class="req">*</span></label>
+                                <input type="number" v-model="instances" required data-field="spec.instances" min="0">
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.instances')"></span>
+                            </div>
+                            <div class="col">
+                                <label for="spec.sgInstanceProfile">Instance Profile</label>  
+                                <select v-model="resourceProfile" class="resourceProfile" data-field="spec.sgInstanceProfile" @change="(resourceProfile == 'createNewResource') && createNewResource('sginstanceprofiles')" :set="( (resourceProfile == 'createNewResource') && (resourceProfile = '') )">
+                                    <option selected value="">Default (Cores: 1, RAM: 2GiB)</option>
+                                    <option v-for="prof in profiles" v-if="prof.data.metadata.namespace == namespace" :value="prof.name">{{ prof.name }} (Cores: {{ prof.data.spec.cpu }}, RAM: {{ prof.data.spec.memory }}B)</option>
+                                    <template v-if="iCan('create', 'sginstanceprofiles', $route.params.namespace)">
+                                        <option value="" disabled>– OR –</option>
+                                        <option value="createNewResource">Create new profile</option>
+                                    </template>
+                                </select>
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.sgInstanceProfile')"></span>
+                            </div>
+                        </div>
+
+                        <hr/>
+
+                        <div class="row-50">
+                            <h3>Postgres</h3>
+
+                            <div class="col">
+                                <label for="spec.postgres.flavor">Postgres Flavor <span class="req">*</span></label>
+                                <div class="optionBoxes withLogos">
+                                    <label for="vanilla" data-field="spec.postgres.flavor.vanilla" :class="( (flavor == 'vanilla') && 'active' )" tabindex="0">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50" xml:space="preserve"><path d="M49.1 30c-.3-.9-1.1-1.5-2-1.7-.5-.1-1 0-1.6.1-1.1.2-1.9.3-2.5.3 2.2-3.8 4.1-8.1 5.1-12.2 1.7-6.6.8-9.6-.3-10.9C45 2 40.9.1 35.9 0c-2.6 0-5 .5-6.2.9-1.1-.2-2.3-.3-3.6-.3-2.4 0-4.5.5-6.3 1.5-1-.3-2.6-.8-4.4-1.1C11.1.3 7.6.8 5 2.6 2 4.8.5 8.6.8 13.9c.1 1.7 1 6.8 2.5 11.7.9 2.8 1.8 5.1 2.7 6.9 1.3 2.5 2.8 4 4.4 4.5.9.3 2.5.5 4.2-.9.2.3.5.5.9.8.5.3 1.1.6 1.7.7 2.2.5 4.2.4 5.9-.3v2.1c.1 2.5.3 4.5.8 5.9 0 .1.1.2.1.3.3.8.7 2.1 1.8 3.1 1.1 1.1 2.5 1.4 3.7 1.4.6 0 1.2-.1 1.7-.2 1.9-.4 4-1 5.5-3.2 1.4-2.1 2.2-5.2 2.3-10.1v-.7h.4c1.9.1 4.2-.3 5.6-1 1.4-.5 5-2.4 4.1-4.9z"/><path fill="#336791" d="M45.9 30.5c-5.6 1.2-6-.8-6-.8 6-8.8 8.5-20.1 6.3-22.8-5.9-7.5-16-4-16.2-3.9h-.1c-1.1-.2-2.4-.4-3.8-.4-2.6 0-4.5.7-6 1.8 0 0-18.1-7.5-17.3 9.4.3 3.6 5.2 27.2 11.1 20 2.2-2.6 4.3-4.8 4.3-4.8 1 .7 2.3 1 3.6.9l.1-.1v1c-1.5 1.7-1.1 2-4.1 2.6-3.1.6-1.3 1.8-.1 2.1 1.4.4 4.7.9 7-2.3l-.1.4c.6.5 1 3.1.9 5.5-.1 2.4-.1 4 .3 5.3.5 1.3.9 4.2 4.9 3.3C34 47 35.8 45.1 36 42c.2-2.2.6-1.9.6-3.9l.3-.9c.4-3 .1-4 2.1-3.5h.5c1.5.1 3.5-.2 4.7-.8 2.7-1 4.1-3 1.7-2.4z"/><g fill="#FFF"><path d="M47.7 30.3c-.2-.7-.9-.9-2.1-.6-3.4.7-4.6.2-5-.1 2.7-4.1 4.8-8.9 6-13.5.6-2.2.9-4.2.9-5.8 0-1.8-.3-3.1-.9-3.9-2.5-3.3-6.3-5-10.8-5-3.1 0-5.7.8-6.2 1-1.1-.3-2.2-.4-3.5-.4-2.3 0-4.3.5-6 1.7-.8-.3-2.6-.9-4.9-1.3-4-.6-7.1-.2-9.4 1.4-2.7 1.8-3.9 5.2-3.7 10 .1 1.6 1 6.6 2.4 11.3 1.9 6.3 4 9.8 6.2 10.5.3.1.6.1.9.1.8 0 1.8-.4 2.8-1.6 1.7-2 3.3-3.7 3.9-4.4.9.5 1.8.7 2.8.7v.1c-.2.2-.3.4-.5.6-.7.9-.8 1-3 1.5-.6.1-2.2.5-2.3 1.6 0 1.2 1.9 1.8 2.1 1.8.8.2 1.5.3 2.2.3 1.7 0 3.2-.6 4.5-1.7 0 4.4.1 8.8.7 10.2.4 1.1 1.5 3.8 4.9 3.8.5 0 1-.1 1.6-.2 3.5-.8 5-2.3 5.6-5.7.3-1.8.9-6.2 1.1-8.6.5.2 1.2.2 2 .2 1.6 0 3.4-.3 4.5-.9 1.4-.4 3.7-1.8 3.2-3.1zm-8.3-15.8c0 .7-.1 1.3-.2 2s-.2 1.4-.2 2.3c0 .9.1 1.8.2 2.6.2 1.8.4 3.5-.4 5.3-.1-.2-.3-.5-.4-.8-.1-.2-.3-.7-.6-1.2-1.2-2.2-4.1-7.3-2.6-9.4.3-.5 1.4-1.2 4.2-.8zM36 2.7c4.1.1 7.3 1.6 9.5 4.5 1.7 2.2-.2 12.3-5.7 21.1l-.2-.2s0-.1-.1-.1c1.4-2.4 1.2-4.7.9-6.8-.1-.9-.2-1.7-.2-2.4 0-.8.1-1.5.2-2.2.1-.8.3-1.7.2-2.7v-.4c-.1-1-1.2-3.8-3.4-6.4-1.2-1.4-3-3-5.4-4.1 1.2-.1 2.6-.3 4.2-.3zM13.4 33.3c-1.1 1.3-1.9 1.1-2.1 1-1.7-.6-3.6-4.1-5.3-9.6-1.5-4.8-2.3-9.6-2.4-11-.3-4.3.8-7.3 3-8.9 3.7-2.6 9.7-1 12.2-.3l-.1.1c-4 4-3.9 10.9-3.9 11.4v.7c.1 1.2.2 3.3-.1 5.8-.3 2.3.4 4.5 1.9 6.1l.5.5c-.7.7-2.2 2.3-3.7 4.2zm4.2-5.7c-1.2-1.3-1.8-3.1-1.5-4.9.4-2.6.2-4.8.2-6v-.4c.6-.5 3.3-2 5.2-1.5.9.2 1.4.8 1.6 1.8 1.2 5.3.2 7.6-.7 9.4-.2.4-.3.7-.5 1.1l-.1.3c-.3.7-.5 1.4-.7 2-1.2-.2-2.5-.8-3.5-1.8zm.2 7.2c-.4-.1-.7-.3-.9-.4.2-.1.5-.2 1-.3 2.5-.5 2.9-.9 3.8-2 .2-.2.4-.5.7-.9.5-.5.7-.4 1-.3.3.1.6.5.7.9.1.2.1.6-.1.9-1.7 2.6-4.3 2.6-6.2 2.1zm13.3 12.3c-3.1.7-4.2-.9-4.9-2.7-.5-1.2-.7-6.4-.5-12.2V32c0-.1 0-.3-.1-.4-.2-.8-.8-1.5-1.5-1.8-.3-.1-.8-.3-1.4-.2.1-.6.4-1.2.6-1.8l.1-.3c.1-.3.3-.6.4-1 .8-1.9 2-4.4.7-10.2-.5-2.2-2-3.2-4.4-3-1.4.1-2.7.7-3.4 1.1-.1.1-.3.1-.4.2.2-2.2.9-6.3 3.4-8.8 1.6-1.6 3.8-2.4 6.4-2.4 5.2.1 8.5 2.7 10.3 4.9 1.6 1.9 2.5 3.8 2.8 4.8-2.6-.3-4.4.2-5.3 1.5-2 2.8 1.1 8.2 2.5 10.8.3.5.5.9.6 1.1.5 1.1 1.1 1.9 1.5 2.5.1.2.3.3.4.5-.8.2-2.2.8-2.1 3.4-.1 1.3-.8 7.5-1.2 9.7-.5 2.8-1.5 3.9-4.5 4.5zM44 32.3c-.8.4-2.2.7-3.4.7-1.4.1-2.1-.2-2.3-.3-.1-1.6.5-1.8 1.2-2 .1 0 .2-.1.3-.1.1 0 .1.1.2.1 1.1.8 3.2.8 6.1.2-.5.5-1.1 1-2.1 1.4z"/><path d="M22.4 16.2c.1-.4-.6-.7-1.2-.8-.5-.1-1 0-1.2.2-.1.1-.2.2-.2.3 0 .2.1.4.2.6.3.3.6.6 1 .6h.2c.6 0 1.2-.5 1.2-.9zM36.8 15.1c-.6.1-1.2.3-1.1.7 0 .3.5.7 1.1.7h.1c.4-.1.7-.3.8-.4.2-.2.3-.5.3-.6 0-.4-.6-.5-1.2-.4z"/></g></svg>
+                                        PostgreSQL Community
+                                        <input type="radio" name="flavor" v-model="flavor" value="vanilla" id="vanilla" @change="validatePostgresSpecs()">
+                                    </label>
+                                    <label for="babelfish" data-field="spec.postgres.flavor.babelfish" :class="( (flavor == 'babelfish') && 'active' )">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50" xml:space="preserve"><path fill="#3BF" d="M28.6 32c-.7-1.3-2.1-1.9-3.5-1.7-1.4.1-2.7-.9-2.9-2.3-.2-1.8.5-1.2 1.7-6.1.4-1.8.2-3.8-.9-5.4-.8-1.3-2.2-2-3.4-1.2-1.2.8-2 1.9-2.5 3.2-1.9 5 .9 8.8 3.5 10.9 1.1.9 1.6 2.4 1.3 3.9-.2 1.2.4 2.1 1.3 3 1.4-1.2 1.4-2.8.7-4.5l.2-.2c1.3 1.5 3.2 1.5 4.5.4zm-7.5-12.8c-.4.2-.9.1-1.2-.3-.2-.4-.1-.9.3-1.3.4-.2.9-.1 1.3.3.1.6 0 1.1-.4 1.3z"/><path fill="#FFF" d="M32.3 2.5h-.7c-1.5.2-3 .5-4.4 1-1.5.4-11.3-7-20.6-1.4C1.2 5.5-.6 12.6 2.8 18c.4.7.9 1.3 1.5 1.9 1.6 1.9 2.4 4.4 2.1 6.8-.7 5.2 2.3 9.1 7 9.1 2.1.1 4.1-.3 6.1-1.1.6-.3 1.1-.9 1.3-1.6.2-.9-.2-1.9-.9-2.5-4.2-3.6-5.6-8-3.9-12.5.5-1.6 1.6-3 3-3.9.5-.4 1.3-.5 1.9-.5 1.5.1 2.8.9 3.5 2.2 1.2 2 1.5 4.2 1 6.4-.3 1.5-.9 3-1.5 4.5-.6 1.4.2 2 1.3 2.2 1 .2 2.1.1 3-.2 3.7-1.3 8-.3 9.4 6.4.5 3.2-.2 6.6-3.4 7.7 0 0-6.3 2.2-5-8.4v-.4c0-.2-.2-.3-.4-.3-.1 0-.2.1-.2.1-.6.4-1.3.6-2 .5-.4 0-.7.3-.8.7-.2 1-.8 2-1.6 2.7l-.5.4c-.2.2-.3.5-.3.7 1.8 13.1 12 11 12 11 5.8-.4 13.5-7 13.5-30.7 0-8.3-7.4-16.7-16.6-16.7zm8.1 20.1c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>
+                                        Babelfish (Experimental)
+                                        <input type="radio" name="flavor" v-model="flavor" value="babelfish" id="babelfish" @change="validatePostgresSpecs()">
+                                    </label>
+                                    <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.postgres.flavor')"></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="warning orange babelfish topAnchor right" v-if="( (flavor == 'babelfish') && !editMode )" tabindex="0">
+                            <div class="row-50">
+                                <div class="col">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 18"><g transform="translate(0 -183)"><path d="M18.994,201H1.006a1,1,0,0,1-.871-.516,1.052,1.052,0,0,1,0-1.031l8.993-15.974a1.033,1.033,0,0,1,1.744,0l8.993,15.974a1.052,1.052,0,0,1,0,1.031A1,1,0,0,1,18.994,201ZM2.75,198.937h14.5L10,186.059Z"/><rect width="2" height="5.378" rx="0.947" transform="translate(9 189.059)"/><rect width="2" height="2" rx="1" transform="translate(9 195.437)"/></g></svg>
+                                    <p>StackGres packs Babelfish for PostgreSQL as an <strong>experimental feature</strong>. Its use is <strong>not recommended for production environments</strong>. Please enable the Babelfish Experimental Feature flag to acknowledge.</strong></p>
+                                </div>
+                                <div class="col">                    
+                                    <label for="spec.nonProductionOptions.enabledFeatureGates.babelfish">Babelfish Experimental Feature</label>  
+                                    <label for="babelfishFeatureGates" class="switch yes-no">
+                                        Enable
+                                        <input type="checkbox" id="babelfishFeatureGates" v-model="babelfishFeatureGates" data-switch="NO" data-field="spec.nonProductionOptions.enabledFeatureGates.babelfish" required>
+                                    </label>
+                                    <span class="helpTooltip" data-tooltip="Enables Babelfish for PostgreSQL project, from <a href='https://babelfishpg.org' target='_blank'>babelfishpg.org</a>, adding a SQL Server compatibility layer"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row-50">
+                            <div class="col">                    
+                                <div class="versionContainer">
+                                    <label for="spec.postgres.version">Postgres Version <span class="req">*</span></label>
+                                    <ul class="select" id="postgresVersion" data-field="spec.postgres.version" tabindex="0">
+                                        <li class="selected">
+                                            {{ (postgresVersion == 'latest') ? 'Latest' : 'Postgres '+postgresVersion }}
+                                        </li>
+                                        <li>
+                                            <a @click="setVersion('latest')" data-val="latest" class="active">Latest</a>
+                                        </li>
+
+                                        <li v-for="version in Object.keys(postgresVersionsList[flavor]).reverse()">
+                                            <strong>Postgres {{ version }}</strong>
+                                            <ul>
+                                                <li>
+                                                    <a @click="setVersion(version)" :data-val="version">Postgres {{ version }} (Latest)</a>
+                                                </li>
+                                                <li v-for="minorVersion in postgresVersionsList[flavor][version]">
+                                                    <a @click="setVersion(minorVersion)" :data-val="minorVersion">Postgres {{ minorVersion }}</a>
+                                                </li>
+                                            </ul>
+                                        </li>
+                                    </ul>
+                                    <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.postgres.version')"></span>
+
+                                    <input v-model="postgresVersion" required class="hide">
+                                </div>
+                            </div>
+
+                            <div class="col">
+                                <label for="spec.configurations.sgPostgresConfig">Postgres Configuration</label>
+                                <select v-model="pgConfig" class="pgConfig" data-field="spec.configurations.sgPostgresConfig" @change="(pgConfig == 'createNewResource') && createNewResource('sgpgconfigs')" :set="( (formTemplate !== 'full') && (pgConfig == 'createNewResource') ) && (pgConfig = '')">
+                                    <option :value="null" selected>Default</option>
+                                    <option v-for="conf in pgConf" v-if="( (conf.data.metadata.namespace == namespace) && (conf.data.spec.postgresVersion == shortPostgresVersion) )">{{ conf.name }}</option>
+                                    <template v-if="iCan('create', 'sgpgconfigs', $route.params.namespace)">
+                                        <option value="" disabled>– OR –</option>
+                                        <option value="createNewResource">Create new configuration</option>
+                                    </template>
+                                </select>
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.configurations.sgPostgresConfig')"></span>
+                            </div>
+                        </div>
+
+                        <div class="row-50">
+                            <h3>SSL Connections</h3>
+                            <p>
+                                By default, support for SSL connections to Postgres is disabled, to enable it configure this section. SSL connections will be handled by Envoy using Postgres filter’s SSL termination.
+                            </p>
+                            <div class="col">
+                                <label>SSL Connections</label>  
+                                <label for="enableSSL" class="switch yes-no">
+                                    Enable
+                                    <input type="checkbox" id="enableSSL" v-model="ssl.enabled" data-switch="YES" data-field="spec.postgres.ssl.enabled">
+                                </label>
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.postgres.ssl.enabled')"></span>
+                            </div>
+                        </div>
+                        <div class="row-50" v-if="ssl.enabled">
+                            <div class="col">
+                                <label for="spec.postgres.ssl.certificateSecretKeySelector.name">
+                                    SSL Certificate Secret Name
+                                    <span class="req">*</span>
+                                </label>
+                                <input required v-model="ssl.certificateSecretKeySelector.name" data-field="spec.postgres.ssl.certificateSecretKeySelector.name" autocomplete="off">
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.postgres.ssl.certificateSecretKeySelector.name')"></span>
+                            </div>
+                            <div class="col">
+                                <label for="spec.postgres.ssl.certificateSecretKeySelector.key">
+                                    SSL Certificate Secret Key
+                                    <span class="req">*</span>
+                                </label>
+                                <input required v-model="ssl.certificateSecretKeySelector.key" data-field="spec.postgres.ssl.certificateSecretKeySelector.key" autocomplete="off">
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.postgres.ssl.certificateSecretKeySelector.key')"></span>
+                            </div>
+                            <div class="col">
+                                <label for="spec.postgres.ssl.privateKeySecretKeySelector.name">
+                                    SSL Private Key Secret Name
+                                    <span class="req">*</span>
+                                </label>
+                                <input required v-model="ssl.privateKeySecretKeySelector.name" data-field="spec.postgres.ssl.privateKeySecretKeySelector.name" autocomplete="off">
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.postgres.ssl.privateKeySecretKeySelector.name')"></span>
+                            </div>
+                            <div class="col">
+                                <label for="spec.postgres.ssl.privateKeySecretKeySelector.key">
+                                    SSL Private Key Secret Key
+                                    <span class="req">*</span>
+                                </label>
+                                <input required v-model="ssl.privateKeySecretKeySelector.key" data-field="spec.postgres.ssl.privateKeySecretKeySelector.key" autocomplete="off">
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.postgres.ssl.privateKeySecretKeySelector.key')"></span>
+                            </div>
+                        </div>
+
+                        <hr/>
+
+                        <div class="row-50">
+                            <h3>Pods Storage</h3>
+
+                            <div class="col">
+                                <div class="unit-select">
+                                    <label for="spec.pods.persistentVolume.size">Volume Size <span class="req">*</span></label>  
+                                    <input v-model="volumeSize" class="size" required data-field="spec.pods.persistentVolume.size" type="number">
+                                    <select v-model="volumeUnit" class="unit" required data-field="spec.pods.persistentVolume.size" >
+                                        <option disabled value="">Select Unit</option>
+                                        <option value="Mi">MiB</option>
+                                        <option value="Gi">GiB</option>
+                                        <option value="Ti">TiB</option>   
+                                    </select>
+                                    <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.persistentVolume.size')"></span>
+                                </div>
+                            </div>
+
+                            <div class="col">
+                                <label for="spec.pods.persistentVolume.storageClass">Storage Class</label>
+                                
+                                <template v-if="storageClasses === null">
+                                    <input v-model="storageClass" data-field="spec.pods.persistentVolume.storageClass" autocomplete="off">
+                                </template>
+                                <template v-else>
+                                    <select v-model="storageClass" data-field="spec.pods.persistentVolume.storageClass" :disabled="!storageClasses.length">
+                                        <option value=""> {{ storageClasses.length ? 'Select Storage Class' : 'No storage classes available' }}</option>
+                                        <option v-for="sClass in storageClasses">{{ sClass }}</option>
+                                    </select>
+                                </template>
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.persistentVolume.storageClass')"></span>
+                            </div>
+                        </div>
+
+                        <hr/>
+
+                        <div class="row-50">
+                            <h3>Monitoring</h3>
+                            <p>
+                                By enabling Monitoring, you are activating metrics scrapping via service monitors, which is done by enabling both, Prometheus Autobind and Metrics Exporter.
+                            </p>
+                            <div class="col">
+                                <label>Monitoring</label>  
+                                <label for="enableMonitoring" class="switch yes-no">Enable<input type="checkbox" id="enableMonitoring" v-model="enableMonitoring" data-switch="YES" @change="checkenableMonitoring()"></label>
+                                <span class="helpTooltip" data-tooltip="StackGres supports enabling automatic monitoring for your Postgres cluster, but you need to provide or install the <a href='https://stackgres.io/doc/latest/install/prerequisites/monitoring/' target='_blank'>Prometheus stack as a pre-requisite</a>. Then, check this option to configure automatically sending metrics to the Prometheus stack."></span>
+                            </div>                  
+                        </div>
+
+                        <hr/>
+
+                        <div class="row-50">
+                            <h3>
+                                Distributed Logs
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.distributedLogs')"></span>
+                            </h3>
+                            <p>Send Postgres and Patroni logs to a central <a href="https://stackgres.io/doc/latest/reference/crd/sgdistributedlogs/" target="_blank">SGDistributedLogs</a> instance. Optional: if not enabled, logs are sent to the standard output.</p>
+
+                            <div class="col">
+                                <label for="spec.distributedLogs.sgDistributedLogs">Logs Cluster</label>
+                                <select v-model="distributedLogs" class="distributedLogs" data-field="spec.distributedLogs.sgDistributedLogs" @change="(distributedLogs == 'createNewResource') && createNewResource('sgdistributedlogs')" :set="( (distributedLogs == 'createNewResource') && (distributedLogs = '') )">
+                                    <option value="">Select Logs Server</option>
+                                    <option v-for="cluster in logsClusters" :value="( (cluster.data.metadata.namespace !== $route.params.namespace) ? cluster.data.metadata.namespace + '.' : '') + cluster.data.metadata.name">{{ cluster.data.metadata.name }}</option>
+                                    <template v-if="iCan('create', 'sgdistributedlogs', $route.params.namespace)">
+                                        <option value="" disabled>– OR –</option>
+                                        <option value="createNewResource">Create new logs server</option>
+                                    </template>
+                                </select>
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.distributedLogs.sgDistributedLogs')"></span>
+                            </div>
+
+                            <div class="col" v-if="distributedLogs.length">
+                                <label for="spec.distributedLogs.retention">Retention</label>
+                                <input v-model="retention" data-field="spec.distributedLogs.retention" autocomplete="off">
+                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.distributedLogs.retention')"></span>
+                            </div>
                         </div>
                     </div>
-
-                    <hr/>
-
-                    <div class="row-50">
-                        <h3>Monitoring</h3>
-                        <p>
-                            By enabling Monitoring, you are activating metrics scrapping via service monitors, which is done by enabling both, Prometheus Autobind and Metrics Exporter.
-                        </p>
-                        <div class="col">
-                            <label>Monitoring</label>  
-                            <label for="enableMonitoring" class="switch yes-no">Enable<input type="checkbox" id="enableMonitoring" v-model="enableMonitoring" data-switch="YES" @change="checkenableMonitoring()"></label>
-                            <span class="helpTooltip" data-tooltip="StackGres supports enabling automatic monitoring for your Postgres cluster, but you need to provide or install the <a href='https://stackgres.io/doc/latest/install/prerequisites/monitoring/' target='_blank'>Prometheus stack as a pre-requisite</a>. Then, check this option to configure automatically sending metrics to the Prometheus stack."></span>
-                        </div>                  
-                    </div>
-                </div>
-            </fieldset>
+                </fieldset>
+            </template>
 
             <fieldset class="step" :class="(currentStep == 'extensions') && 'active'" data-fieldset="extensions">
                 <div class="header">
@@ -255,7 +508,7 @@
                 
                 <div class="fields">
                     <div class="toolbar">
-                        <div class="searchBar">
+                        <div class="searchBar extensions">
                             <label for="keyword">Search Extensions</label>
                             <input id="keyword" v-model="searchExtension" class="search" placeholder="Enter text..." autocomplete="off" data-field="spec.postgres.extensions">
                             <a @click="clearExtFilters()" class="btn clear border keyword" v-if="searchExtension.length">CLEAR</a>
@@ -283,59 +536,154 @@
                         <li class="extension notFound">
                             {{ searchExtension.length ? 'No extensions match your search terms...' : 'No extensions available for the postgres specs you selected...' }}
                         </li>
-                        <li v-for="(ext, index) in extensionsList[flavor][postgresVersion]" 
-                            v-if="( ( (extLicense == 'opensource') && (ext.name != 'timescaledb_tsl') ) || ( (extLicense == 'nonopensource') && (ext.name == 'timescaledb_tsl') ) ) && (!searchExtension.length || (ext.name+ext.description+ext.tags.toString()).includes(searchExtension)) && ext.versions.length" 
-                            class="extension" 
-                            :class="( (viewExtension == index) && 'show')">
-                            <label>
-                                <input type="checkbox" class="plain enableExtension" @change="setExtension(index)" :checked="(extIsSet(ext.name) !== -1)" :disabled="!ext.versions.length || !ext.selectedVersion.length" :data-field="'spec.postgres.extensions.' + ext.name" />
-                                <span class="hasTooltip extName">
-                                    <span class="name">
-                                        <span>{{ ext.name }}</span>
-                                        <a v-if="ext.hasOwnProperty('url') && ext.url" :href="ext.url" class="newTab" target="_blank"></a>
+                        <template v-for="(ext, index) in extensionsList[flavor][postgresVersion]" >
+                            <li 
+                                :key="'extension-' + index"
+                                v-if="
+                                    ( 
+                                        ( (extLicense == 'opensource') && (ext.name != 'timescaledb_tsl') ) ||
+                                        ( (extLicense == 'nonopensource') && (ext.name == 'timescaledb_tsl') ) 
+                                    ) &&
+                                    (
+                                        !searchExtension.length ||
+                                        (ext.name+ext.description+ext.tags.toString()).includes(searchExtension)
+                                    ) && 
+                                    ext.versions.length
+                                " 
+                                class="extension" 
+                                :class="( (viewExtension == index) && 'show')"
+                            >
+                                <label>
+                                    <input
+                                        type="checkbox"
+                                        class="plain enableExtension"
+                                        @change="setExtension(index)"
+                                        :checked="(extIsSet(ext.name) !== -1)"
+                                        :disabled="!ext.versions.length || !ext.selectedVersion.length"
+                                        :data-field="'spec.postgres.extensions.' + ext.name"
+                                    />
+                                </label>
+                                <span class="extInfo">
+                                    <span class="hasTooltip extName" @click.stop.prevent="viewExt(index)">
+                                        <span class="name">
+                                            <span>{{ ext.name }}</span>
+                                            <a v-if="ext.hasOwnProperty('url') && ext.url" :href="ext.url" class="newTab" target="_blank"></a>
+                                        </span>
                                     </span>
-                                </span>
-                                <span class="version">
-                                    <select v-model="ext.selectedVersion" class="extVersion" @change="updateExtVersion(ext.name, ext.selectedVersion)">
-                                        <option v-if="!ext.versions.length" selected>Not available for this postgres version</option>
-                                        <option v-else value="">Select version...</option>
-                                        <option v-for="v in ext.versions">{{ v }}</option>
-                                    </select>
-                                </span>
-                                <span class="hasTooltip">
-                                    <span class="description firstLetter">
-                                        <span>{{ ext.abstract }}</span>
+                                    <span class="version">
+                                        <select v-model="ext.selectedVersion" class="extVersion" @change="updateExtVersion(ext.name, ext.selectedVersion)">
+                                            <option v-if="!ext.versions.length" selected>Not available for this postgres version</option>
+                                            <option v-else value="">Select version...</option>
+                                            <option v-for="v in ext.versions">{{ v }}</option>
+                                        </select>
                                     </span>
+                                    <span class="hasTooltip" @click.stop.prevent="viewExt(index)">
+                                        <span class="description firstLetter">
+                                            <span>{{ ext.abstract }}</span>
+                                        </span>
+                                    </span>
+                                    <button
+                                        type="button"
+                                        class="textBtn anchor toggleExt"
+                                        @click.stop.prevent="viewExt(index)"
+                                    ></button>
                                 </span>
-                            </label>
-                            <button type="button" class="textBtn anchor toggleExt" @click.stop.prevent="viewExt(index)">-</button>
 
-                            <div v-if="(viewExtension == index)" class="extDetails">
-                                <div class="header">
-                                    <h3>{{ ext.name }}</h3>
-                                </div>
-                                <div class="description">
-                                    {{ ext.description }}
-                                </div>
-                                <div class="header">
-                                    <h3>Tags</h3>
-                                </div>
-                                <div class="tags" v-if="ext.tags.length">
-                                    <span v-for="tag in ext.tags" class="extTag">
-                                        {{ tag }}
-                                    </span>
-                                </div>
+                                <div v-if="(viewExtension == index)" class="extDetails">
+                                    <div class="header">
+                                        <h3>{{ ext.name }}</h3>
+                                    </div>
+                                    <div class="description">
+                                        {{ ext.description }}
+                                    </div>
+                                    <div class="header">
+                                        <h3>Tags</h3>
+                                    </div>
+                                    <div class="tags" v-if="ext.tags.length">
+                                        <span v-for="tag in ext.tags" class="extTag">
+                                            {{ tag }}
+                                        </span>
+                                    </div>
 
-                                <div class="header">
-                                    <h3>Source:</h3>
+                                    <div class="header">
+                                        <h3>Source:</h3>
+                                    </div>
+                                    <a :href="ext.source" target="_blank">{{ ext.source }}</a>
                                 </div>
-                                <a :href="ext.source" target="_blank">{{ ext.source }}</a>
-                            </div>
-                        </li>
+                            </li>
+                        </template>
                     </ul>
                 </div>
                 <div id="nameTooltip">
                     <div class="info"></div>
+                </div>
+            </fieldset>
+
+            <fieldset class="step" :class="(currentStep == 'configurations') && 'active'" data-fieldset="configurations">
+                <div class="header">
+                    <h2>Configurations</h2>
+                </div>
+
+                <div class="fields">
+                    <div class="row-50">
+                        <div class="col">
+                            <label for="spec.configurations.sgPostgresConfig">Postgres Configuration</label>
+                            <select v-model="pgConfig" class="pgConfig" data-field="spec.configurations.sgPostgresConfig" @change="(pgConfig !== 'createNewResource') && (configurations.sgPostgresConfig = null)">
+                                <option :value="null">Default</option>
+                                <option v-for="conf in pgConf" v-if="( (conf.data.metadata.namespace == namespace) && (conf.data.spec.postgresVersion == shortPostgresVersion) )">{{ conf.name }}</option>
+                                <template v-if="iCan('create', 'sgpgconfigs', $route.params.namespace)">
+                                    <option disabled>– OR –</option>
+                                    <option value="createNewResource">Create new configuration</option>
+                                </template>
+                            </select>
+                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.configurations.sgPostgresConfig')"></span>
+
+                            <template v-if="pgConfig === 'createNewResource'">
+                                <hr/>
+                                <textarea v-model="configurations.sgPostgresConfig" data-field="spec.configurations.sgPostgresConfig" placeholder="Paste your configuration here..."></textarea>
+                                <br/>
+                                <hr/>
+                                <span class="inlineHr">
+                                    OR
+                                </span>
+                                <br/>
+                                
+                                <label for="uploadSgPostgresConfig">
+                                    Upload Configuration File
+                                </label>
+                                <input id="uploadSgPostgresConfig" type="file" @change="uploadFile($event, 'configurations.sgPostgresConfig')">
+                            </template>
+                        </div>
+
+                        <div class="col">
+                            <label for="spec.configurations.sgPoolingConfig">Connection Pooling Configuration</label>
+                            <select v-model="connectionPoolingConfig" class="connectionPoolingConfig" data-field="spec.configurations.sgPoolingConfig" @change="(connectionPoolingConfig !== 'createNewResource') && (configurations.sgPoolingConfig = null)">
+                                <option :value="null">Default</option>
+                                <option v-for="conf in connPoolConf" v-if="conf.data.metadata.namespace == namespace">{{ conf.name }}</option>
+                                <template v-if="iCan('create', 'sgpoolconfigs', $route.params.namespace)">
+                                    <option disabled>– OR –</option>
+                                    <option value="createNewResource">Create new configuration</option>
+                                </template>
+                            </select>
+                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.configurations.sgPoolingConfig')"></span>
+
+                            <template v-if="connectionPoolingConfig === 'createNewResource'">
+                                <hr/>
+                                <textarea v-model="configurations.sgPoolingConfig" data-field="spec.configurations.sgPoolingConfig" placeholder="Paste your configuration here..."></textarea>
+                                <br/>
+                                <hr/>
+                                <span class="inlineHr">
+                                    OR
+                                </span>
+                                <br/>
+                                
+                                <label for="uploadSgPoolingConfig">
+                                    Upload Configuration File    
+                                </label>
+                                <input id="uploadSgPoolingConfig" type="file" @change="uploadFile($event, 'configurations.sgPoolingConfig')">
+                            </template>
+                        </div>
+                    </div>
                 </div>
             </fieldset>
 
@@ -362,10 +710,10 @@
                                 @change="(backups[0].sgObjectStorage == 'createNewResource') && createNewResource('sgobjectstorages')"
                                 required
                             >
-                                <option value="" disabled>{{ sgobjectstorages.length ? 'Select Storage' : 'No object storage available' }}</option>
+                                <option value="" disabled>{{ ( (sgobjectstorages !== null) && sgobjectstorages.length) ? 'Select Storage' : 'No object storage available' }}</option>
                                 <option v-for="storage in sgobjectstorages" v-if="storage.data.metadata.namespace == namespace">{{ storage.name }}</option>
                                 <template v-if="iCan('create', 'sgobjectstorages', $route.params.namespace)">
-                                    <option value="" disabled v-if="sgobjectstorages.length">– OR –</option>
+                                    <option value="" disabled v-if="( (sgobjectstorages !== null) && sgobjectstorages.length)">– OR –</option>
                                     <option value="createNewResource">Create new object storage</option>
                                 </template>
                             </select>
@@ -376,7 +724,7 @@
                     <template v-if="managedBackups">
                     
                         <hr/>
-                   
+                
                         <h4 for="spec.configurations.backups.cronSchedule">
                             Backup Schedule 
                             <span class="req">*</span>
@@ -467,6 +815,67 @@
                                 <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.configurations.backups.performance.properties.uploadDiskConcurrency')"></span>
                             </div>                    
                         </div>
+
+                        <hr/>
+                        
+                        <div class="row-50">
+                            <h3>Snapshot Details</h3>
+
+                            <div class="col">
+                                <label>Use Volume Snapshots</label>  
+                                <label
+                                    class="switch yes-no"
+                                    for="useVolumeSnapshot"
+                                    data-field="spec.configurations.backups.useVolumeSnapshot"
+                                >
+                                    Enable
+                                    <input
+                                        type="checkbox"
+                                        data-switch="YES"
+                                        id="useVolumeSnapshot"
+                                        v-model="backups[0].useVolumeSnapshot"
+                                    >
+                                </label>
+                                <span
+                                    class="helpTooltip"
+                                    :data-tooltip="getTooltip('sgcluster.spec.configurations.backups.useVolumeSnapshot')"
+                                ></span>
+                            </div>
+
+                            <template v-if="backups[0].useVolumeSnapshot">
+                                <div class="col">
+                                    <label for="spec.configurations.backups.volumeSnapshotClass">
+                                        Volume Snapshot Class
+                                    </label>
+                                    <input
+                                        v-model="backups[0].volumeSnapshotClass"
+                                        data-field="spec.configurations.backups.volumeSnapshotClass"
+                                    >
+                                    <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.configurations.backups.volumeSnapshotClass')"></span>
+                                </div>
+
+                                <div class="col">
+                                    <label>Fast Volume Snapshot</label>  
+                                    <label
+                                        class="switch yes-no"
+                                        for="fastVolumeSnapshot"
+                                        data-field="spec.configurations.backups.fastVolumeSnapshot"
+                                    >
+                                        Enable
+                                        <input
+                                            type="checkbox"
+                                            data-switch="YES"
+                                            id="fastVolumeSnapshot"
+                                            v-model="backups[0].fastVolumeSnapshot"
+                                        >
+                                    </label>
+                                    <span
+                                        class="helpTooltip"
+                                        :data-tooltip="getTooltip('sgcluster.spec.configurations.backups.fastVolumeSnapshot')"
+                                    ></span>
+                                </div>
+                            </template>
+                        </div>
                     </template>
                 </div>
             </fieldset>
@@ -478,9 +887,21 @@
 
                 <template  v-if="!editMode || (editMode && restoreBackup.length)">
 
-                    <p>Use this option to initialize the cluster with the data from an existing backup.</p><br/><br/>
+                    <template v-if="!editMode">
+                        <template v-if="pitrBackups.length">
+                            <p>
+                                Select a backup from the following timeline to initialize the cluster with the data from an existing backup.
+                            </p>
+                            <br/><br/>
+                        </template>
+                        <template v-else>
+                            <span class="warning">
+                                There are no backups available to initialize your cluster. Please check if there are any <router-link :to="'/' + $route.params.namespace + '/sgbackups'">backups</router-link> that fit your specs or consider <router-link :to="'/' + $route.params.namespace + '/sgbackups/new'">creating a new one</router-link>.
+                            </span>
+                        </template>
+                    </template>
 
-                    <div class="fields">
+                    <div class="fields" v-if="pitrBackups.length">
                         <template v-if="( (editMode && restoreBackup.length) || !editMode )">
                             <div class="header">
                                 <h3 for="spec.initialData.restore.fromBackup">
@@ -488,27 +909,145 @@
                                     <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.initialData.restore.fromBackup')"></span>
                                 </h3>
                             </div>
-                            <fieldset class="row-50">
+                            <template
+                                v-if="!editMode && pitrBackups.length"
+                            >
+                                <component :is="`style`">
+                                    <template v-for="(bk, index) in pitrBackups">
+                                        <template v-if="bk.isSnapshot">
+                                            #pitr-graph .apexcharts-series-markers circle[rel="{{index}}"] {
+                                                stroke: #FABE25;
+                                            }
+                                        </template>
+                                    </template>
+                                </component>
+                                <div class="pitr-legend">
+                                    <ul>
+                                        <li class="snapshot">
+                                            Snapshot
+                                        </li>
+                                        <li class="base">
+                                            Base Backup
+                                        </li>
+                                    </ul>
+                                </div>
+                                <div id="pitr-graph" class="apexcharts-container">
+                                    <apexchart 
+                                        type="line"
+                                        :key="'pitrgraph-' + pitrBackups.length"
+                                        :options="{
+                                            theme: {
+                                                mode: theme
+                                            },
+                                            chart: {
+                                                id: 'area-datetime',
+                                                type: 'area',
+                                                height: 250,
+                                                zoom: {
+                                                    autoScaleYaxis: false
+                                                },
+                                                toolbar: {
+                                                        tools: {
+                                                        download: false,
+                                                    }
+                                                },
+                                                events: {
+                                                    mounted: function(chartContext, config) { 
+                                                        if($route.query.hasOwnProperty('restoreFromBackup')) {
+                                                            const backupName = $route.query.restoreFromBackup;
+                                                            const backupIndex = pitrBackups.findIndex( bk => bk.name == backupName);
+                                                            chartContext.toggleDataPointSelection(0, backupIndex);
+                                                            name = 'restore-from-' + restoreBackup + '-' + (new Date().getTime());
+                                                        }
+                                                    },
+                                                    dataPointSelection: function(event, chartContext, config) {
+                                                        setPitrBackup(chartContext, config)
+                                                    }
+                                                }
+                                            },
+                                            stroke: {
+                                                width: 2,
+                                                curve: 'straight',
+                                                colors: ['#36A8FF']
+                                            },
+                                            xaxis: {
+                                                type: 'datetime',
+                                                max: new Date().getTime(),
+                                                tooltip: {
+                                                    enabled: false
+                                                }
+                                            },
+                                            yaxis: {
+                                                show: false,
+                                                max: 2
+                                            },
+                                            grid: {
+                                                show: false
+                                            },
+                                            fill: {
+                                                opacity: 0,
+                                            },
+                                            markers: {
+                                                size: 5,
+                                                style: 'hollow',
+                                                colors: [ (theme == 'dark') ? '#171717': '#fff'],
+                                                hover: {
+                                                    sizeOffset: 0
+                                                }
+                                            },
+                                            annotations: pitrAnnotations,
+                                            tooltip: {
+                                                enabled: true,
+                                                intersect: true,
+                                                shared: false,
+                                                custom: function({series, seriesIndex, dataPointIndex, w}) {
+                                                    var data = w.globals.initialSeries[seriesIndex].data[dataPointIndex];
+                                                    
+                                                    return `
+                                                        <ul>
+                                                            <li>
+                                                                <strong>Name:</strong> ${data.name}
+                                                            </li>
+                                                            <li>
+                                                                <strong>Timestamp:</strong> ${data.x}
+                                                            </li>
+                                                            <li>
+                                                                <strong>Cluster:</strong> ${data.cluster}
+                                                            </li>
+                                                        </ul>
+                                                    `;
+                                                }
+                                            }
+                                        }"
+                                        :series="[{ data: pitrBackups }]"
+                                    >
+                                    </apexchart>
+                                </div>
+                            </template>
+
+                            <fieldset class="row-50" :class="!restoreBackup.length && 'hidden'">
                                 <div class="col">
                                     <label for="spec.initialData.restore.fromBackup">Backup Selection</label>
-                                    <template v-if="editMode">
-                                        <input v-model="restoreBackup" disabled>
-                                    </template>
-                                    <template v-else>
-                                        <select v-model="restoreBackup" data-field="spec.initialData.restore.fromBackup" @change="(restoreBackup == 'createNewResource') ? createNewResource('sgbackups') : (!hasPITR() && (pitr = ''))" :set="( (restoreBackup == 'createNewResource') && (restoreBackup = '') )">
-                                            <option value="">Select a Backup</option>
-                                            <template v-for="backup in sgbackups" v-if="( (backup.data.metadata.namespace == namespace) && (hasProp(backup, 'data.status.process.status')) && (backup.data.status.process.status === 'Completed') && (backup.data.status.backupInformation.postgresVersion.substring(0,2) == shortPostgresVersion) )">
-                                                <option :value="backup.name">
-                                                    {{ backup.name }} ({{ backup.data.status.process.timing.stored | formatTimestamp('date') }} {{ backup.data.status.process.timing.stored | formatTimestamp('time') }} {{ showTzOffset() }}) [{{ backup.data.metadata.uid.substring(0,4) }}...{{ backup.data.metadata.uid.slice(-4) }}]
-                                                </option>
-                                            </template>
-                                            <template v-if="iCan('create', 'sgbackups', $route.params.namespace)">
-                                                <option value="" disabled>– OR –</option>
-                                                <option value="createNewResource">Create new backup</option>
-                                            </template>
-                                        </select>
-                                    </template>
+                                    <input v-model="restoreBackup" disabled data-field="spec.initialData.restore.fromBackup">
                                     <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.initialData.restore.fromBackup')"></span>
+                                    <span
+                                        v-if="!editMode && restoreBackup.length"
+                                        class="warning topAnchor"
+                                    >
+                                        You have selected backup <strong>{{ restoreBackup }}</strong> as the starting point for your restoration.
+                                    </span>
+                                </div>
+
+                                <div class="col">
+                                    <label for="spec.initialData.restore.fromBackup.pointInTimeRecovery.restoreToTimestamp">Restore To Timestamp</label>
+                                    <input class="datePicker" :value="getPitrWithTimezone(pitr)" :disabled="editMode" autocomplete="off" placeholder="YYYY-MM-DD HH:MM:SS" data-field="spec.initialData.restore.fromBackup.pointInTimeRecovery.restoreToTimestamp">
+                                    <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.initialData.restore.fromBackup.pointInTimeRecovery.restoreToTimestamp')"></span>
+                                    <span
+                                        v-if="!editMode && restoreBackup.length"
+                                        class="warning topAnchor"
+                                    >
+                                        If you wish, you can use this field to indicate at which point-in-time the database has to be restored.
+                                    </span>
                                 </div>
 
                                 <div class="col" v-if="restoreBackup.length">
@@ -516,28 +1055,6 @@
                                     <input v-model="downloadDiskConcurrency" data-field="spec.initialData.restore.downloadDiskConcurrency" autocomplete="off" type="number" min="1" :disabled="editMode">
                                     <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.initialData.restore.downloadDiskConcurrency')"></span>
                                 </div>
-
-                                <template v-if="( (!editMode && hasPITR()) || (editMode && pitr.length) )">
-                                    <div class="col">
-                                        <label>Point-in-Time Recovery (PITR)</label>  
-                                        <label for="enablePITR" class="switch yes-no" @change="initDatepicker()" :disabled="editMode">
-                                            Enable
-                                            <input type="checkbox" id="enablePITR" v-model="enablePITR" data-switch="NO" data-field="spec.initialData.restore.fromBackup.pointInTimeRecovery" :disabled="editMode">
-                                        </label>
-                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.initialData.restore.fromBackup.pointInTimeRecovery')"></span>
-                                    </div>
-
-                                    <div class="col" :class="!enablePITR && 'hidden'">
-                                        <label for="spec.initialData.restore.fromBackup.pointInTimeRecovery.restoreToTimestamp">Restore To Timestamp</label>
-                                        <template v-if="editMode">
-                                            <input disabled :value="pitrTimezone" data-field="spec.initialData.restore.fromBackup.pointInTimeRecovery.restoreToTimestamp">
-                                        </template>
-                                        <template v-else>
-                                            <input class="datePicker" autocomplete="off" placeholder="YYYY-MM-DD HH:MM:SS" :disabled="!enablePITR" data-field="spec.initialData.restore.fromBackup.pointInTimeRecovery.restoreToTimestamp">
-                                        </template>
-                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.initialData.restore.fromBackup.pointInTimeRecovery.restoreToTimestamp')"></span>
-                                    </div>
-                                </template>
                             </fieldset>
                             <br/><br/><br/>
                         </template>
@@ -844,7 +1361,7 @@
                                 </div>
                             </div>
 
-                             <div class="row-50 noMargin">
+                            <div class="row-50 noMargin">
                                 <div class="col">
                                     <label for="spec.managedSql.scripts.scriptSource">Source</label>
                                     <select v-model="scriptSource[baseIndex].base" :disabled="editMode && isDefaultScript(baseScript.sgScript) && baseScript.hasOwnProperty('scriptSpec')" @change="setBaseScriptSource(baseIndex)" :data-field="'spec.managedSql.scripts.scriptSource[' + baseIndex + ']'">
@@ -882,7 +1399,7 @@
                                         <span class="helpTooltip" :data-tooltip="getTooltip('sgscript.spec.managedVersions').replace(/true/g, 'Enabled')"></span>
                                     </div>
                                 </div>
-                           
+                        
                                 <div class="section">
                                     <fieldset v-for="(script, index) in baseScript.scriptSpec.scripts">
                                         <div class="header">
@@ -1067,8 +1584,8 @@
 
                         <div class="col" v-if="connPooling">
                             <label for="connectionPoolingConfig">Connection Pooling Configuration</label>
-                            <select v-model="connectionPoolingConfig" class="connectionPoolingConfig" :disabled="!connPooling" @change="(connectionPoolingConfig == 'createNewResource') && createNewResource('sgpoolconfigs')" :set="( (connectionPoolingConfig == 'createNewResource') && (connectionPoolingConfig = '') )">
-                                <option value="" selected>Default</option>
+                            <select v-model="connectionPoolingConfig" class="connectionPoolingConfig" :disabled="!connPooling" @change="(connectionPoolingConfig == 'createNewResource') && createNewResource('sgpoolconfigs')">
+                                <option :value="null" selected>Default</option>
                                 <option v-for="conf in connPoolConf" v-if="conf.data.metadata.namespace == namespace">{{ conf.name }}</option>
                                 <template v-if="iCan('create', 'sgpoolconfigs', $route.params.namespace)">
                                     <option value="" disabled>– OR –</option>
@@ -1117,55 +1634,24 @@
                     <div class="warning" v-if="!enableMonitoring">
                         In order to enable monitoring from within the web console, both of these options should be enabled.
                     </div>
-
-                    <hr/>
-
-                    <div class="row-50">
-                        <h3>
-                            Distributed Logs
-                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.distributedLogs')"></span>
-                        </h3>
-                        <p>Send Postgres and Patroni logs to a central <a href="https://stackgres.io/doc/latest/reference/crd/sgdistributedlogs/" target="_blank">SGDistributedLogs</a> instance. Optional: if not enabled, logs are sent to the standard output.</p>
-
-                        <div class="col">
-                            <label for="spec.distributedLogs.sgDistributedLogs">Logs Cluster</label>
-                            <select v-model="distributedLogs" class="distributedLogs" data-field="spec.distributedLogs.sgDistributedLogs" @change="(distributedLogs == 'createNewResource') && createNewResource('sgdistributedlogs')" :set="( (distributedLogs == 'createNewResource') && (distributedLogs = '') )">
-                                <option value="">Select Logs Server</option>
-                                <option v-for="cluster in logsClusters" :value="( (cluster.data.metadata.namespace !== $route.params.namespace) ? cluster.data.metadata.namespace + '.' : '') + cluster.data.metadata.name">{{ cluster.data.metadata.name }}</option>
-                                <template v-if="iCan('create', 'sgdistributedlogs', $route.params.namespace)">
-                                    <option value="" disabled>– OR –</option>
-                                    <option value="createNewResource">Create new logs server</option>
-                                </template>
-                            </select>
-                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.distributedLogs.sgDistributedLogs')"></span>
-                        </div>
-
-                        <div class="col" v-if="distributedLogs.length">
-                            <label for="spec.distributedLogs.retention">Retention</label>
-                            <input v-model="retention" data-field="spec.distributedLogs.retention" autocomplete="off">
-                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.distributedLogs.retention')"></span>
-                        </div>
-                    </div>
                 </div>
-            </fieldset>
-
-            <fieldset class="step" :class="(currentStep == 'pods') && 'active'" data-fieldset="pods">
-                <div class="header">
+                                    
+                
+                <div class="header marginTop">
                     <h2>User-Supplied Pods Sidecars</h2>
                 </div>
 
                 <div class="fields">
-                    <div class="header">
-                        <h3 for="spec.pods.customVolumes">
-                            Custom Volumes
-                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customVolumes')"></span>
-                        </h3>
-                    </div>
+                    <h3 for="spec.pods.customVolumes">
+                        Custom Volumes
+                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customVolumes')"></span>
+                    </h3>   
+    
                     <p>List of volumes that can be mounted by custom containers belonging to the pod</p>
 
                     <br/>
                     
-                    <div class="repeater">
+                    <div class="repeater customVolumes">
                         <fieldset
                             class="noPaddingBottom"
                             v-if="pods.customVolumes.length"
@@ -1398,629 +1884,619 @@
 
                     <br/><br/><br/>
 
-                    <template v-if="!editMode || pods.customInitContainers.length">
-                        <div class="header">
-                            <h3 for="spec.pods.customInitContainers">
-                                Custom Init Containers
-                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers')"></span>
-                            </h3>
-                        </div>
-                        <p>A list of custom application init containers that run within the cluster’s Pods</p>
+                    <h3 for="spec.pods.customInitContainers">
+                        Custom Init Containers
+                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers')"></span>
+                    </h3>
+                    <p>A list of custom application init containers that run within the cluster’s Pods</p>
 
-                        <br/>
-                        
-                        <div class="repeater">
-                            <fieldset
-                                v-if="pods.customInitContainers.length"
-                                data-fieldset="spec.pods.customInitContainers"
-                            >
-                                <template v-for="(container, index) in pods.customInitContainers">
-                                    <div class="section" :key="index" :data-field="'spec.pods.customInitContainers[' + index + ']'">
-                                        <div class="header">
-                                            <h4>Init Container #{{ index + 1 }}{{ !isNull(container.name) ? (': ' + container.name) : '' }}</h4>
-                                            <a v-if="!editMode" class="addRow delete" @click="spliceArray(pods.customInitContainers, index)">Delete</a>
-                                        </div>
-                                                        
-                                        <div class="row-50">
-                                            <div class="col">
-                                                <label>Name</label>
-                                                <input :disabled="editMode" :required="!isNull(container.image) || !isNull(container.imagePullPolicy) || !isNull(container.workingDir)" v-model="container.name" autocomplete="off" :data-field="'spec.pods.customInitContainers[' + index + '].name'">
-                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.name')"></span>
-                                            </div>
-
-                                            <div class="col">
-                                                <label>Image</label>
-                                                <input v-model="container.image" autocomplete="off" :data-field="'spec.pods.customInitContainers[' + index + '].image'">
-                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.image')"></span>
-                                            </div>
-
-                                            <div class="col">
-                                                <label>Image Pull Policy</label>
-                                                <input :disabled="editMode" v-model="container.imagePullPolicy" autocomplete="off" :data-field="'spec.pods.customInitContainers[' + index + '].imagePullPolicy'">
-                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.imagePullPolicy')"></span>
-                                            </div>
-
-                                            <div class="col">
-                                                <label>Working Directory</label>
-                                                <input :disabled="editMode" v-model="container.workingDir" autocomplete="off" :data-field="'spec.pods.customInitContainers[' + index + '].workingDir'">
-                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.workingDir')"></span>
-                                            </div>
-
-                                            <div class="col repeater" v-if="!editMode || container.hasOwnProperty('args')">
-                                                <fieldset :data-field="'spec.pods.customInitContainers[' + index + '].args'">
-                                                    <div class="header" :class="[container.args.length ? 'marginBottom' : 'no-margin' ]">
-                                                        <h5 :for="'spec.pods.customInitContainers[' + index + '].args'">
-                                                            Arguments
-                                                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.args')"></span> 
-                                                        </h5>
-                                                    </div>
-                                                    <template v-for="(arg, argIndex) in container.args">
-                                                        <div :key="'arg-' + argIndex" class="inputContainer" :class="(container.args.length !== (argIndex + 1)) && 'marginBottom'">
-                                                            <input 
-                                                                autocomplete="off" 
-                                                                :disabled="editMode"
-                                                                :key="'arg-' + argIndex" 
-                                                                v-model="container.args[argIndex]" 
-                                                                :data-field="'spec.pods.customInitContainers[' + index + '].args[' + argIndex + ']'"
-                                                            >
-                                                            <a v-if="!editMode" class="addRow delete topRight" @click="spliceArray(container.args, argIndex)">Delete</a>
-                                                        </div>
-                                                    </template>
-                                                </fieldset>
-                                                <div class="fieldsetFooter" v-if="!editMode">
-                                                    <a class="addRow" @click="container.args.push(null)">Add Argument</a>
-                                                </div>
-                                            </div>
-
-                                            <div class="col repeater" v-if="!editMode || container.hasOwnProperty('command')">
-                                                <fieldset :data-field="'spec.pods.customInitContainers[' + index + '].command'">
-                                                    <div class="header" :class="[container.command.length ? 'marginBottom' : 'no-margin' ]">
-                                                        <h5 :for="'spec.pods.customInitContainers[' + index + '].command'">
-                                                            Command
-                                                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.command')"></span> 
-                                                        </h5>
-                                                    </div>
-                                                    <template v-for="(command, commandIndex) in container.command">
-                                                        <div :key="'command-' + commandIndex" class="inputContainer" :class="(container.command.length !== (commandIndex + 1)) && 'marginBottom'">
-                                                            <input 
-                                                                autocomplete="off" 
-                                                                :disabled="editMode"
-                                                                :key="'command-' + commandIndex" 
-                                                                v-model="container.command[commandIndex]" 
-                                                                :data-field="'spec.pods.customInitContainers[' + index + '].command[' + commandIndex + ']'"
-                                                            >
-                                                            <a v-if="!editMode" class="addRow delete topRight" @click="spliceArray(container.command, commandIndex)">Delete</a>
-                                                        </div>
-                                                    </template>
-                                                </fieldset>
-                                                <div class="fieldsetFooter" v-if="!editMode">
-                                                    <a class="addRow" @click="container.command.push(null)">Add Command</a>
-                                                </div>
-                                            </div>
+                    <br/>
+                    
+                    <div class="repeater customInitContainers">
+                        <fieldset
+                            v-if="pods.customInitContainers.length"
+                            data-fieldset="spec.pods.customInitContainers"
+                        >
+                            <template v-for="(container, index) in pods.customInitContainers">
+                                <div class="section" :key="index" :data-field="'spec.pods.customInitContainers[' + index + ']'">
+                                    <div class="header">
+                                        <h4>Init Container #{{ index + 1 }}{{ !isNull(container.name) ? (': ' + container.name) : '' }}</h4>
+                                        <a class="addRow delete" @click="spliceArray(pods.customInitContainers, index)">Delete</a>
+                                    </div>
+                                                    
+                                    <div class="row-50">
+                                        <div class="col">
+                                            <label>Name</label>
+                                            <input :required="!isNull(container.image) || !isNull(container.imagePullPolicy) || !isNull(container.workingDir)" v-model="container.name" autocomplete="off" :data-field="'spec.pods.customInitContainers[' + index + '].name'">
+                                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.name')"></span>
                                         </div>
 
-                                        <div class="repeater marginBottom marginTop" v-if="!editMode || container.hasOwnProperty('env')">
-                                            <fieldset :data-field="'spec.pods.customInitContainers[' + index + '].env'">
-                                                <div class="header">
-                                                    <h5 :for="'spec.pods.customInitContainers[' + index + '].env'">
-                                                        Environment Variables
-                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.env')"></span> 
+                                        <div class="col">
+                                            <label>Image</label>
+                                            <input v-model="container.image" autocomplete="off" :data-field="'spec.pods.customInitContainers[' + index + '].image'">
+                                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.image')"></span>
+                                        </div>
+
+                                        <div class="col">
+                                            <label>Image Pull Policy</label>
+                                            <input v-model="container.imagePullPolicy" autocomplete="off" :data-field="'spec.pods.customInitContainers[' + index + '].imagePullPolicy'">
+                                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.imagePullPolicy')"></span>
+                                        </div>
+
+                                        <div class="col">
+                                            <label>Working Directory</label>
+                                            <input v-model="container.workingDir" autocomplete="off" :data-field="'spec.pods.customInitContainers[' + index + '].workingDir'">
+                                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.workingDir')"></span>
+                                        </div>
+
+                                        <div class="col repeater">
+                                            <fieldset :data-field="'spec.pods.customInitContainers[' + index + '].args'">
+                                                <div class="header" :class="[(container.hasOwnProperty('args') && container.args.length) ? 'marginBottom' : 'no-margin' ]">
+                                                    <h5 :for="'spec.pods.customInitContainers[' + index + '].args'">
+                                                        Arguments
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.args')"></span> 
                                                     </h5>
                                                 </div>
-                                                <div class="variable" v-if="container.env.length">
-                                                    <div class="row" v-for="(env, envIndex) in container.env" :data-field="'spec.pods.customInitContainers[' + index + '].env[' + envIndex + ']'">
-                                                        <label>Name</label>
-                                                        <input :required="!isNull(env.value)" :disabled="editMode" class="label" v-model="env.name" autocomplete="off" :data-field="'spec.pods.customInitContainers[' + index + '].env[' + envIndex + '].name'">
-
-                                                        <span class="eqSign"></span>
-
-                                                        <label>Value</label>
-                                                        <input :disabled="editMode" class="labelValue" v-model="env.value" autocomplete="off" :data-field="'spec.pods.customInitContainers[' + index + '].env[' + envIndex + '].value'">
-
-                                                        <a v-if="!editMode" class="addRow delete" @click="spliceArray(container.env, envIndex)">Delete</a>
+                                                <template v-for="(arg, argIndex) in container.args">
+                                                    <div :key="'arg-' + argIndex" class="inputContainer" :class="(container.hasOwnProperty('args') && (container.args.length !== (argIndex + 1))) && 'marginBottom'">
+                                                        <input 
+                                                            autocomplete="off" 
+                                                            :key="'arg-' + argIndex" 
+                                                            v-model="container.args[argIndex]" 
+                                                            :data-field="'spec.pods.customInitContainers[' + index + '].args[' + argIndex + ']'"
+                                                        >
+                                                        <a class="addRow delete topRight" @click="spliceArray(container.args, argIndex)">Delete</a>
                                                     </div>
-                                                </div>
+                                                </template>
                                             </fieldset>
-                                            <div class="fieldsetFooter" v-if="!editMode">
-                                                <a class="addRow" @click="container.env.push({ name: null, value: null})">Add Variable</a>
+                                            <div class="fieldsetFooter">
+                                                <a class="addRow" @click="!container.hasOwnProperty('args') && (container['args'] = []); container.args.push(null)">Add Argument</a>
                                             </div>
                                         </div>
 
-                                        <br/>
-                                        
-                                        <template v-if="!editMode || container.hasOwnProperty('ports')">
-                                            <div class="header">
-                                                <h5>
-                                                    Ports
-                                                    <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.ports')"></span>
-                                                </h5>
-                                            </div>
-
-                                            <div class="repeater marginBottom">
-                                                <fieldset
-                                                    class="noPaddingBottom"
-                                                    data-field="spec.pods.customInitContainers.ports"
-                                                    v-if="container.ports.length"
-                                                >
-                                                    <div class="section" v-for="(port, portIndex) in container.ports" :data-field="'spec.pods.customInitContainers[' + index + '].ports[' + portIndex + ']'">
-                                                        <div class="header">
-                                                            <h6>Port #{{ portIndex + 1 }}{{ !isNull(port.name) ? (': ' + port.name) : '' }}</h6>
-                                                            <a v-if="!editMode" class="addRow delete" @click="spliceArray(container.ports, portIndex)">Delete</a>
-                                                        </div>
-
-                                                        <div class="row-50">
-                                                            <div class="col">
-                                                                <label for="spec.pods.customInitContainers.ports.name">Name</label>  
-                                                                <input :disabled="editMode" v-model="port.name" :data-field="'spec.pods.customInitContainers[' + index + '].ports[' + portIndex + '].name'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.ports.items.properties.name')"></span>
-                                                            </div>
-                                                            <div class="col">
-                                                                <label for="spec.pods.customInitContainers.ports.hostIP">Host IP</label>  
-                                                                <input :disabled="editMode" v-model="port.hostIP" :data-field="'spec.pods.customInitContainers[' + index + '].ports[' + portIndex + '].hostIP'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.ports.items.properties.hostIP')"></span>
-                                                            </div>
-                                                            <div class="col">
-                                                                <label for="spec.pods.customInitContainers.ports.hostPort">Host Port</label>  
-                                                                <input :disabled="editMode" type="number" v-model="port.hostPort" :data-field="'spec.pods.customInitContainers[' + index + '].ports[' + portIndex + '].hostPort'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.ports.items.properties.hostPort')"></span>
-                                                            </div>
-                                                            <div class="col">
-                                                                <label for="spec.pods.customInitContainers.ports.containerPort">Container Port</label>  
-                                                                <input :disabled="editMode" type="number" v-model="port.containerPort" :data-field="'spec.pods.customInitContainers[' + index + '].ports[' + portIndex + '].containerPort'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.ports.items.properties.containerPort')"></span>
-                                                            </div>
-                                                            <div class="col">
-                                                                <label for="spec.pods.customInitContainers.ports.protocol">Protocol</label>  
-                                                                <select :disabled="editMode" v-model="port.protocol" :data-field="'spec.pods.customInitContainers[' + index + '].ports[' + portIndex + '].protocol'">
-                                                                    <option :value="nullVal" selected>Choose one...</option>
-                                                                    <option>TCP</option>
-                                                                    <option>UDP</option>
-                                                                    <option>SCTP</option>
-                                                                </select>
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.ports.items.properties.protocol')"></span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </fieldset>
-                                                <div v-if="!editMode" class="fieldsetFooter" :class="(container.hasOwnProperty('ports') && !container.ports.length) && 'topBorder'">
-                                                    <a class="addRow" @click="!container.hasOwnProperty('ports') && (container['ports'] = []); container.ports.push({
-                                                        name: null,
-                                                        hostIP: null,
-                                                        hostPort: null,
-                                                        containerPort: null,
-                                                        protocol: null
-                                                    })">
-                                                        Add Port
-                                                    </a>
-                                                </div>
-                                            </div>
-                                            <br/>
-                                        </template>
-                                        
-                                        <template v-if="!editMode || container.hasOwnProperty('volumeMounts')">
-                                            <div class="header">
-                                                <h5>
-                                                    Volume Mounts
-                                                    <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.volumeMounts')"></span>
-                                                </h5>
-                                            </div>
-
-                                            <div class="repeater">
-                                                <fieldset
-                                                    class="noPaddingBottom"
-                                                    :data-field="'spec.pods.customInitContainers[' + index + '].volumeMounts'"
-                                                    v-if="container.hasOwnProperty('volumeMounts') && container.volumeMounts.length"
-                                                >
-                                                    <div class="section" v-for="(mount, mountIndex) in container.volumeMounts" :data-field="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + ']'">
-                                                        <div class="header">
-                                                            <h6>Mount #{{ mountIndex + 1 }}{{ !isNull(mount.name) ? (': ' + mount.name) : '' }}</h6>
-                                                            <a v-if="!editMode" class="addRow delete" @click="spliceArray(container.volumeMounts, mountIndex)">Delete</a>
-                                                        </div>
-
-                                                        <div class="row-50">
-                                                            <div class="col">
-                                                                <label for="spec.pods.customInitContainers.volumeMounts.name">Name</label>  
-                                                                <input :required="!isNull(mount.mountPath)" :disabled="editMode" v-model="mount.name" :data-field="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + '].name'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.volumeMounts.items.properties.name')"></span>
-                                                            </div>
-                                                            <div class="col">                    
-                                                                <label :for="'spec.pods.customInitContainers[' + index + '].volumeMounts.readOnly'">
-                                                                    Read Only
-                                                                </label>  
-                                                                <label :disabled="editMode" :for="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + '].readOnly'" class="switch yes-no">
-                                                                    Enable
-                                                                    <input :disabled="editMode" type="checkbox" :id="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + '].readOnly'" v-model="mount.readOnly" data-switch="NO" :data-field="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + '].readOnly'">
-                                                                </label>
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.volumeMounts.items.properties.readOnly')"></span>
-                                                            </div>
-                                                            <div class="col">
-                                                                <label for="spec.pods.customInitContainers.volumeMounts.mountPath">Mount Path</label>  
-                                                                <input :required="!isNull(mount.name)" :disabled="editMode" v-model="mount.mountPath" :data-field="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + '].mountPath'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.volumeMounts.items.properties.mountPath')"></span>
-                                                            </div>
-                                                            <div class="col">
-                                                                <label for="spec.pods.customInitContainers.volumeMounts.mountPropagation">Mount Propagation</label>  
-                                                                <input :disabled="editMode" v-model="mount.mountPropagation" :data-field="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + '].mountPropagation'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.volumeMounts.items.properties.mountPropagation')"></span>
-                                                            </div>
-                                                            <div class="col">
-                                                                <label for="spec.pods.customInitContainers.volumeMounts.subPath">Sub Path</label>  
-                                                                <input :disabled="editMode || (mount.hasOwnProperty('subPathExpr') && !isNull(mount.subPathExpr))" v-model="mount.subPath" :data-field="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + '].subPath'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.volumeMounts.items.properties.subPath')"></span>
-                                                            </div>
-                                                            <div class="col">
-                                                                <label for="spec.pods.customInitContainers.volumeMounts.subPathExpr">Sub Path Expr</label>  
-                                                                <input :disabled="editMode || (mount.hasOwnProperty('subPath') && !isNull(mount.subPath))" v-model="mount.subPathExpr" :data-field="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + '].subPathExpr'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.volumeMounts.items.properties.subPathExpr')"></span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </fieldset>
-                                                <div v-if="!editMode" class="fieldsetFooter" :class="(container.hasOwnProperty('volumeMounts') && !container.volumeMounts.length) && 'topBorder'">
-                                                    <a class="addRow" @click="!container.hasOwnProperty('volumeMounts') && (container['volumeMounts'] = []); container.volumeMounts.push({
-                                                        mountPath: null,
-                                                        mountPropagation: null,
-                                                        name: null,
-                                                        readOnly: false,
-                                                        subPath: null,
-                                                        subPathExpr: null
-                                                    })">
-                                                        Add Volume
-                                                    </a>
-                                                </div>
-                                            </div>
-                                        </template>
-                                    </div>
-                                </template>
-                            </fieldset>
-                            <div v-if="!editMode" class="fieldsetFooter" :class="!pods.customInitContainers.length && 'topBorder'">
-                                <a 
-                                    class="addRow"
-                                    @click="pods.customInitContainers.push({
-                                        name: null,
-                                        image: null,
-                                        imagePullPolicy: null,
-                                        args: [null],
-                                        command: [null],
-                                        workingDir: null,
-                                        env: [ { name: null, value: null } ],
-                                        ports: [{
-                                            containerPort: null,
-                                            hostIP: null,
-                                            hostPort: null,
-                                            name: null,
-                                            protocol: null
-                                        }],
-                                        volumeMounts: [{
-                                            mountPath: null,
-                                            mountPropagation: null,
-                                            name: null,
-                                            readOnly: false,
-                                            subPath: null,
-                                            subPathExpr: null,
-                                        }]
-                                    })"
-                                >
-                                    Add Init Container
-                                </a>
-                            </div>
-                        </div>
-
-                        <br/><br/><br/>
-
-                    </template>
-
-                    <template v-if="!editMode || pods.customContainers.length">
-                        <div class="header">
-                            <h3 for="spec.pods.customContainers">
-                                Custom Containers
-                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers')"></span>
-                            </h3>
-                        </div>
-                        <p>A list of custom application containers that run within the cluster’s Pods</p>
-
-                        <br/>
-                        
-                        <div class="repeater">
-                            <fieldset
-                                v-if="pods.customContainers.length"
-                                data-fieldset="spec.pods.customContainers"
-                            >
-                                <template v-for="(container, index) in pods.customContainers">
-                                    <div class="section" :key="index" :data-field="'spec.pods.customContainers[' + index + ']'">
-                                        <div class="header">
-                                            <h4>Container #{{ index + 1 }}{{ !isNull(container.name) ? (': ' + container.name) : '' }}</h4>
-                                            <a v-if="!editMode" class="addRow delete" @click="spliceArray(pods.customContainers, index)">Delete</a>
-                                        </div>
-                                                        
-                                        <div class="row-50">
-                                            <div class="col">
-                                                <label>Name</label>
-                                                <input :disabled="editMode" :required="!isNull(container.image) || !isNull(container.imagePullPolicy) || !isNull(container.workingDir)" v-model="container.name" autocomplete="off" :data-field="'spec.pods.customContainers[' + index + '].name'">
-                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.name')"></span>
-                                            </div>
-
-                                            <div class="col">
-                                                <label>Image</label>
-                                                <input v-model="container.image" autocomplete="off" :data-field="'spec.pods.customContainers[' + index + '].image'">
-                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.image')"></span>
-                                            </div>
-
-                                            <div class="col">
-                                                <label>Image Pull Policy</label>
-                                                <input :disabled="editMode" v-model="container.imagePullPolicy" autocomplete="off" :data-field="'spec.pods.customContainers[' + index + '].imagePullPolicy'">
-                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.imagePullPolicy')"></span>
-                                            </div>
-
-                                            <div class="col">
-                                                <label>Working Directory</label>
-                                                <input :disabled="editMode" v-model="container.workingDir" autocomplete="off" :data-field="'spec.pods.customContainers[' + index + '].workingDir'">
-                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.workingDir')"></span>
-                                            </div>
-
-                                            <div class="col repeater" v-if="!editMode || container.hasOwnProperty('args')">
-                                                <fieldset :data-field="'spec.pods.customContainers[' + index + '].args'">
-                                                    <div class="header" :class="[container.args.length ? 'marginBottom' : 'no-margin' ]">
-                                                        <h5 :for="'spec.pods.customContainers[' + index + '].args'">
-                                                            Arguments
-                                                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.args')"></span> 
-                                                        </h5>
-                                                    </div>
-                                                    <template v-for="(arg, argIndex) in container.args">
-                                                        <div :key="'arg-' + argIndex" class="inputContainer" :class="(container.args.length !== (argIndex + 1)) && 'marginBottom'">
-                                                            <input 
-                                                                autocomplete="off" 
-                                                                :disabled="editMode"
-                                                                :key="'arg-' + argIndex" 
-                                                                v-model="container.args[argIndex]" 
-                                                                :data-field="'spec.pods.customContainers[' + index + '].args[' + argIndex + ']'"
-                                                            >
-                                                            <a v-if="!editMode" class="addRow delete topRight" @click="spliceArray(container.args, argIndex)">Delete</a>
-                                                        </div>
-                                                    </template>
-                                                </fieldset>
-                                                <div class="fieldsetFooter" v-if="!editMode">
-                                                    <a class="addRow" @click="container.args.push(null)">Add Argument</a>
-                                                </div>
-                                            </div>
-
-                                            <div class="col repeater" v-if="!editMode || container.hasOwnProperty('command')">
-                                                <fieldset :data-field="'spec.pods.customContainers[' + index + '].command'">
-                                                    <div class="header" :class="[container.command.length ? 'marginBottom' : 'no-margin' ]">
-                                                        <h5 :for="'spec.pods.customContainers[' + index + '].command'">
-                                                            Command
-                                                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.command')"></span> 
-                                                        </h5>
-                                                    </div>
-                                                    <template v-for="(command, commandIndex) in container.command">
-                                                        <div :key="'command-' + commandIndex" class="inputContainer" :class="(container.command.length !== (commandIndex + 1)) && 'marginBottom'">
-                                                            <input 
-                                                                autocomplete="off" 
-                                                                :disabled="editMode"
-                                                                :key="'command-' + commandIndex" 
-                                                                v-model="container.command[commandIndex]" 
-                                                                :data-field="'spec.pods.customContainers[' + index + '].command[' + commandIndex + ']'"
-                                                            >
-                                                            <a v-if="!editMode" class="addRow delete topRight" @click="spliceArray(container.command, commandIndex)">Delete</a>
-                                                        </div>
-                                                    </template>
-                                                </fieldset>
-                                                <div class="fieldsetFooter" v-if="!editMode">
-                                                    <a class="addRow" @click="container.command.push(null)">Add Command</a>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div class="repeater marginBottom marginTop" v-if="!editMode || container.hasOwnProperty('env')">
-                                            <fieldset :data-field="'spec.pods.customContainers[' + index + '].env'">
-                                                <div class="header">
-                                                    <h5 :for="'spec.pods.customContainers[' + index + '].env'">
-                                                        Environment Variables
-                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.env')"></span> 
+                                        <div class="col repeater">
+                                            <fieldset :data-field="'spec.pods.customInitContainers[' + index + '].command'">
+                                                <div class="header" :class="[(container.hasOwnProperty('command') && container.command.length) ? 'marginBottom' : 'no-margin' ]">
+                                                    <h5 :for="'spec.pods.customInitContainers[' + index + '].command'">
+                                                        Command
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.command')"></span> 
                                                     </h5>
                                                 </div>
-                                                <div class="variable" v-if="container.env.length">
-                                                    <div class="row" v-for="(env, envIndex) in container.env" :data-field="'spec.pods.customContainers[' + index + '].env[' + envIndex + ']'">
-                                                        <label>Name</label>
-                                                        <input :required="!isNull(env.value)" :disabled="editMode" class="label" v-model="env.name" autocomplete="off" :data-field="'spec.pods.customContainers[' + index + '].env[' + envIndex + '].name'">
+                                                <template v-for="(command, commandIndex) in container.command">
+                                                    <div :key="'command-' + commandIndex" class="inputContainer" :class="((container.hasOwnProperty('command') && container.command.length) !== (commandIndex + 1)) && 'marginBottom'">
+                                                        <input 
+                                                            autocomplete="off" 
+                                                            :key="'command-' + commandIndex" 
+                                                            v-model="container.command[commandIndex]" 
+                                                            :data-field="'spec.pods.customInitContainers[' + index + '].command[' + commandIndex + ']'"
+                                                        >
+                                                        <a class="addRow delete topRight" @click="spliceArray(container.command, commandIndex)">Delete</a>
+                                                    </div>
+                                                </template>
+                                            </fieldset>
+                                            <div class="fieldsetFooter">
+                                                <a class="addRow" @click="!container.hasOwnProperty('command') && (container['command'] = []); container.command.push(null)">Add Command</a>
+                                            </div>
+                                        </div>
+                                    </div>
 
-                                                        <span class="eqSign"></span>
+                                    <div class="repeater marginBottom marginTop">
+                                        <fieldset :data-field="'spec.pods.customInitContainers[' + index + '].env'">
+                                            <div class="header" :class="[(container.hasOwnProperty('env') && container.env.length) ? 'marginBottom' : 'no-margin' ]">
+                                                <h5 :for="'spec.pods.customInitContainers[' + index + '].env'">
+                                                    Environment Variables
+                                                    <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.env')"></span> 
+                                                </h5>
+                                            </div>
+                                            <div class="variable" v-if="(container.hasOwnProperty('env') && container.env.length)">
+                                                <div class="row" v-for="(env, envIndex) in container.env" :data-field="'spec.pods.customInitContainers[' + index + '].env[' + envIndex + ']'">
+                                                    <label>Name</label>
+                                                    <input :required="!isNull(env.value)" class="label" v-model="env.name" autocomplete="off" :data-field="'spec.pods.customInitContainers[' + index + '].env[' + envIndex + '].name'">
 
-                                                        <label>Value</label>
-                                                        <input :disabled="editMode" class="labelValue" v-model="env.value" autocomplete="off" :data-field="'spec.pods.customContainers[' + index + '].env[' + envIndex + '].value'">
+                                                    <span class="eqSign"></span>
 
-                                                        <a v-if="!editMode" class="addRow delete" @click="spliceArray(container.env, envIndex)">Delete</a>
+                                                    <label>Value</label>
+                                                    <input class="labelValue" v-model="env.value" autocomplete="off" :data-field="'spec.pods.customInitContainers[' + index + '].env[' + envIndex + '].value'">
+
+                                                    <a class="addRow delete" @click="spliceArray(container.env, envIndex)">Delete</a>
+                                                </div>
+                                            </div>
+                                        </fieldset>
+                                        <div class="fieldsetFooter">
+                                            <a class="addRow" @click="!container.hasOwnProperty('env') && (container['env'] = []); container.env.push({ 
+                                                name: null,
+                                                value: null
+                                            })">
+                                                Add Variable
+                                            </a>
+                                        </div>
+                                    </div>
+
+                                    <br/>
+                                    
+                                    <div class="header">
+                                        <h5>
+                                            Ports
+                                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.ports')"></span>
+                                        </h5>
+                                    </div>
+
+                                    <div class="repeater marginBottom">
+                                        <fieldset
+                                            class="noPaddingBottom"
+                                            data-field="spec.pods.customInitContainers.ports"
+                                            v-if="(container.hasOwnProperty('ports') && container.ports.length)"
+                                        >
+                                            <div class="section" v-for="(port, portIndex) in container.ports" :data-field="'spec.pods.customInitContainers[' + index + '].ports[' + portIndex + ']'">
+                                                <div class="header">
+                                                    <h6>Port #{{ portIndex + 1 }}{{ !isNull(port.name) ? (': ' + port.name) : '' }}</h6>
+                                                    <a class="addRow delete" @click="spliceArray(container.ports, portIndex)">Delete</a>
+                                                </div>
+
+                                                <div class="row-50">
+                                                    <div class="col">
+                                                        <label for="spec.pods.customInitContainers.ports.name">Name</label>  
+                                                        <input v-model="port.name" :data-field="'spec.pods.customInitContainers[' + index + '].ports[' + portIndex + '].name'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.ports.items.properties.name')"></span>
+                                                    </div>
+                                                    <div class="col">
+                                                        <label for="spec.pods.customInitContainers.ports.hostIP">Host IP</label>  
+                                                        <input v-model="port.hostIP" :data-field="'spec.pods.customInitContainers[' + index + '].ports[' + portIndex + '].hostIP'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.ports.items.properties.hostIP')"></span>
+                                                    </div>
+                                                    <div class="col">
+                                                        <label for="spec.pods.customInitContainers.ports.hostPort">Host Port</label>  
+                                                        <input type="number" v-model="port.hostPort" :data-field="'spec.pods.customInitContainers[' + index + '].ports[' + portIndex + '].hostPort'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.ports.items.properties.hostPort')"></span>
+                                                    </div>
+                                                    <div class="col">
+                                                        <label for="spec.pods.customInitContainers.ports.containerPort">Container Port</label>  
+                                                        <input type="number" v-model="port.containerPort" :data-field="'spec.pods.customInitContainers[' + index + '].ports[' + portIndex + '].containerPort'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.ports.items.properties.containerPort')"></span>
+                                                    </div>
+                                                    <div class="col">
+                                                        <label for="spec.pods.customInitContainers.ports.protocol">Protocol</label>  
+                                                        <select v-model="port.protocol" :data-field="'spec.pods.customInitContainers[' + index + '].ports[' + portIndex + '].protocol'">
+                                                            <option :value="nullVal" selected>Choose one...</option>
+                                                            <option>TCP</option>
+                                                            <option>UDP</option>
+                                                            <option>SCTP</option>
+                                                        </select>
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.ports.items.properties.protocol')"></span>
                                                     </div>
                                                 </div>
+                                            </div>
+                                        </fieldset>
+                                        <div class="fieldsetFooter" :class="(!container.hasOwnProperty('ports') || (container.hasOwnProperty('ports') && !container.ports.length)) && 'topBorder'">
+                                            <a class="addRow" @click="!container.hasOwnProperty('ports') && (container['ports'] = []); container.ports.push({
+                                                name: null,
+                                                hostIP: null,
+                                                hostPort: null,
+                                                containerPort: null,
+                                                protocol: null
+                                            })">
+                                                Add Port
+                                            </a>
+                                        </div>
+                                    </div>
+
+                                    <br/>
+                                    
+                                    <div class="header">
+                                        <h5>
+                                            Volume Mounts
+                                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.volumeMounts')"></span>
+                                        </h5>
+                                    </div>
+
+                                    <div class="repeater">
+                                        <fieldset
+                                            class="noPaddingBottom"
+                                            :data-field="'spec.pods.customInitContainers[' + index + '].volumeMounts'"
+                                            v-if="container.hasOwnProperty('volumeMounts') && container.volumeMounts.length"
+                                        >
+                                            <div class="section" v-for="(mount, mountIndex) in container.volumeMounts" :data-field="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + ']'">
+                                                <div class="header">
+                                                    <h6>Mount #{{ mountIndex + 1 }}{{ !isNull(mount.name) ? (': ' + mount.name) : '' }}</h6>
+                                                    <a class="addRow delete" @click="spliceArray(container.volumeMounts, mountIndex)">Delete</a>
+                                                </div>
+
+                                                <div class="row-50">
+                                                    <div class="col">
+                                                        <label for="spec.pods.customInitContainers.volumeMounts.name">Name</label>  
+                                                        <input :required="!isNull(mount.mountPath)" v-model="mount.name" :data-field="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + '].name'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.volumeMounts.items.properties.name')"></span>
+                                                    </div>
+                                                    <div class="col">                    
+                                                        <label :for="'spec.pods.customInitContainers[' + index + '].volumeMounts.readOnly'">
+                                                            Read Only
+                                                        </label>  
+                                                        <label :for="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + '].readOnly'" class="switch yes-no">
+                                                            Enable
+                                                            <input type="checkbox" :id="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + '].readOnly'" v-model="mount.readOnly" data-switch="NO" :data-field="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + '].readOnly'">
+                                                        </label>
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.volumeMounts.items.properties.readOnly')"></span>
+                                                    </div>
+                                                    <div class="col">
+                                                        <label for="spec.pods.customInitContainers.volumeMounts.mountPath">Mount Path</label>  
+                                                        <input :required="!isNull(mount.name)" v-model="mount.mountPath" :data-field="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + '].mountPath'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.volumeMounts.items.properties.mountPath')"></span>
+                                                    </div>
+                                                    <div class="col">
+                                                        <label for="spec.pods.customInitContainers.volumeMounts.mountPropagation">Mount Propagation</label>  
+                                                        <input v-model="mount.mountPropagation" :data-field="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + '].mountPropagation'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.volumeMounts.items.properties.mountPropagation')"></span>
+                                                    </div>
+                                                    <div class="col">
+                                                        <label for="spec.pods.customInitContainers.volumeMounts.subPath">Sub Path</label>  
+                                                        <input :disabled="(mount.hasOwnProperty('subPathExpr') && !isNull(mount.subPathExpr))" v-model="mount.subPath" :data-field="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + '].subPath'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.volumeMounts.items.properties.subPath')"></span>
+                                                    </div>
+                                                    <div class="col">
+                                                        <label for="spec.pods.customInitContainers.volumeMounts.subPathExpr">Sub Path Expr</label>  
+                                                        <input :disabled="(mount.hasOwnProperty('subPath') && !isNull(mount.subPath))" v-model="mount.subPathExpr" :data-field="'spec.pods.customInitContainers[' + index + '].volumeMounts[' + mountIndex + '].subPathExpr'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customInitContainers.volumeMounts.items.properties.subPathExpr')"></span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </fieldset>
+                                        <div class="fieldsetFooter" :class="(!container.hasOwnProperty('volumeMounts') || (container.hasOwnProperty('volumeMounts') && !container.volumeMounts.length)) && 'topBorder'">
+                                            <a class="addRow" @click="!container.hasOwnProperty('volumeMounts') && (container['volumeMounts'] = []); container.volumeMounts.push({
+                                                mountPath: null,
+                                                mountPropagation: null,
+                                                name: null,
+                                                readOnly: false,
+                                                subPath: null,
+                                                subPathExpr: null
+                                            })">
+                                                Add Volume
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </fieldset>
+                        <div class="fieldsetFooter" :class="!pods.customInitContainers.length && 'topBorder'">
+                            <a 
+                                class="addRow"
+                                @click="pods.customInitContainers.push({
+                                    name: null,
+                                    image: null,
+                                    imagePullPolicy: null,
+                                    args: [null],
+                                    command: [null],
+                                    workingDir: null,
+                                    env: [ { name: null, value: null } ],
+                                    ports: [{
+                                        containerPort: null,
+                                        hostIP: null,
+                                        hostPort: null,
+                                        name: null,
+                                        protocol: null
+                                    }],
+                                    volumeMounts: [{
+                                        mountPath: null,
+                                        mountPropagation: null,
+                                        name: null,
+                                        readOnly: false,
+                                        subPath: null,
+                                        subPathExpr: null,
+                                    }]
+                                })"
+                            >
+                                Add Init Container
+                            </a>
+                        </div>
+                    </div>
+
+                    <br/><br/><br/>
+
+                    <h3 for="spec.pods.customContainers">
+                        Custom Containers
+                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers')"></span>
+                    </h3>
+                    <p>A list of custom application containers that run within the cluster’s Pods</p>
+
+                    <br/>
+                    
+                    <div class="repeater customContainers">
+                        <fieldset
+                            v-if="pods.customContainers.length"
+                            data-fieldset="spec.pods.customContainers"
+                        >
+                            <template v-for="(container, index) in pods.customContainers">
+                                <div class="section" :key="index" :data-field="'spec.pods.customContainers[' + index + ']'">
+                                    <div class="header">
+                                        <h4>Container #{{ index + 1 }}{{ !isNull(container.name) ? (': ' + container.name) : '' }}</h4>
+                                        <a class="addRow delete" @click="spliceArray(pods.customContainers, index)">Delete</a>
+                                    </div>
+                                                    
+                                    <div class="row-50">
+                                        <div class="col">
+                                            <label>Name</label>
+                                            <input :required="!isNull(container.image) || !isNull(container.imagePullPolicy) || !isNull(container.workingDir)" v-model="container.name" autocomplete="off" :data-field="'spec.pods.customContainers[' + index + '].name'">
+                                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.name')"></span>
+                                        </div>
+
+                                        <div class="col">
+                                            <label>Image</label>
+                                            <input v-model="container.image" autocomplete="off" :data-field="'spec.pods.customContainers[' + index + '].image'">
+                                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.image')"></span>
+                                        </div>
+
+                                        <div class="col">
+                                            <label>Image Pull Policy</label>
+                                            <input v-model="container.imagePullPolicy" autocomplete="off" :data-field="'spec.pods.customContainers[' + index + '].imagePullPolicy'">
+                                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.imagePullPolicy')"></span>
+                                        </div>
+
+                                        <div class="col">
+                                            <label>Working Directory</label>
+                                            <input v-model="container.workingDir" autocomplete="off" :data-field="'spec.pods.customContainers[' + index + '].workingDir'">
+                                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.workingDir')"></span>
+                                        </div>
+
+                                        <div class="col repeater" >
+                                            <fieldset :data-field="'spec.pods.customContainers[' + index + '].args'">
+                                                <div class="header" :class="[(container.hasOwnProperty('args') && container.args.length) ? 'marginBottom' : 'no-margin' ]">
+                                                    <h5 :for="'spec.pods.customContainers[' + index + '].args'">
+                                                        Arguments
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.args')"></span> 
+                                                    </h5>
+                                                </div>
+                                                <template v-for="(arg, argIndex) in container.args">
+                                                    <div :key="'arg-' + argIndex" class="inputContainer" :class="(container.hasOwnProperty('args') && (container.args.length !== (argIndex + 1))) && 'marginBottom'">
+                                                        <input 
+                                                            autocomplete="off" 
+                                                            :key="'arg-' + argIndex" 
+                                                            v-model="container.args[argIndex]" 
+                                                            :data-field="'spec.pods.customContainers[' + index + '].args[' + argIndex + ']'"
+                                                        >
+                                                        <a class="addRow delete topRight" @click="spliceArray(container.args, argIndex)">Delete</a>
+                                                    </div>
+                                                </template>
                                             </fieldset>
-                                            <div class="fieldsetFooter" v-if="!editMode">
-                                                <a class="addRow" @click="container.env.push({ name: null, value: null})">Add Variable</a>
+                                            <div class="fieldsetFooter">
+                                                <a class="addRow" @click="!container.hasOwnProperty('args') && (container['args'] = []); container.args.push(null)">Add Argument</a>
                                             </div>
                                         </div>
 
-                                        <br/>
-                                        
-                                        <template v-if="!editMode || container.hasOwnProperty('ports')">
-                                            <div class="header">
-                                                <h5>
-                                                    Ports
-                                                    <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.ports')"></span>
-                                                </h5>
-                                            </div>
-
-                                            <div class="repeater marginBottom">
-                                                <fieldset
-                                                    class="noPaddingBottom"
-                                                    data-field="spec.pods.customContainers.ports"
-                                                    v-if="container.ports.length"
-                                                >
-                                                    <div class="section" v-for="(port, portIndex) in container.ports" :data-field="'spec.pods.customContainers[' + index + '].ports[' + portIndex + ']'">
-                                                        <div class="header">
-                                                            <h6>Port #{{ portIndex + 1 }}{{ !isNull(port.name) ? (': ' + port.name) : '' }}</h6>
-                                                            <a v-if="!editMode" class="addRow delete" @click="spliceArray(container.ports, portIndex)">Delete</a>
-                                                        </div>
-
-                                                        <div class="row-50">
-                                                            <div class="col">
-                                                                <label for="spec.pods.customContainers.ports.name">Name</label>  
-                                                                <input :disabled="editMode" v-model="port.name" :data-field="'spec.pods.customContainers[' + index + '].ports[' + portIndex + '].name'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.ports.items.properties.name')"></span>
-                                                            </div>
-                                                            <div class="col">
-                                                                <label for="spec.pods.customContainers.ports.hostIP">Host IP</label>  
-                                                                <input :disabled="editMode" v-model="port.hostIP" :data-field="'spec.pods.customContainers[' + index + '].ports[' + portIndex + '].hostIP'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.ports.items.properties.hostIP')"></span>
-                                                            </div>
-                                                            <div class="col">
-                                                                <label for="spec.pods.customContainers.ports.hostPort">Host Port</label>  
-                                                                <input :disabled="editMode" type="number" v-model="port.hostPort" :data-field="'spec.pods.customContainers[' + index + '].ports[' + portIndex + '].hostPort'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.ports.items.properties.hostPort')"></span>
-                                                            </div>
-                                                            <div class="col">
-                                                                <label for="spec.pods.customContainers.ports.containerPort">Container Port</label>  
-                                                                <input :disabled="editMode" type="number" v-model="port.containerPort" :data-field="'spec.pods.customContainers[' + index + '].ports[' + portIndex + '].containerPort'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.ports.items.properties.containerPort')"></span>
-                                                            </div>
-                                                            <div class="col">
-                                                                <label for="spec.pods.customContainers.ports.protocol">Protocol</label>  
-                                                                <select :disabled="editMode" v-model="port.protocol" :data-field="'spec.pods.customContainers[' + index + '].ports[' + portIndex + '].protocol'">
-                                                                    <option :value="nullVal" selected>Choose one...</option>
-                                                                    <option>TCP</option>
-                                                                    <option>UDP</option>
-                                                                    <option>SCTP</option>
-                                                                </select>
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.ports.items.properties.protocol')"></span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </fieldset>
-                                                <div v-if="!editMode" class="fieldsetFooter" :class="(container.hasOwnProperty('ports') && !container.ports.length) && 'topBorder'">
-                                                    <a class="addRow" @click="!container.hasOwnProperty('ports') && (container['ports'] = []); container.ports.push({
-                                                        name: null,
-                                                        hostIP: null,
-                                                        hostPort: null,
-                                                        containerPort: null,
-                                                        protocol: null
-                                                    })">
-                                                        Add Port
-                                                    </a>
+                                        <div class="col repeater">
+                                            <fieldset :data-field="'spec.pods.customContainers[' + index + '].command'">
+                                                <div class="header" :class="[(container.hasOwnProperty('command') && container.command.length) ? 'marginBottom' : 'no-margin' ]">
+                                                    <h5 :for="'spec.pods.customContainers[' + index + '].command'">
+                                                        Command
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.command')"></span> 
+                                                    </h5>
                                                 </div>
-                                            </div>
-                                            <br/>
-                                        </template>
-                                        
-                                        <template v-if="!editMode || container.hasOwnProperty('volumeMounts')">
-                                            <div class="header">
-                                                <h5>
-                                                    Volume Mounts
-                                                    <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.volumeMounts')"></span>
-                                                </h5>
-                                            </div>
-
-                                            <div class="repeater">
-                                                <fieldset
-                                                    class="noPaddingBottom"
-                                                    :data-field="'spec.pods.customContainers[' + index + '].volumeMounts'"
-                                                    v-if="container.hasOwnProperty('volumeMounts') && container.volumeMounts.length"
-                                                >
-                                                    <div class="section" v-for="(mount, mountIndex) in container.volumeMounts" :data-field="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + ']'">
-                                                        <div class="header">
-                                                            <h6>Mount #{{ mountIndex + 1 }}{{ !isNull(mount.name) ? (': ' + mount.name) : '' }}</h6>
-                                                            <a v-if="!editMode" class="addRow delete" @click="spliceArray(container.volumeMounts, mountIndex)">Delete</a>
-                                                        </div>
-
-                                                        <div class="row-50">
-                                                            <div class="col">
-                                                                <label for="spec.pods.customContainers.volumeMounts.name">Name</label>  
-                                                                <input :required="!isNull(mount.mountPath)" :disabled="editMode" v-model="mount.name" :data-field="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + '].name'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.volumeMounts.items.properties.name')"></span>
-                                                            </div>
-                                                            <div class="col">                    
-                                                                <label :for="'spec.pods.customContainers[' + index + '].volumeMounts.readOnly'">
-                                                                    Read Only
-                                                                </label>  
-                                                                <label :disabled="editMode" :for="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + '].readOnly'" class="switch yes-no">
-                                                                    Enable
-                                                                    <input :disabled="editMode" type="checkbox" :id="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + '].readOnly'" v-model="mount.readOnly" data-switch="NO" :data-field="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + '].readOnly'">
-                                                                </label>
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.volumeMounts.items.properties.readOnly')"></span>
-                                                            </div>
-                                                            <div class="col">
-                                                                <label for="spec.pods.customContainers.volumeMounts.mountPath">Mount Path</label>  
-                                                                <input :required="!isNull(mount.name)" :disabled="editMode" v-model="mount.mountPath" :data-field="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + '].mountPath'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.volumeMounts.items.properties.mountPath')"></span>
-                                                            </div>
-                                                            <div class="col">
-                                                                <label for="spec.pods.customContainers.volumeMounts.mountPropagation">Mount Propagation</label>  
-                                                                <input :disabled="editMode" v-model="mount.mountPropagation" :data-field="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + '].mountPropagation'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.volumeMounts.items.properties.mountPropagation')"></span>
-                                                            </div>
-                                                            <div class="col">
-                                                                <label for="spec.pods.customContainers.volumeMounts.subPath">Sub Path</label>  
-                                                                <input :disabled="editMode || (mount.hasOwnProperty('subPathExpr') && !isNull(mount.subPathExpr))" v-model="mount.subPath" :data-field="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + '].subPath'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.volumeMounts.items.properties.subPath')"></span>
-                                                            </div>
-                                                            <div class="col">
-                                                                <label for="spec.pods.customContainers.volumeMounts.subPathExpr">Sub Path Expr</label>  
-                                                                <input :disabled="editMode || (mount.hasOwnProperty('subPath') && !isNull(mount.subPath))" v-model="mount.subPathExpr" :data-field="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + '].subPathExpr'" autocomplete="off">
-                                                                <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.volumeMounts.items.properties.subPathExpr')"></span>
-                                                            </div>
-                                                        </div>
+                                                <template v-for="(command, commandIndex) in container.command">
+                                                    <div :key="'command-' + commandIndex" class="inputContainer" :class="((container.hasOwnProperty('command') && container.command.length) !== (commandIndex + 1)) && 'marginBottom'">
+                                                        <input 
+                                                            autocomplete="off" 
+                                                            :key="'command-' + commandIndex" 
+                                                            v-model="container.command[commandIndex]" 
+                                                            :data-field="'spec.pods.customContainers[' + index + '].command[' + commandIndex + ']'"
+                                                        >
+                                                        <a class="addRow delete topRight" @click="spliceArray(container.command, commandIndex)">Delete</a>
                                                     </div>
-                                                </fieldset>
-                                                <div v-if="!editMode" class="fieldsetFooter" :class="(container.hasOwnProperty('volumeMounts') && !container.volumeMounts.length) && 'topBorder'">
-                                                    <a class="addRow" @click="!container.hasOwnProperty('volumeMounts') && (container['volumeMounts'] = []); container.volumeMounts.push({
-                                                        mountPath: null,
-                                                        mountPropagation: null,
-                                                        name: null,
-                                                        readOnly: false,
-                                                        subPath: null,
-                                                        subPathExpr: null
-                                                    })">
-                                                        Add Volume
-                                                    </a>
-                                                </div>
+                                                </template>
+                                            </fieldset>
+                                            <div class="fieldsetFooter">
+                                                <a class="addRow" @click="!container.hasOwnProperty('command') && (container['command'] = []); container.command.push(null)">Add Command</a>
                                             </div>
-                                        </template>
+                                        </div>
                                     </div>
-                                </template>
-                            </fieldset>
-                            <div v-if="!editMode" class="fieldsetFooter" :class="!pods.customContainers.length && 'topBorder'">
-                                <a 
-                                    class="addRow"
-                                    @click="pods.customContainers.push({
+
+                                    <div class="repeater marginBottom marginTop">
+                                        <fieldset :data-field="'spec.pods.customContainers[' + index + '].env'">
+                                            <div class="header" :class="[(container.hasOwnProperty('env') && container.env.length) ? 'marginBottom' : 'no-margin' ]">
+                                                <h5 :for="'spec.pods.customContainers[' + index + '].env'">
+                                                    Environment Variables
+                                                    <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.env')"></span> 
+                                                </h5>
+                                            </div>
+                                            <div class="variable" v-if="(container.hasOwnProperty('env') && container.env.length)">
+                                                <div class="row" v-for="(env, envIndex) in container.env" :data-field="'spec.pods.customContainers[' + index + '].env[' + envIndex + ']'">
+                                                    <label>Name</label>
+                                                    <input :required="!isNull(env.value)" class="label" v-model="env.name" autocomplete="off" :data-field="'spec.pods.customContainers[' + index + '].env[' + envIndex + '].name'">
+
+                                                    <span class="eqSign"></span>
+
+                                                    <label>Value</label>
+                                                    <input class="labelValue" v-model="env.value" autocomplete="off" :data-field="'spec.pods.customContainers[' + index + '].env[' + envIndex + '].value'">
+
+                                                    <a class="addRow delete" @click="spliceArray(container.env, envIndex)">Delete</a>
+                                                </div>
+                                            </div>
+                                        </fieldset>
+                                        <div class="fieldsetFooter">
+                                            <a class="addRow" @click="!container.hasOwnProperty('env') && (container['env'] = []); container.env.push({ 
+                                                name: null,
+                                                value: null
+                                            })">
+                                                Add Variable
+                                            </a>
+                                        </div>
+                                    </div>
+
+                                    <br/>
+                                    
+                                    <div class="header">
+                                        <h5>
+                                            Ports
+                                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.ports')"></span>
+                                        </h5>
+                                    </div>
+
+                                    <div class="repeater marginBottom">
+                                        <fieldset
+                                            class="noPaddingBottom"
+                                            data-field="spec.pods.customContainers.ports"
+                                            v-if="(container.hasOwnProperty('ports') && container.ports.length)"
+                                        >
+                                            <div class="section" v-for="(port, portIndex) in container.ports" :data-field="'spec.pods.customContainers[' + index + '].ports[' + portIndex + ']'">
+                                                <div class="header">
+                                                    <h6>Port #{{ portIndex + 1 }}{{ !isNull(port.name) ? (': ' + port.name) : '' }}</h6>
+                                                    <a class="addRow delete" @click="spliceArray(container.ports, portIndex)">Delete</a>
+                                                </div>
+
+                                                <div class="row-50">
+                                                    <div class="col">
+                                                        <label for="spec.pods.customContainers.ports.name">Name</label>  
+                                                        <input v-model="port.name" :data-field="'spec.pods.customContainers[' + index + '].ports[' + portIndex + '].name'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.ports.items.properties.name')"></span>
+                                                    </div>
+                                                    <div class="col">
+                                                        <label for="spec.pods.customContainers.ports.hostIP">Host IP</label>  
+                                                        <input v-model="port.hostIP" :data-field="'spec.pods.customContainers[' + index + '].ports[' + portIndex + '].hostIP'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.ports.items.properties.hostIP')"></span>
+                                                    </div>
+                                                    <div class="col">
+                                                        <label for="spec.pods.customContainers.ports.hostPort">Host Port</label>  
+                                                        <input type="number" v-model="port.hostPort" :data-field="'spec.pods.customContainers[' + index + '].ports[' + portIndex + '].hostPort'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.ports.items.properties.hostPort')"></span>
+                                                    </div>
+                                                    <div class="col">
+                                                        <label for="spec.pods.customContainers.ports.containerPort">Container Port</label>  
+                                                        <input type="number" v-model="port.containerPort" :data-field="'spec.pods.customContainers[' + index + '].ports[' + portIndex + '].containerPort'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.ports.items.properties.containerPort')"></span>
+                                                    </div>
+                                                    <div class="col">
+                                                        <label for="spec.pods.customContainers.ports.protocol">Protocol</label>  
+                                                        <select v-model="port.protocol" :data-field="'spec.pods.customContainers[' + index + '].ports[' + portIndex + '].protocol'">
+                                                            <option :value="nullVal" selected>Choose one...</option>
+                                                            <option>TCP</option>
+                                                            <option>UDP</option>
+                                                            <option>SCTP</option>
+                                                        </select>
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.ports.items.properties.protocol')"></span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </fieldset>
+                                        <div class="fieldsetFooter" :class="(!container.hasOwnProperty('ports') || (container.hasOwnProperty('ports') && !container.ports.length)) && 'topBorder'">
+                                            <a class="addRow" @click="!container.hasOwnProperty('ports') && (container['ports'] = []); container.ports.push({
+                                                name: null,
+                                                hostIP: null,
+                                                hostPort: null,
+                                                containerPort: null,
+                                                protocol: null
+                                            })">
+                                                Add Port
+                                            </a>
+                                        </div>
+                                    </div>
+
+                                    <br/>
+                                    
+                                    <div class="header">
+                                        <h5>
+                                            Volume Mounts
+                                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.volumeMounts')"></span>
+                                        </h5>
+                                    </div>
+
+                                    <div class="repeater">
+                                        <fieldset
+                                            class="noPaddingBottom"
+                                            :data-field="'spec.pods.customContainers[' + index + '].volumeMounts'"
+                                            v-if="container.hasOwnProperty('volumeMounts') && container.volumeMounts.length"
+                                        >
+                                            <div class="section" v-for="(mount, mountIndex) in container.volumeMounts" :data-field="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + ']'">
+                                                <div class="header">
+                                                    <h6>Mount #{{ mountIndex + 1 }}{{ !isNull(mount.name) ? (': ' + mount.name) : '' }}</h6>
+                                                    <a class="addRow delete" @click="spliceArray(container.volumeMounts, mountIndex)">Delete</a>
+                                                </div>
+
+                                                <div class="row-50">
+                                                    <div class="col">
+                                                        <label for="spec.pods.customContainers.volumeMounts.name">Name</label>  
+                                                        <input :required="!isNull(mount.mountPath)" v-model="mount.name" :data-field="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + '].name'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.volumeMounts.items.properties.name')"></span>
+                                                    </div>
+                                                    <div class="col">                    
+                                                        <label :for="'spec.pods.customContainers[' + index + '].volumeMounts.readOnly'">
+                                                            Read Only
+                                                        </label>  
+                                                        <label :for="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + '].readOnly'" class="switch yes-no">
+                                                            Enable
+                                                            <input type="checkbox" :id="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + '].readOnly'" v-model="mount.readOnly" data-switch="NO" :data-field="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + '].readOnly'">
+                                                        </label>
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.volumeMounts.items.properties.readOnly')"></span>
+                                                    </div>
+                                                    <div class="col">
+                                                        <label for="spec.pods.customContainers.volumeMounts.mountPath">Mount Path</label>  
+                                                        <input :required="!isNull(mount.name)" v-model="mount.mountPath" :data-field="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + '].mountPath'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.volumeMounts.items.properties.mountPath')"></span>
+                                                    </div>
+                                                    <div class="col">
+                                                        <label for="spec.pods.customContainers.volumeMounts.mountPropagation">Mount Propagation</label>  
+                                                        <input v-model="mount.mountPropagation" :data-field="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + '].mountPropagation'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.volumeMounts.items.properties.mountPropagation')"></span>
+                                                    </div>
+                                                    <div class="col">
+                                                        <label for="spec.pods.customContainers.volumeMounts.subPath">Sub Path</label>  
+                                                        <input :disabled="(mount.hasOwnProperty('subPathExpr') && !isNull(mount.subPathExpr))" v-model="mount.subPath" :data-field="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + '].subPath'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.volumeMounts.items.properties.subPath')"></span>
+                                                    </div>
+                                                    <div class="col">
+                                                        <label for="spec.pods.customContainers.volumeMounts.subPathExpr">Sub Path Expr</label>  
+                                                        <input :disabled="(mount.hasOwnProperty('subPath') && !isNull(mount.subPath))" v-model="mount.subPathExpr" :data-field="'spec.pods.customContainers[' + index + '].volumeMounts[' + mountIndex + '].subPathExpr'" autocomplete="off">
+                                                        <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.customContainers.volumeMounts.items.properties.subPathExpr')"></span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </fieldset>
+                                        <div class="fieldsetFooter" :class="(!container.hasOwnProperty('volumeMounts') || (container.hasOwnProperty('volumeMounts') && !container.volumeMounts.length)) && 'topBorder'">
+                                            <a class="addRow" @click="!container.hasOwnProperty('volumeMounts') && (container['volumeMounts'] = []); container.volumeMounts.push({
+                                                mountPath: null,
+                                                mountPropagation: null,
+                                                name: null,
+                                                readOnly: false,
+                                                subPath: null,
+                                                subPathExpr: null
+                                            })">
+                                                Add Volume
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </fieldset>
+                        <div class="fieldsetFooter" :class="!pods.customContainers.length && 'topBorder'">
+                            <a 
+                                class="addRow"
+                                @click="pods.customContainers.push({
+                                    name: null,
+                                    image: null,
+                                    imagePullPolicy: null,
+                                    args: [null],
+                                    command: [null],
+                                    workingDir: null,
+                                    env: [ { name: null, value: null } ],
+                                    ports: [{
+                                        containerPort: null,
+                                        hostIP: null,
+                                        hostPort: null,
                                         name: null,
-                                        image: null,
-                                        imagePullPolicy: null,
-                                        args: [null],
-                                        command: [null],
-                                        workingDir: null,
-                                        env: [ { name: null, value: null } ],
-                                        ports: [{
-                                            containerPort: null,
-                                            hostIP: null,
-                                            hostPort: null,
-                                            name: null,
-                                            protocol: null
-                                        }],
-                                        volumeMounts: [{
-                                            mountPath: null,
-                                            mountPropagation: null,
-                                            name: null,
-                                            readOnly: false,
-                                            subPath: null,
-                                            subPathExpr: null,
-                                        }]
-                                    })"
-                                >
-                                    Add Container
-                                </a>
-                            </div>
+                                        protocol: null
+                                    }],
+                                    volumeMounts: [{
+                                        mountPath: null,
+                                        mountPropagation: null,
+                                        name: null,
+                                        readOnly: false,
+                                        subPath: null,
+                                        subPathExpr: null,
+                                    }]
+                                })"
+                            >
+                                Add Container
+                            </a>
                         </div>
+                    </div>
 
-                        <br/><br/><br/>
-
-                    </template>
+                    <br/><br/><br/>
                 </div>
             </fieldset>
 
@@ -2033,7 +2509,7 @@
                     <div class="row-50">
                         <div class="col">
                             <label for="spec.replication.role">Role</label>
-                             <select v-model="replication.role" required data-field="spec.replication.role">    
+                            <select v-model="replication.role" required data-field="spec.replication.role">    
                                 <option selected>ha-read</option>
                                 <option>ha</option>
                             </select>
@@ -2042,7 +2518,7 @@
 
                         <div class="col">
                             <label for="spec.replication.mode">Mode</label>
-                             <select v-model="replication.mode" required data-field="spec.replication.mode">    
+                            <select v-model="replication.mode" required data-field="spec.replication.mode">    
                                 <option selected>async</option>
                                 <option>sync</option>
                                 <option>strict-sync</option>
@@ -2166,7 +2642,7 @@
                         </div>
                     </div>
 
-                    <div class="repeater sidecars">
+                    <div class="repeater sidecars primary">
                         <div class="header">
                             <h4 for="spec.postgresServices.primary.customPorts">
                                 Custom Ports
@@ -2278,7 +2754,7 @@
                         </div>
                     </div>
 
-                    <div class="repeater sidecars">
+                    <div class="repeater sidecars replica">
                         <div class="header">
                             <h4 for="spec.postgresServices.replicas.customPorts">
                                 Custom Ports
@@ -2557,7 +3033,7 @@
                 </div>
                 
                 <div class="fields">
-                    <div class="repeater">
+                    <div class="repeater nodeSelector">
                         <div class="header">
                             <h3 for="spec.pods.scheduling.nodeSelector">
                                 Node Selectors
@@ -2593,7 +3069,7 @@
                         </h3>
                     </div>
             
-                    <div class="scheduling repeater">
+                    <div class="scheduling repeater tolerations">
                         <fieldset v-if="tolerations.length" data-field="spec.pods.scheduling.tolerations">
                             <div class="section" v-for="(field, index) in tolerations">
                                 <div class="header">
@@ -2658,7 +3134,7 @@
 
                     <br/><br/>
                     
-                    <div class="scheduling repeater">
+                    <div class="scheduling repeater requiredAffinity">
                         <div class="header">
                             <h4 for="spec.pods.scheduling.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms">
                                 Node Selector Terms
@@ -2678,7 +3154,7 @@
                                             <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.scheduling.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms.items.properties.matchExpressions')"></span> 
                                         </label>
                                     </div>
-                                    <fieldset v-if="requiredAffinityTerm.matchExpressions.length">
+                                    <fieldset v-if="(requiredAffinityTerm.hasOwnProperty('matchExpressions') && requiredAffinityTerm.matchExpressions.length)">
                                         <div class="section" v-for="(expression, expIndex) in requiredAffinityTerm.matchExpressions">
                                             <div class="header">
                                                 <label for="spec.pods.scheduling.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms.items.properties.matchExpressions.items">
@@ -2726,8 +3202,8 @@
                                         </div>
                                     </fieldset>
                                 </fieldset>
-                                <div class="fieldsetFooter" :class="!requiredAffinityTerm.matchExpressions.length && 'topBorder'">
-                                    <a class="addRow" @click="addNodeSelectorRequirement(requiredAffinityTerm.matchExpressions)">Add Expression</a>
+                                <div class="fieldsetFooter" :class="(requiredAffinityTerm.hasOwnProperty('matchExpressions') && !requiredAffinityTerm.matchExpressions.length) && 'topBorder'">
+                                    <a class="addRow" @click="addNodeSelectorRequirement(requiredAffinityTerm, 'matchExpressions')">Add Expression</a>
                                 </div>
 
                                 <fieldset class="affinityMatch noMargin">
@@ -2737,7 +3213,7 @@
                                             <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.scheduling.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms.items.properties.matchFields')"></span> 
                                         </label>
                                     </div>
-                                    <fieldset v-if="requiredAffinityTerm.matchFields.length">
+                                    <fieldset v-if="(requiredAffinityTerm.hasOwnProperty('matchFields') && requiredAffinityTerm.matchFields.length)">
                                         <div class="section" v-for="(field, fieldIndex) in requiredAffinityTerm.matchFields">
                                             <div class="header">
                                                 <label for="spec.pods.scheduling.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms.items.properties.matchFields.items">
@@ -2764,7 +3240,7 @@
                                                 </div>
                                             </div>
 
-                                            <fieldset v-if="field.hasOwnProperty('values') && field.values.length && !['', 'Exists', 'DoesNotExists'].includes(field.operator)" :class="(['Gt', 'Lt'].includes(field.operator)) && 'noRepeater'" class="affinityValues">
+                                            <fieldset v-if="field.hasOwnProperty('values') && field.values.length && !['', 'Exists', 'DoesNotExists'].includes(field.operator)" :class="(['Gt', 'Lt'].includes(field.operator)) && 'noRepeater'" class="affinityValues noMargin">
                                                 <div class="header">
                                                     <label for="spec.pods.scheduling.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms.items.properties.matchFields.items.properties.values">
                                                         {{ !['Gt', 'Lt'].includes(field.operator) ? 'Values' : 'Value' }}
@@ -2785,8 +3261,8 @@
                                         </div>
                                     </fieldset>
                                 </fieldset>
-                                <div class="fieldsetFooter" :class="!requiredAffinityTerm.matchFields.length && 'topBorder'">
-                                    <a class="addRow" @click="addNodeSelectorRequirement(requiredAffinityTerm.matchFields)">Add Field</a>
+                                <div class="fieldsetFooter" :class="(requiredAffinityTerm.hasOwnProperty('matchFields') && !requiredAffinityTerm.matchFields.length) && 'topBorder'">
+                                    <a class="addRow" @click="addNodeSelectorRequirement(requiredAffinityTerm, 'matchFields')">Add Field</a>
                                 </div>
                             </div>
                         </fieldset>
@@ -2806,7 +3282,7 @@
 
                     <br/><br/>
 
-                    <div class="scheduling repeater">
+                    <div class="scheduling repeater preferredAffinity">
                         <div class="header">
                             <h4 for="spec.pods.scheduling.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution.items">
                                 Node Selector Terms
@@ -2826,7 +3302,7 @@
                                             <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.scheduling.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution.items.properties.preference.properties.matchExpressions')"></span>
                                         </label>
                                     </div>
-                                    <fieldset v-if="preferredAffinityTerm.preference.matchExpressions.length">
+                                    <fieldset v-if="(preferredAffinityTerm.preference.hasOwnProperty('matchExpressions') && preferredAffinityTerm.preference.matchExpressions.length)">
                                         <div class="section" v-for="(expression, expIndex) in preferredAffinityTerm.preference.matchExpressions">
                                             <div class="header">
                                                 <label for="spec.pods.scheduling.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution.items.properties.preference.properties.matchExpressions.items">
@@ -2853,7 +3329,7 @@
                                                 </div>
                                             </div>
 
-                                            <fieldset v-if="expression.hasOwnProperty('values') && expression.values.length && !['', 'Exists', 'DoesNotExists'].includes(expression.operator)" :class="(['Gt', 'Lt'].includes(expression.operator)) && 'noRepeater'" class="affinityValues">
+                                            <fieldset v-if="expression.hasOwnProperty('values') && expression.values.length && !['', 'Exists', 'DoesNotExists'].includes(expression.operator)" :class="(['Gt', 'Lt'].includes(expression.operator)) && 'noRepeater'" class="affinityValues noMargin">
                                                 <div class="header">
                                                     <label for="spec.pods.scheduling.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution.items.properties.preference.properties.matchExpressions.items.properties.values">
                                                         {{ !['Gt', 'Lt'].includes(expression.operator) ? 'Values' : 'Value' }}
@@ -2874,8 +3350,8 @@
                                         </div>
                                     </fieldset>
                                 </fieldset>
-                                <div class="fieldsetFooter" :class="!preferredAffinityTerm.preference.matchExpressions.length && 'topBorder'">
-                                    <a class="addRow" @click="addNodeSelectorRequirement(preferredAffinityTerm.preference.matchExpressions)">Add Expression</a>
+                                <div class="fieldsetFooter" :class="(preferredAffinityTerm.preference.hasOwnProperty('matchExpressions') && !preferredAffinityTerm.preference.matchExpressions.length) && 'topBorder'">
+                                    <a class="addRow" @click="addNodeSelectorRequirement(preferredAffinityTerm.preference, 'matchExpressions')">Add Expression</a>
                                 </div>
 
                                 <fieldset class="affinityMatch noMargin">
@@ -2885,7 +3361,7 @@
                                             <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.pods.scheduling.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution.items.properties.preference.properties.matchFields')"></span>
                                         </label>
                                     </div>
-                                    <fieldset v-if="preferredAffinityTerm.preference.matchFields.length">
+                                    <fieldset v-if="(preferredAffinityTerm.preference.hasOwnProperty('matchFields') && preferredAffinityTerm.preference.matchFields.length)">
                                         <div class="section" v-for="(field, fieldIndex) in preferredAffinityTerm.preference.matchFields">
                                             <div class="header">
                                                 <label for="spec.pods.scheduling.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution.items.properties.preference.properties.matchFields.items">
@@ -2912,7 +3388,7 @@
                                                 </div>
                                             </div>
 
-                                            <fieldset v-if="field.hasOwnProperty('values') && field.values.length && !['', 'Exists', 'DoesNotExists'].includes(field.operator)" :class="(['Gt', 'Lt'].includes(field.operator)) && 'noRepeater'" class="affinityValues">
+                                            <fieldset v-if="field.hasOwnProperty('values') && field.values.length && !['', 'Exists', 'DoesNotExists'].includes(field.operator)" :class="(['Gt', 'Lt'].includes(field.operator)) && 'noRepeater'" class="affinityValues noMargin">
                                                 <div class="header">
                                                     <label for="spec.pods.scheduling.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution.items.properties.preference.properties.matchFields.items.properties.values">
                                                         {{ !['Gt', 'Lt'].includes(field.operator) ? 'Values' : 'Value' }}
@@ -2933,8 +3409,8 @@
                                         </div>
                                     </fieldset>
                                 </fieldset>
-                                <div class="fieldsetFooter" :class="!preferredAffinityTerm.preference.matchFields.length && 'topBorder'">
-                                    <a class="addRow" @click="addNodeSelectorRequirement(preferredAffinityTerm.preference.matchFields)">Add Field</a>
+                                <div class="fieldsetFooter" :class="(preferredAffinityTerm.preference.hasOwnProperty('matchFields') && !preferredAffinityTerm.preference.matchFields.length) && 'topBorder'">
+                                    <a class="addRow" @click="addNodeSelectorRequirement(preferredAffinityTerm.preference, 'matchFields')">Add Field</a>
                                 </div>
 
                                 <label for="spec.pods.scheduling.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution.weight">Weight</label>
@@ -2960,32 +3436,77 @@
                     <div class="row-50">
                         <div class="col">
                             <label for="spec.nonProductionOptions.disableClusterPodAntiAffinity">Cluster Pod Anti Affinity</label>  
-                            <label for="disableClusterPodAntiAffinity" class="switch yes-no">
-                                Enable 
-                                <input type="checkbox" id="disableClusterPodAntiAffinity" v-model="enableClusterPodAntiAffinity" data-switch="NO" data-field="spec.nonProductionOptions.disableClusterPodAntiAffinity">
-                            </label>
+                            <select v-model="clusterPodAntiAffinity" data-field="spec.nonProductionOptions.disableClusterPodAntiAffinity">
+                                <option selected :value="null">Default</option>
+                                <option :value="false">Enable</option>
+                                <option :value="true">Disable</option>
+                            </select>
                             <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.nonProductionOptions.disableClusterPodAntiAffinity').replace('Set this property to true','Disable this property')"></span>
+                        </div>
+
+                        <div class="col">
+                            <label for="spec.nonProductionOptions.disablePatroniResourceRequirements">Patroni Resource Requirements</label>  
+                            <select v-model="patroniResourceRequirements" data-field="spec.nonProductionOptions.disablePatroniResourceRequirements">
+                                <option selected :value="null">Default</option>
+                                <option :value="false">Enable</option>
+                                <option :value="true">Disable</option>
+                            </select>
+                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.nonProductionOptions.disablePatroniResourceRequirements').replace('Set this property to true','Disable this property')"></span>
+                        </div>
+
+                        <div class="col">
+                            <label for="spec.nonProductionOptions.disableClusterResourceRequirements">Cluster Resource Requirements</label>  
+                            <select v-model="clusterResourceRequirements" data-field="spec.nonProductionOptions.disableClusterResourceRequirements">
+                                <option selected :value="null">Default</option>
+                                <option :value="false">Enable</option>
+                                <option :value="true">Disable</option>
+                            </select>
+                            <span class="helpTooltip" :data-tooltip="getTooltip('sgcluster.spec.nonProductionOptions.disableClusterResourceRequirements').replace('Set this property to true','Disable this property')"></span>
                         </div>
                     </div>
                 </div>
             </fieldset>
 
-            <hr/>
+            <template v-if="!isNull(formTemplate)">
+                <hr/>
             
-            <template v-if="editMode">
-                <button type="submit" class="btn" @click="createCluster(false)">Update Cluster</button>
-            </template>
-            <template v-else>
-                <button type="submit" class="btn" @click="createCluster(false)">Create Cluster</button>
-            </template>
+                <template v-if="editMode">
+                    <button type="submit" class="btn" @click="createCluster()">Update Cluster</button>
+                </template>
+                <template v-else>
+                    <button type="submit" class="btn" @click="createCluster()">Create Cluster</button>
+                </template>
 
-            <button type="button" class="btn floatRight" @click="createCluster(true)">View Summary</button>
-
-            <button type="button" @click="cancel" class="btn border">Cancel</button>
-        
+                <button type="button" @click="setupTemplate(true)" class="btn border">Cancel</button>
+                
+                <button type="button" class="btn floatRight" @click="createCluster(true)">View Summary</button>
+                <button
+                    data-field="dryRun"
+                    type="button"
+                    class="btn border floatRight"
+                    title="Dry run mode helps to evaluate a request through the typical request stages without any storage persistance or resource allocation."
+                    @click="
+                        dryRun = true;
+                        createCluster();
+                    "
+                >
+                    Dry Run
+                </button>
+                
+            </template>
         </form>
         
-        <ClusterSummary :cluster="previewCRD" :extensionsList="extensionsList[flavor][postgresVersion]" v-if="showSummary" @closeSummary="showSummary = false"></ClusterSummary>
+        <ClusterSummary
+            v-if="showSummary"
+            :cluster="previewCRD"
+            :extensionsList="extensionsList[flavor][postgresVersion]"
+            :dryRun="dryRun"
+            @closeSummary="
+                showSummary = false;
+                dryRun = false;
+                previewCRD = {};
+            "
+        ></ClusterSummary>
     </div>
 </template>
 
@@ -3012,16 +3533,32 @@
             const vc = this;
 
             return {
-                formSteps: ['cluster', 'extensions', 'backups', 'initialization', 'replicate-from', 'scripts', 'sidecars', 'pods', 'pods-replication', 'services', 'metadata', 'scheduling', 'non-production'],
+                formTemplate: (vc.$route.name === 'EditCluster') ? 'custom' : null,
+                formSteps: {
+                    minimal: ['information'],
+                    basic: ['information', 'extensions'],
+                    full: ['information', 'extensions', 'configurations'],
+                    custom: ['cluster', 'extensions', 'backups', 'initialization', 'replicate-from', 'scripts', 'sidecars', 'pods-replication', 'services', 'metadata', 'scheduling', 'non-production']
+                },
                 editMode: (vc.$route.name === 'EditCluster'),
                 editReady: false,
+                clusterProfiles: ['production', 'testing', 'development'],
+                profile: 'production',
                 instances: 1,
-                pgConfig: '',
+                pgConfig: null,
                 connPooling: true,
                 connectionPoolingConfig: '',
+                restoreBackupIndex: -1,
+                connectionPoolingConfig: null,
+                configurations: {
+                    sgPostgresConfig: null,
+                    sgPoolingConfig: null
+                },
+                enableDistributedLogs: true,
                 restoreBackup: '',
                 enablePITR: false,
                 pitr: '',
+                pitrDatepicker: '',
                 downloadDiskConcurrency: 1,
                 metricsExporter: true,
                 replicateFrom: {},
@@ -3030,13 +3567,7 @@
                     role: 'ha-read',
                     mode: 'async',
                     syncInstances: 1,
-                    groups: [
-                        {
-                            name: '',
-                            role: 'ha-read',
-                            instances: null
-                        }
-                    ]
+                    groups: []
                 },
                 pgConfigExists: true,
                 postgresServices: {
@@ -3044,31 +3575,20 @@
                         enabled: true,
                         type: 'ClusterIP',
                         loadBalancerIP: '',
-                        customPorts: [{
-                            appProtocol: null,
-                            name: null,
-                            nodePort: null,
-                            port: null,
-                            protocol: null,
-                            targetPort: null
-                        }]
+                        customPorts: []
                     },
                     replicas: {
                         enabled: true,
                         type: 'ClusterIP',
                         loadBalancerIP: '',
-                        customPorts: [{
-                            appProtocol: null,
-                            name: null,
-                            nodePort: null,
-                            port: null,
-                            protocol: null,
-                            targetPort: null
-                        }]
+                        customPorts: []
                     },
                 },
-                postgresServicesPrimaryAnnotations: [ { annotation: '', value: '' } ],
-                postgresServicesReplicasAnnotations: [ { annotation: '', value: '' } ],
+                postgresServicesPrimaryAnnotations: [],
+                postgresServicesReplicasAnnotations: [],
+                clusterPodAntiAffinity: null,
+                patroniResourceRequirements: null,
+                clusterResourceRequirements: null
             }
 
         },
@@ -3084,7 +3604,7 @@
                 var vm = this;
                 var cluster = {};
                 
-                if( vm.editMode && !vm.editReady ) {
+                if( vm.editMode && !vm.editReady && (store.state.sgclusters !== null)) {
                     store.state.sgclusters.forEach(function( c ){
                         if( (c.data.metadata.name === vm.$route.params.name) && (c.data.metadata.namespace === vm.$route.params.namespace) ) {
                             let volumeSize = c.data.spec.pods.persistentVolume.size.match(/\d+/g);
@@ -3102,6 +3622,8 @@
                                 vm.ssl = c.data.spec.postgres.ssl
                             }
                             
+                            vm.profile = c.data.spec.hasOwnProperty('profile') ? c.data.spec.profile : 'production' ;
+                            vm.flavor = c.data.spec.postgres.hasOwnProperty('flavor') ? c.data.spec.postgres.flavor : 'vanilla' ;
                             vm.instances = c.data.spec.instances;
                             vm.resourceProfile = c.data.spec.sgInstanceProfile;
                             vm.pgConfig = c.data.spec.configurations.sgPostgresConfig;
@@ -3140,7 +3662,9 @@
                             vm.replicateFromSource = vm.getReplicationSource(c);
                             vm.replication = vm.hasProp(c, 'data.spec.replication') && c.data.spec.replication;
                             vm.prometheusAutobind =  (typeof c.data.spec.prometheusAutobind !== 'undefined') ? c.data.spec.prometheusAutobind : false;
-                            vm.enableClusterPodAntiAffinity = vm.hasProp(c, 'data.spec.nonProductionOptions.disableClusterPodAntiAffinity') ? !c.data.spec.nonProductionOptions.disableClusterPodAntiAffinity : true;
+                            vm.clusterPodAntiAffinity = vm.hasProp(c, 'data.spec.nonProductionOptions.disableClusterPodAntiAffinity') ? c.data.spec.nonProductionOptions.disableClusterPodAntiAffinity : null;
+                            vm.patroniResourceRequirements = vm.hasProp(c, 'data.spec.nonProductionOptions.disablePatroniResourceRequirements') ? c.data.spec.nonProductionOptions.disablePatroniResourceRequirements : null;
+                            vm.clusterResourceRequirements = vm.hasProp(c, 'data.spec.nonProductionOptions.disableClusterResourceRequirements') ? c.data.spec.nonProductionOptions.disableClusterResourceRequirements : null;
                             vm.metricsExporter = vm.hasProp(c, 'data.spec.pods.disableMetricsExporter') ? !c.data.spec.pods.disableMetricsExporter : true ;
                             vm.enableMonitoring = ( (!vm.hasProp(c, 'data.spec.pods.disableMetricsExporter')) && (typeof c.data.spec.prometheusAutobind !== 'undefined') ) ? true : false;
                             vm.postgresUtil = vm.hasProp(c, 'data.spec.pods.disablePostgresUtil') ? !c.data.spec.pods.disablePostgresUtil : true ;
@@ -3220,46 +3744,143 @@
                             vm.downloadDiskConcurrency = vm.hasProp(c, 'data.spec.initialData.restore.downloadDiskConcurrency') ? c.data.spec.initialData.restore.downloadDiskConcurrency : 1;
                             vm.pitr = vm.hasProp(c, 'data.spec.initialData.restore.fromBackup.pointInTimeRecovery.restoreToTimestamp') ? c.data.spec.initialData.restore.fromBackup.pointInTimeRecovery.restoreToTimestamp : ''
                             vm.enablePITR = (vm.pitr.length > 0);
-                            $('.datePicker').val(vm.pitrTimezone);
+                            vm.pitrDatepicker = vm.getPitrWithTimezone(vm.pitr);
                             
-                            vm.editReady = vm.advancedMode = true
+                            vm.editReady = true;
+                            vm.advancedMode = true;
                             return false
                         }
                     });
+
+                    vm.setupTemplate();
                 }
                 
                 return cluster
             },
 
-            pitrTimezone () {
-                return this.pitr.length ? ( (store.state.timezone == 'local') ? moment.utc(this.pitr).local().format('YYYY-MM-DD HH:mm:ss') : moment.utc(this.pitr).format('YYYY-MM-DD HH:mm:ss') ) : '';
+            nameCollision() {
+
+                if(store.state.sgclusters !== null) {
+                    const vc = this;
+                    var nameCollision = false;
+                    
+                    store.state.sgclusters.forEach(function(item, index){
+                        if( (item.name == vc.name) && (item.data.metadata.namespace == vc.$route.params.namespace ) ) {
+                            nameCollision = true;
+                            return false
+                        }
+                    })
+
+                    return nameCollision
+                } else {
+                    return false;
+                }
             },
 
-            nameColission() {
+            pitrBackups () {
+                if(store.state.sgbackups !== null) {
+                    return store.state.sgbackups.filter( backup => ( 
+                        (backup.data.metadata.namespace == this.$route.params.namespace) && 
+                        (this.hasProp(backup, 'data.status.process.status')) && 
+                        (backup.data.status.process.status === 'Completed') && 
+                        (backup.data.status.backupInformation.postgresVersion.substring(0,2) == this.shortPostgresVersion)
+                    )).map(
+                        (bk) => { 
+                            return { 
+                                x: bk.data.status.process.timing.stored,
+                                y: 1,
+                                name: bk.name,
+                                cluster: bk.data.spec.sgCluster,
+                                uid: bk.data.metadata.uid,
+                                isSnapshot: bk.data.status.hasOwnProperty('volumeSnapshot')
+                            }
+                        }
+                    )
+                    .sort(
+                        (a,b) => (
+                            a.x - b.x
+                        )
+                    );
+                } else {
+                    return []
+                }
+            },
 
-                const vc = this;
-                var nameColission = false;
-                
-                store.state.sgclusters.forEach(function(item, index){
-                    if( (item.name == vc.name) && (item.data.metadata.namespace == vc.$route.params.namespace ) ) {
-                        nameColission = true;
-                        return false
+            pitrAnnotations() {
+                let xAnnotations = [
+                    {
+                        id: 'current',
+                        x: new Date().getTime(),
+                        yAxisIndex: 0,
+                        label: {
+                            borderColor: '#A68BF9',
+                            show: true,
+                            text: 'Current Time',
+                            style: {
+                                background: '#A68BF9',
+                                strokeColors: '#A68BF9',
+                                color: '#000'
+                            }
+                        }
                     }
-                })
+                ];
+                
+                if(this.pitr.length) {
+                    xAnnotations.push({
+                        id: 'pitr',
+                        x: new Date(this.getPitrWithTimezone(this.pitr)).getTime(),
+                        yAxisIndex: 0,
+                        label: {
+                            text: 'PITR',
+                            borderColor: '#5ad2ff',
+                            show: true,
+                            style: {
+                                color: '#000',
+                                background: '#5ad2ff',
+                                strokeColors: '#5ad2ff',
+                            }
+                        }
+                    });
+                }
 
-                return nameColission
+                return { xaxis: xAnnotations };
             },
 
         },
 
         methods: {
 
-            createCluster(preview = false, previous) {
+            getPitrWithTimezone(pitr) {
+                return pitr.length ? ( (store.state.timezone == 'local') ? moment.utc(pitr).local().format('YYYY-MM-DD HH:mm:ss') : moment.utc(pitr).format('YYYY-MM-DD HH:mm:ss') ) : '';
+            },
+
+            setPitrBackup(chartContext, config, fromRestore = false) {
+                if(config.dataPointIndex != -1) { // Clicking on backup
+                    chartContext.removeAnnotation('pitr');
+
+                    if(!fromRestore && (config.dataPointIndex == this.restoreBackupIndex)) {
+                        this.restoreBackup = '';
+                        this.restoreBackupIndex = -1;
+                        this.enablePITR = false;
+                    } else {
+                        this.restoreBackup = this.pitrBackups[config.dataPointIndex].name;
+                        this.restoreBackupIndex = config.dataPointIndex;
+                        this.enablePITR = true;
+                        this.initDatepicker();
+                    }
+                }
+            },
+
+            async createCluster(preview = false, previous, checkDependencies = true) {
                 const vc = this;
 
                 if(!vc.checkRequired()) {
-                  return;
+                    vc.dryRun = false;
+                    vc.showSummary = false;
+                    return;
                 }
+
+                store.commit('loading', true);
 
                 if (!previous) {
                     sgApi
@@ -3282,7 +3903,12 @@
                 let preferredAffinity = vc.cleanNodeAffinity(this.preferredAffinity);
                 let managedSql = vc.cleanUpScripts($.extend(true,{},this.managedSql));
                 let pods = vc.cleanUpUserSuppliedSidecars($.extend(true,{},this.pods));
-                
+
+                // Set template-based specs
+                if(checkDependencies && !preview && (vc.formTemplate !== 'custom')) {
+                    await vc.createTemplateResources()
+                }
+
                 var cluster = {
                     "metadata": {
                         ...(this.hasProp(previous, 'metadata') && previous.metadata),
@@ -3291,6 +3917,7 @@
                     },
                     "spec": {
                         ...(this.hasProp(previous, 'spec') && previous.spec),
+                        "profile": this.profile,
                         "instances": this.instances,
                         ...(this.resourceProfile.length && {"sgInstanceProfile": this.resourceProfile } || {"sgInstanceProfile": null} ),
                         "pods": {
@@ -3342,14 +3969,14 @@
                                 } || { "customContainers": null }
                             )),
                         },
-                        ...( (this.hasProp(previous, 'spec.configurations') || this.pgConfig.length || this.managedBackups || this.connectionPoolingConfig.length) && ({
+                        ...( (this.hasProp(previous, 'spec.configurations') || !this.isNull(this.pgConfig) || this.managedBackups || !this.isNull(this.connectionPoolingConfig) ) && ({
                             "configurations": {
                                 ...(this.hasProp(previous, 'spec.configurations') && previous.spec.configurations),
-                                ...(this.pgConfig.length && {"sgPostgresConfig": this.pgConfig } || {"sgPostgresConfig": null} ),
+                                ...(!this.isNull(this.pgConfig) && {"sgPostgresConfig": this.pgConfig } || {"sgPostgresConfig": null} ),
                                 ...(this.managedBackups && {
                                     "backups": this.backups
                                 } || { "backups": null }),
-                                ...(this.connectionPoolingConfig.length && {"sgPoolingConfig": this.connectionPoolingConfig } || {"sgPoolingConfig": null} ),
+                                ...(!this.isNull(this.connectionPoolingConfig) && {"sgPoolingConfig": this.connectionPoolingConfig } || {"sgPoolingConfig": null} ),
                             }
                         }) ),
                         ...( (this.hasProp(previous, 'spec.distributedLogs') || this.distributedLogs.length) && {
@@ -3381,7 +4008,7 @@
                                                     } || {"pointInTimeRecovery": null})
                                                 }
                                             } || {"fromBackup": null}),
-                                            ...((this.downloadDiskConcurrency != 1) && {
+                                            ...(( this.hasProp(previous, 'spec.initialData.restore.downloadDiskConcurrency') || (this.downloadDiskConcurrency != 1)) && {
                                                 "downloadDiskConcurrency": this.downloadDiskConcurrency 
                                             } || {"downloadDiskConcurrency": null} )
                                         },
@@ -3405,11 +4032,13 @@
                                 "groups": (this.replication.groups.filter( g => (g.instances > 0) ))
                             }) )
                         },
-                        ...(this.prometheusAutobind && ( {"prometheusAutobind": this.prometheusAutobind }) ),
-                        ...((this.hasProp(previous, 'spec.nonProductionOptions') || !this.enableClusterPodAntiAffinity || (this.flavor == 'babelfish' && this.babelfishFeatureGates)) && ( {
+                        ...((this.prometheusAutobind || this.editMode) && ( {"prometheusAutobind": this.prometheusAutobind }) ),
+                        ...((this.hasProp(previous, 'spec.nonProductionOptions') || (this.clusterPodAntiAffinity != null) || (this.patroniResourceRequirements != null) || (this.clusterResourceRequirements != null) || (this.flavor == 'babelfish' && this.babelfishFeatureGates)) && ( {
                             "nonProductionOptions": { 
                                 ...(this.hasProp(previous, 'spec.nonProductionOptions') && previous.spec.nonProductionOptions),
-                                ...(!this.enableClusterPodAntiAffinity && {"disableClusterPodAntiAffinity": !this.enableClusterPodAntiAffinity} || {"disableClusterPodAntiAffinity": null} ),
+                                ...((this.clusterPodAntiAffinity != null) && {"disableClusterPodAntiAffinity": this.clusterPodAntiAffinity} || {"disableClusterPodAntiAffinity": null} ),
+                                ...((this.patroniResourceRequirements != null) && {"disablePatroniResourceRequirements": this.patroniResourceRequirements} || {"disablePatroniResourceRequirements": null} ),
+                                ...((this.clusterResourceRequirements != null) && {"disableClusterResourceRequirements": this.clusterResourceRequirements} || {"disableClusterResourceRequirements": null} ),
                                 ...((this.flavor == 'babelfish' && this.babelfishFeatureGates) && {"enabledFeatureGates": ['babelfish-flavor'] } || {"enabledFeatureGates": null} )
                                 } 
                             }) ),
@@ -3483,86 +4112,102 @@
                     vc.previewCRD = {};
                     vc.previewCRD['data'] = cluster;
                     vc.showSummary = true;
+                    store.commit('loading', false);
 
                 } else {
 
                     if(this.editMode) {
                         sgApi
-                        .update('sgclusters', cluster)
+                        .update('sgclusters', cluster, vc.dryRun)
                         .then(function (response) {
-                            vc.notify('Cluster <strong>"'+cluster.metadata.name+'"</strong> updated successfully', 'message', 'sgclusters');
+                            
+                            if(vc.dryRun) {
+                                vc.showSummary = true;
+                                vc.validateDryRun(response.data);
+                            } else {
+                                vc.notify('Cluster <strong>"'+cluster.metadata.name+'"</strong> updated successfully', 'message', 'sgclusters');
 
-                            vc.fetchAPI('sgclusters');
-                            router.push('/' + cluster.metadata.namespace + '/sgcluster/' + cluster.metadata.name);
+                                vc.fetchAPI('sgclusters');
+                                router.push('/' + cluster.metadata.namespace + '/sgcluster/' + cluster.metadata.name);
+                            }
+                            store.commit('loading', false);
                             
                         })
                         .catch(function (error) {
                             console.log(error.response);
                             vc.notify(error.response.data,'error', 'sgclusters');
+                            store.commit('loading', false);
                         });
                     } else {
                         sgApi
-                        .create('sgclusters', cluster)
+                        .create('sgclusters', cluster, vc.dryRun)
                         .then(function (response) {
-                            vc.notify('Cluster <strong>"'+cluster.metadata.name+'"</strong> created successfully', 'message', 'sgclusters');
 
-                            vc.fetchAPI('sgclusters');
-                            router.push('/' + cluster.metadata.namespace + '/sgclusters');
+                            if(vc.dryRun) {
+                                vc.showSummary = true;
+                                vc.validateDryRun(response.data);
+                            } else {
+                                vc.notify('Cluster <strong>"'+cluster.metadata.name+'"</strong> created successfully', 'message', 'sgclusters');
+
+                                vc.fetchAPI('sgclusters');
+                                router.push('/' + cluster.metadata.namespace + '/sgclusters');
+                            }
+                            store.commit('loading', false);
                             
                         })
                         .catch(function (error) {
                             console.log(error.response);
                             vc.notify(error.response.data,'error','sgclusters');
+                            store.commit('loading', false);
                         });
                     }
                     
                 }
 
-            }, 
+            },
 
-            hasPITR() {
-                const vc = this;
-
-                if(!vc.restoreBackup.length) {
-                    return false
-                } else {
-                    const baseBk = store.state.sgbackups.find( (bk) => (bk.data.metadata.name == vc.restoreBackup) );
-                    const postBk = store.state.sgbackups.find( (bk) => (
-                        (bk.data.spec.sgCluster == baseBk.data.spec.sgCluster) && 
-                        (bk.data.status.process.status == 'Completed') &&
-                        moment(bk.data.status.process.timing.stored).isAfter(moment(baseBk.data.status.process.timing.stored))
-                    ) )
-                    if (typeof postBk == 'undefined') {
-                        return true
-                    } else {
-                        vc.enablePITR = false;
-                        return false
-                    }
-                }
+            updatePitrTimestamp(timestamp) {
+                this.pitr = (store.state.timezone == 'local') ? timestamp.utc().format() : ( timestamp.format('YYYY-MM-DDTHH:mm:ss') + 'Z' );
             },
 
             initDatepicker() {
                 const vc = this;
-
+                
                 vc.pitr = '';
+                vc.pitrDatepicker = '';
 
                 if(!vc.enablePITR) {
                     $('.daterangepicker').remove();
-                } else if (vc.hasPITR()) { // Initialize PITR datepicker only if there's no backup newer than the chosen one
-                    
-                    const baseBk = store.state.sgbackups.find( (bk) => (bk.data.metadata.name == vc.restoreBackup) );
-                    
+                } else { // Initialize PITR datepicker only if there's no backup newer than the chosen one
+                    let minDate = new Date(vc.pitrBackups[vc.restoreBackupIndex].x);
+                    let maxDate = (typeof vc.pitrBackups[vc.restoreBackupIndex + 1] !== 'undefined')
+                        ? new Date(vc.pitrBackups[vc.restoreBackupIndex + 1].x)
+                        : new Date();
+
+                    if(store.state.timezone == 'local') {
+                        minDate = moment(minDate).local();
+                        maxDate = moment(maxDate).local();
+                    } else {
+                        minDate = moment(minDate).utc();
+                        maxDate = moment(maxDate).utc();
+                    }
+
                     // Load datepicker
                     require('daterangepicker');
 
                     $('.daterangepicker').remove();
-                    $(document).find('.datePicker').daterangepicker({
-                        "autoApply": true,
+                    let datePicker = $(document).find('.datePicker');
+                    datePicker.removeClass('ready');
+                    datePicker.daterangepicker({
+                        "autoApply": false,
+                        "autoUpdateInput": false,
                         "singleDatePicker": true,
                         "timePicker": true,
                         "opens": "right",
-                        "minDate": (store.state.timezone == 'local') ? new Date(new Date(baseBk.data.status.process.timing.stored).getTime()) : moment(new Date(new Date(baseBk.data.status.process.timing.stored).getTime())).utc(),
-                        "maxDate": moment(),
+                        "drops": "auto",
+                        "startDate": minDate,
+                        "minDate": minDate,
+                        "maxDate": maxDate,
                         "timePicker24Hour": true,
                         "timePickerSeconds": true,
                         locale: {
@@ -3570,24 +4215,16 @@
                             format: 'YYYY-MM-DD HH:mm:ss'
                         }
                     }, function(start, end, label) {
-                        vc.pitr = (store.state.timezone == 'local') ? start.utc().format() : ( start.format('YYYY-MM-DDTHH:mm:ss') + 'Z' );
-                        $('.datePicker').val(vc.pitrTimezone);
+                        vc.updatePitrTimestamp(start)
                     })
                     .on('apply.daterangepicker', function(ev, picker) {
-                        if(!vc.pitrTimezone.length) {
-                            $('.datePicker').val('');    
-                        } else {
-                            $('.datePicker').val(vc.pitrTimezone);
-                        }
+                        vc.updatePitrTimestamp(picker.startDate)
                     })
                     .on('cancel.daterangepicker', function(ev, picker) {
                         vc.pitr = '';
-                        $('.datePicker').val('');
                     });
 
-                    if($('.datePicker').val().length && !vc.pitr.length) {
-                        vc.pitr = ( $('.datePicker').val() + 'Z' ).replace(' ', 'T');
-                    }
+                    datePicker.addClass('ready');
                 }
             },
 
@@ -3595,11 +4232,13 @@
                 const vc = this;
 
                 if(vc.restoreBackup.length) {
-                    let bk = vc.backups.find(b => (b.data.metadata.name == vc.restoreBackup) && (b.data.metadata.namespace == vc.$route.params.namespace) && (b.data.status.backupInformation.postgresVersion.substring(0,2) == vc.shortPostgresVersion))
+                    let bk = vc.pitrBackups.find(b => (b.data.metadata.name == vc.restoreBackup) && (b.data.metadata.namespace == vc.$route.params.namespace))
 
                     if(typeof bk == 'undefined') {
-                        vc.notify('The <strong>initialization backup</strong> you selected is not available for this postgres version. Choose a new backup from the list or no data will be restored.', 'message', 'sgclusters');
+                        vc.notify('The <strong>initialization backup</strong> you selected is not available for this postgres version. Please check if there are any backups available for the corresponding version or no data will be restored.', 'message', 'sgclusters');
                         vc.restoreBackup = '';
+                        vc.restoreBackupIndex = -1;
+                        vc.pitr = '';
                     }
                 }
             },
@@ -3653,419 +4292,258 @@
                     vc.enableMonitoring = true;
                 }
             },
-        
+
+            setupTemplate(reset = false) {
+                const vc = this;
+                
+                if(reset) { // Reset template specs
+                    vc.formTemplate = null;
+                    vc.currentStep = null;
+                    vc.profile = 'production';
+                    vc.pgConfig = null;
+                    vc.connectionPoolingConfig = null;
+                    vc.enableDistributedLogs = false;
+                    vc.configurations = {
+                        sgPostgresConfig: null,
+                        sgPoolingConfig: null
+                    };
+                } else { // Set template-based specs
+                    vc.currentStep = vc.formSteps[vc.formTemplate][0];
+
+                    switch(vc.formTemplate) {
+                        case 'minimal':
+                            vc.connPooling = false;
+                            vc.profile = 'development';
+                            break;
+
+                        case 'basic':
+                            vc.profile = 'testing';
+                            break;
+                    }
+
+                    if (!['minimal','custom'].includes(vc.formTemplate)) {
+                        vc.enableMonitoring = true;
+                        vc.prometheusAutobind = true;
+                        vc.metricsExporter = true;
+                        vc.enableDistributedLogs = true;
+                    }
+                }
+            },
+
+            async createTemplateResources() {
+                const vc = this;
+                const timestamp = new Date();
+                const namespace = vc.$route.params.namespace;
+                const name = `generated-for-${vc.name}-${timestamp.getTime()}`;
+                
+                if(vc.enableDistributedLogs) {
+                    let sgdistributedlog = {
+                        "metadata": {
+                            "name": name,
+                            "namespace": namespace
+                        },
+                        "spec":{
+                            "persistentVolume":{
+                                "size":"1Gi"
+                            }
+                        }
+                    };
+                    
+                    await sgApi
+                    .create('sgdistributedlogs', sgdistributedlog)
+                    .then(function (response) {
+                        vc.distributedLogs = name;
+                    })
+                    .catch(function (error) {
+                        console.log(error.response);
+                        vc.notify('There was an error when trying to create SGDistributedLog dependency.', 'error', 'sgclusters');
+                        vc.notify(error.response.data, 'error', 'sgdistributedlogs');
+                    });
+                }
+
+                if(!vc.isNull(vc.configurations.sgPostgresConfig)) {
+                    let sgpgconfig = {
+                        "metadata":{
+                            "name": name,
+                            "namespace": namespace
+                        },
+                        "spec":{
+                            "postgresVersion": vc.shortPostgresVersion,
+                            "postgresql.conf": vc.configurations.sgPostgresConfig
+                        }
+                    };
+                    
+                    await sgApi
+                    .create('sgpgconfigs', sgpgconfig)
+                    .then(function (response) {
+                        vc.pgConfig = name;
+                        vc.fetchAPI('sgpgconfigs');
+                    })
+                    .catch(function (error) {
+                        console.log(error.response);
+                        vc.notify('There was an error when trying to create SGPostgresConfig dependency.', 'error', 'sgclusters');
+                        vc.notify(error.response.data, 'error', 'sgpgconfigs');
+                    });
+                }
+
+                if(!vc.isNull(vc.configurations.sgPoolingConfig)) {
+                    let sgpoolingconfig = {
+                        "metadata":{
+                            "name": name,
+                            "namespace": namespace
+                        },
+                        "spec":{
+                            "pgBouncer": {
+                                "pgbouncer.ini": vc.configurations.sgPoolingConfig
+                            }
+                        }
+                    };
+                    
+                    await sgApi
+                    .create('sgpoolconfigs', sgpoolingconfig)
+                    .then(function (response) {
+                        vc.connectionPoolingConfig = name;
+                        vc.fetchAPI('sgpoolconfigs');
+                    })
+                    .catch(function (error) {
+                        console.log(error.response);
+                        vc.notify('There was an error when trying to create SGPoolingConfig dependency.', 'error', 'sgclusters');
+                        vc.notify(error.response.data, 'error', 'sgpoolconfigs');
+                    });
+                }          
+            },
+
         },
+
+        mounted() {
+            const vc = this;
+
+            // Check if form should set initialization from a backup
+            if(vc.$route.query.hasOwnProperty('restoreFromBackup')) {
+                vc.advancedMode = true;
+                vc.formTemplate = 'custom';
+                vc.setupTemplate();
+
+                let initializationStep = vc.formSteps[vc.formTemplate].indexOf('initialization');
+                vc.currentStep = vc.formSteps[vc.formTemplate][initializationStep];
+            }
+        }
 
     }
 </script>
 
 <style scoped>
-    .scriptFieldset:first-child {
-        border-top: 0;
-        margin-top: 0;
-        padding-top: 0;
+    @import '../../assets/css/sgclusterform.css';
+</style>
+
+<style>
+
+    #pitr-graph svg.apexcharts-svg {
+        background: transparent !important;
     }
 
-    input[type="checkbox"].plain:checked {
-        border-color: var(--blue);
-        background: var(--blue);
+    .apexcharts-tooltip {
+        background: var(--activeBg) !important;
+        padding: 10px;
+        font-size: 90% !important;
+        top: 35px !important;
     }
 
-    input[type="checkbox"].plain {
-        width: 14px;
-        height: 14px;
-        border-radius: 2px;
-        border: 1px solid var(--borderColor);
-        padding: 0;
-        display: inline-block;
-        cursor: pointer;
-        position: relative;
-        top: 0;
-        background: var(--bgColor);
+    .apexcharts-tooltip ul {
+        list-style: none;
     }
 
-    input[type="checkbox"].plain:checked:after {
-        border: 2px solid #fff;
-        width: 3px;
-        height: 7px;
+    .apexcharts-tooltip li {
+        margin: 2.5px;
+    }
+
+    .apexcharts-tooltip:before {
         content: " ";
-        border-left: 0;
-        border-top: 0;
-        display: block;
+        width: 10px;
+        height: 10px;
         transform: rotate(45deg);
-        position: relative;
-        top: 0px;
-        left: 4px;
-    }
-
-    input[type="radio"]:checked {
-        background: var(--blue);
-    }
-
-    #keyword {
-        width: 100%;
-        max-width: 100%;
-        height: 38px;
-        font-size: 100%;
-    }
-
-    .searchBar {
-        position: relative;
+        background: var(--activeBg);
         display: block;
-        width: 70%;
-        float: left;
+        position: absolute;
+        left: -10px;
+        top: 10px;
+    }
+
+    #pitr-graph .apexcharts-canvas {
+        transform: translateY(-45px);
     }
     
-
-    .searchBar .clear {
-        position: absolute;
-        top: 15px;
-        right: 10px;
-        border: 0;
-        padding: 11px 0;
-        z-index: 1;
+    #pitr-graph .apexcharts-canvas, #pitr-graph .apexcharts-canvas > svg {
+        max-height: 250px;
     }
 
-    .searchBar .clear:hover {
-        background: transparent;
+    #pitr-graph > div {
+        max-height: 265px;
+        min-height: auto !important;
     }
 
-    .extLicense {
-        width: 25%;
-        float: right;
-    }
-
-    .notCompatible svg {
-        fill: red;
-        width: 13px;
-        position: relative;
-        top: 1px;
-    }
-
-    .colorRed svg path {
-        fill: red;
-    }
-
-    ul.extensionsList {
-        list-style: none;
-        max-height: 40vh;
-        overflow-y: auto;
-        margin-bottom: 20px;
-        padding-right: 10px;
-    }
-
-    .extension > label {
-        font-weight: bold;
-        cursor: pointer;
-        width: calc(100% - 30px);
-    }
-
-    .extension > label input {
-        margin: 0 40px 0 14px;
-    }
-
-    span.notCompatible {
-        margin-left: 5px;
-    }
-
-    label[disabled], input[disabled] {
-        cursor: not-allowed !important;
-    }
-
-    button.toggleExt {
-        top: 0;
-        position: absolute;
-        right: 0;
-        width: 35px;
-        height: 35px;
-        color: transparent;
-    }
-
-    button.toggleExt:before {
+    #pitr-graph .apexcharts-canvas:before {
         content: " ";
-        top: 10px;
+        display: block;
+        height: 94px;
+        border-top: 1px solid var(--borderColor);
+        border-bottom: 1px solid #909090;
+        border-right: 0;
+        border-left: 0;
+        bottom: 31px;
         position: absolute;
-        right: 12px;
+        left: 0;
+        width: 100%;
+        background: rgb(54 168 255 / 30%);
+    }
+
+    #pitr-graph .apexcharts-canvas .apexcharts-xaxis-tick {
+        stroke: #909090 !important;
+    }
+
+    #pitr-graph .apexcharts-canvas > svg {
+        position: relative;
+    }
+
+    #pitr-graph .apexcharts-series-markers > circle {
+        filter: none !important;
+        cursor: pointer;
+        stroke: #16A085;
+    }
+
+    #pitr-graph .apexcharts-series-markers > circle[selected="true"] {
+        stroke-width: 10px !important;
+        stroke-opacity: 1 !important;
+        opacity: 1 !important;
+    }
+
+    .pitr-legend li.base:before {
+        border-color: var(--green);
+    }
+    .pitr-legend li.snapshot:before {
+        border-color: var(--yellow);
+    }
+    .pitr-legend li:before {
+        content: " ";
         width: 8px;
         height: 8px;
-        border: 2px solid var(--textColor);
-        border-radius: 0;
-        transform: rotate(45deg);
-        border-top: 0;
-        border-left: 0;
-        opacity: .4;
-    }
-
-    .extension.show button.toggleExt:before {
-        transform: rotate(-135deg);
-        top: 14px;
-    }
-    
-    li.extension {
-        padding: 3px 0;
-        position: relative;
-        width: 100%;
-        border: 1px solid transparent;
-    }
-
-    li.extension:nth-child(even), li.extension.notFound {
-        background: var(--activeBg);
-        border: 1px solid var(--activeBg);
-    }
-
-    .darkmode li.extension:nth-child(even) .header, .darkmode .form .extension select {
-        border-color: #555;
-    }
-
-    .extDetails {
-        padding: 20px 13px 10px;
-    }
-
-    .extDetails .description {
-        line-height: 1.5;
-    }
-
-    .extHead .install {
-        margin-right: 30px;
-    }
-
-    .extHead {
-        font-weight: bold;
-        margin: 10px 0;
+        border-radius: 100%;
+        border: 2.5px solid;
         display: inline-block;
+        transform: translateY(1px);
+    }
+    .pitr-legend li {
+        display: inline-block;
+        margin-right: 20px;
+    }
+    .pitr-legend {
+        position: absolute;
     }
 
-    li.extension.notFound {
+    .apexcharts-xaxis > line {
+        /* position: relative !important;
+        z-index: -1 !important; */
         display: none;
-        padding: 12px 70px;
-    }
-
-    li.extension.notFound:first-child:last-child {
-        display: block;
-    }
-
-    li.extension.show > label:after {
-        height: 1px;
-        width: calc(100% + 30px);
-        content: " ";
-        margin-top: 10px;
-        display: block;
-        background: var(--borderColor);
-    }
-
-    li.extension:nth-child(even).show > label:after  {
-        background: var(--textColor);
-        opacity: .2;
-    }
-
-    li.extension.show {
-        border-color: var(--borderColor);
-        margin-bottom: 10px;
-    }
-
-    .darkmode li.extension:nth-child(even).show {
-        border-color: #555;
-    }
-
-    .colorRed {
-        color: red;
-    }
-
-    .extDetails * + .header {
-        margin-top: 25px;
-    }
-
-    .extension .tags {
-        margin-bottom: 5px;
-    }
-
-    .extTag {
-        display: inline-block;
-        margin-right: 10px;
-        border: 1px solid;
-        border-radius: 10px;
-        padding: 3px 10px;
-        font-size: 85%;
-        font-weight: bold;
-    }
-
-    .extDetails .notCompatible {
-        display: block;
-        border: 1px solid red;
-        border-radius: 3px;
-        padding: 10px;
-        background: rgb(255 0 0 / 5%);
-    }
-
-    .extDetails .notCompatible strong {
-        display: block;
-    }
-
-    .darkmode .extension > label input {
-        background: #fbfbfb;
-    }
-
-    .extLinks li {
-        margin-bottom: 10px;
-    }
-
-    select.extVersion {
-        margin-bottom: 0;
-        margin-top: 2px;
-        padding: 7px;
-        height: auto;
-        background-position-x: 90%;
-    }
-
-    .versionContainer {
-        min-height: 95px;
-    }
-
-    ul#postgresVersion.active {
-        position: absolute;
-        width: 100%;
-        z-index: 10;
-        max-height: 30vh;
-        overflow: auto;
-    }
-
-    ul#postgresVersion + .helpTooltip {
-        transform: translate(20px, -53px);
-    }
-
-    ul#postgresVersion.active + .helpTooltip {
-        transform: translate(20px, 10px);
-    }
-
-    ul.select li.selected {
-        position: sticky;
-        top: 0;
-    }
-
-    .affinityValues a.addRow {
-        transform: translateY(-75px);
-        float: right;
-    }
-
-    .extHead span.name, .extensionsList span.name {
-        width: 180px;
-        display: inline-block;
-    }
-
-    .extHead span.version, .extensionsList span.version {
-        width: 75px;
-        display: inline-block;
-    }
-
-    .extensionsList span.version {
-        font-weight: normal;
-    }
-
-    .extHead span.description, .extensionsList span.description {
-        display: inline-block;
-        margin-left: 15px;
-        width: calc(100% - 350px);
-    }
-
-    .extensionsList span.description {
-        font-weight: normal;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        transform: translateY(3px);
-    }
-
-    .extension a.newTab {
-        width: 11px;
-        height: 11px;
-        display: inline-block;
-        transform: translate(4px, 1px);
-        position: absolute;
-        right: 20px;
-    }
-
-    .contentTooltip #clusterDetails {
-        margin-right: 10px;
-    }
-
-    .warning.babelfish {
-        top: -5px;
-        position: relative;
-        margin-bottom: 25px;
-    }
-
-    input.affinityWeight + span {
-        left: -20px;
-        top: -15px;
-    }
-
-    input.affinityWeight {
-        width: calc(100% - 25px);
-    }
-
-    fieldset.noRepeater {
-        padding: 0 0 10px;
-        border: 0;
-        margin-bottom: -10px;
-    }
-
-    #podsMetadata fieldset, #podsScheduling .repeater > fieldset {
-        padding-bottom: 10px;
-    }
-
-    fieldset.noMargin, .scriptFieldset fieldset fieldset:last-of-type {
-        margin-bottom: 0;
-        border-bottom-left-radius: 0;
-        border-bottom-right-radius: 0;
-    }
-
-    .scriptFieldset fieldset fieldset .row {
-        margin-bottom: 20px;
-    }
-
-    .scheduling .fieldsetFooter {
-        margin-bottom: 20px;
-    }
-
-    .searchBar + .helpTooltip {
-        top: -15px;
     }
     
-    .warning.babelfish label, .warning.babelfish p, .warning.babelfish .col {
-        margin-bottom: 0;
-    }
-
-    .warning.babelfish:before {
-        left: 34%;
-    }
-
-    .warning.babelfish .helpTooltip {
-        transform: translate(20px, -30px);
-    }
-
-    body:not(.darkmode) label[for="babelfish"] svg path[fill="#FFF"] {
-        fill: #3452a8 !important;
-    }
-
-    .row-50.noMargin {
-        margin-bottom: -20px;
-    }
-
-    .noMarginTop {
-        margin-top: -20px;
-    }
-
-    .cron {
-        gap: 15px;
-    }
-
-    .cron > * {
-        flex-grow: 1;
-    }
-
-    form#createCluster {
-        width: 1120px;
-        max-width: 100%;
-    }
-
 </style>

@@ -57,9 +57,9 @@ class DistributedLogsReferenceValidatorTest {
     review.getRequest().getObject().getSpec()
         .setDistributedLogs(new StackGresClusterDistributedLogs());
     review.getRequest().getObject().getSpec().getDistributedLogs()
-        .setDistributedLogs("test");
+        .setSgDistributedLogs("test");
     String distributedLogsName =
-        review.getRequest().getObject().getSpec().getDistributedLogs().getDistributedLogs();
+        review.getRequest().getObject().getSpec().getDistributedLogs().getSgDistributedLogs();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(distributedLogsFinder.findByNameAndNamespace(distributedLogsName, namespace))
@@ -78,9 +78,9 @@ class DistributedLogsReferenceValidatorTest {
     review.getRequest().getObject().getSpec()
         .setDistributedLogs(new StackGresClusterDistributedLogs());
     review.getRequest().getObject().getSpec().getDistributedLogs()
-        .setDistributedLogs("test");
+        .setSgDistributedLogs("test");
     String distributedLogsName =
-        review.getRequest().getObject().getSpec().getDistributedLogs().getDistributedLogs();
+        review.getRequest().getObject().getSpec().getDistributedLogs().getSgDistributedLogs();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(distributedLogsFinder.findByNameAndNamespace(distributedLogsName, namespace))
@@ -92,7 +92,7 @@ class DistributedLogsReferenceValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Distributed logs " + distributedLogsName + " not found", resultMessage);
+    assertEquals("SGDistributedLogs " + distributedLogsName + " not found", resultMessage);
 
     verify(distributedLogsFinder).findByNameAndNamespace(anyString(), anyString());
   }
@@ -104,7 +104,7 @@ class DistributedLogsReferenceValidatorTest {
         .loadDistributedLogsUpdate().get();
 
     String distributedLogsName =
-        review.getRequest().getObject().getSpec().getDistributedLogs().getDistributedLogs();
+        review.getRequest().getObject().getSpec().getDistributedLogs().getSgDistributedLogs();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(distributedLogsFinder.findByNameAndNamespace(distributedLogsName, namespace))
@@ -116,7 +116,7 @@ class DistributedLogsReferenceValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Cannot update to distributed logs " + distributedLogsName
+    assertEquals("Cannot update to SGDistributedLogs " + distributedLogsName
         + " because it doesn't exists", resultMessage);
 
     verify(distributedLogsFinder).findByNameAndNamespace(anyString(), anyString());
@@ -129,7 +129,7 @@ class DistributedLogsReferenceValidatorTest {
         .loadDistributedLogsUpdate().get();
 
     String distributedLogsName =
-        review.getRequest().getObject().getSpec().getDistributedLogs().getDistributedLogs();
+        review.getRequest().getObject().getSpec().getDistributedLogs().getSgDistributedLogs();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     StackGresDistributedLogs distributedLogs = Fixtures.distributedLogs().loadDefault().get();

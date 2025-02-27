@@ -7,16 +7,14 @@ package io.stackgres.common.crd.sgcluster;
 
 import java.util.Objects;
 
-import javax.validation.Valid;
-import javax.validation.constraints.NotNull;
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
-import io.stackgres.common.crd.sgbackupconfig.StackGresBaseBackupPerformance;
+import io.stackgres.common.crd.sgbackup.StackGresBaseBackupPerformance;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -26,15 +24,12 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresClusterReplicateFromStorage {
 
-  @JsonProperty("performance")
   @Valid
   private StackGresBaseBackupPerformance performance;
 
-  @JsonProperty("sgObjectStorage")
   @NotNull(message = "sgObjectStorage is required")
   private String sgObjectStorage;
 
-  @JsonProperty("path")
   @NotNull(message = "path is required")
   private String path;
 

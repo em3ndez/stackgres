@@ -6,82 +6,93 @@
 package io.stackgres.operator.conciliation.distributedlogs;
 
 import java.util.List;
-
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
+import java.util.Optional;
 
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
+import io.stackgres.common.crd.sgconfig.StackGresConfig;
 import io.stackgres.common.crd.sgdistributedlogs.StackGresDistributedLogs;
-import io.stackgres.common.crd.sgdistributedlogs.StackGresDistributedLogsConfiguration;
-import io.stackgres.common.crd.sgdistributedlogs.StackGresDistributedLogsSpec;
 import io.stackgres.common.crd.sgpgconfig.StackGresPostgresConfig;
-import io.stackgres.common.crd.sgprofile.StackGresProfile;
 import io.stackgres.common.resource.CustomResourceFinder;
+import io.stackgres.common.resource.CustomResourceScanner;
 import io.stackgres.common.resource.ResourceFinder;
-import io.stackgres.operator.conciliation.RequiredResourceDecorator;
 import io.stackgres.operator.conciliation.RequiredResourceGenerator;
+import io.stackgres.operator.conciliation.ResourceGenerationDiscoverer;
+import io.stackgres.operator.conciliation.factory.distributedlogs.v14.DistributedLogsCredentials;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import org.jetbrains.annotations.NotNull;
 
 @ApplicationScoped
 public class DistributedLogsRequiredResourcesGenerator
     implements RequiredResourceGenerator<StackGresDistributedLogs> {
 
-  private final CustomResourceFinder<StackGresProfile> profileFinder;
+  private final CustomResourceScanner<StackGresConfig> configScanner;
 
   private final CustomResourceFinder<StackGresPostgresConfig> postgresConfigFinder;
 
+  private final CustomResourceFinder<StackGresCluster> clusterFinder;
+
   private final ConnectedClustersScanner connectedClustersScanner;
 
-  private final RequiredResourceDecorator<StackGresDistributedLogsContext> decorator;
+  private final ResourceGenerationDiscoverer<StackGresDistributedLogsContext> discoverer;
 
   private final ResourceFinder<Secret> secretFinder;
 
   @Inject
   public DistributedLogsRequiredResourcesGenerator(
-      CustomResourceFinder<StackGresProfile> profileFinder,
+      CustomResourceScanner<StackGresConfig> configScanner,
       CustomResourceFinder<StackGresPostgresConfig> postgresConfigFinder,
-      RequiredResourceDecorator<StackGresDistributedLogsContext> decorator,
+      CustomResourceFinder<StackGresCluster> clusterFinder,
+      ResourceGenerationDiscoverer<StackGresDistributedLogsContext> discoverer,
       ConnectedClustersScanner connectedClustersScanner,
       ResourceFinder<Secret> secretFinder) {
-    this.profileFinder = profileFinder;
+    this.configScanner = configScanner;
     this.postgresConfigFinder = postgresConfigFinder;
-    this.decorator = decorator;
+    this.clusterFinder = clusterFinder;
+    this.discoverer = discoverer;
     this.connectedClustersScanner = connectedClustersScanner;
     this.secretFinder = secretFinder;
   }
 
   @Override
-  public List<HasMetadata> getRequiredResources(StackGresDistributedLogs config) {
-    final String distributedLogsName = config.getMetadata().getName();
-    final String namespace = config.getMetadata().getNamespace();
-    final StackGresDistributedLogsSpec spec = config.getSpec();
-    final StackGresDistributedLogsConfiguration distributedLogsConfiguration =
-        spec.getConfiguration();
+  public List<HasMetadata> getRequiredResources(StackGresDistributedLogs distributedLogs) {
+    final String distributedLogsName = distributedLogs.getMetadata().getName();
+    final String namespace = distributedLogs.getMetadata().getNamespace();
 
-    final StackGresPostgresConfig pgConfig = postgresConfigFinder
-        .findByNameAndNamespace(
-            distributedLogsConfiguration.getPostgresConfig(), namespace)
+    final StackGresConfig config = configScanner.findResources()
+        .stream()
+        .filter(list -> list.size() == 1)
+        .flatMap(List::stream)
+        .findAny()
         .orElseThrow(() -> new IllegalArgumentException(
-            "SGDistributedLogs " + namespace + "." + distributedLogsName
-                + " have a non existent SGPostgresConfig "
-                + distributedLogsConfiguration.getPostgresConfig()));
+            "SGConfig not found or more than one exists. Aborting reoconciliation!"));
 
-    final StackGresProfile profile = profileFinder
-        .findByNameAndNamespace(spec.getResourceProfile(), namespace)
+    final StackGresPostgresConfig postgresConfig = postgresConfigFinder.findByNameAndNamespace(
+        distributedLogs.getSpec().getConfigurations().getSgPostgresConfig(), namespace)
         .orElseThrow(() -> new IllegalArgumentException(
-            "SGDistributedLogs " + namespace + "." + distributedLogsName + " have a non existent "
-                + StackGresProfile.KIND + " " + spec.getResourceProfile()));
+            "SGPostgresConfig " + distributedLogs.getSpec().getConfigurations().getSgPostgresConfig()
+            + " not found"));
+
+    final Optional<StackGresCluster> cluster = clusterFinder.findByNameAndNamespace(
+        distributedLogsName, namespace);
+
+    final @NotNull Optional<Secret> databaseCredentials =
+        secretFinder.findByNameAndNamespace(distributedLogsName, namespace)
+        .or(() -> secretFinder.findByNameAndNamespace(
+            DistributedLogsCredentials.secretName(distributedLogs), namespace));
 
     StackGresDistributedLogsContext context = ImmutableStackGresDistributedLogsContext.builder()
-        .source(config)
-        .postgresConfig(pgConfig)
-        .profile(profile)
-        .addAllConnectedClusters(getConnectedClusters(config))
-        .databaseCredentials(secretFinder.findByNameAndNamespace(distributedLogsName, namespace))
+        .config(config)
+        .source(distributedLogs)
+        .postgresConfig(postgresConfig)
+        .cluster(cluster)
+        .addAllConnectedClusters(getConnectedClusters(distributedLogs))
+        .databaseCredentials(databaseCredentials)
         .build();
 
-    return decorator.decorateResources(context);
+    return discoverer.generateResources(context);
   }
 
   private List<StackGresCluster> getConnectedClusters(

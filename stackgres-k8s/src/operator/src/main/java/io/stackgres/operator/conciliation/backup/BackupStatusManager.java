@@ -8,9 +8,6 @@ package io.stackgres.operator.conciliation.backup;
 import java.util.Objects;
 import java.util.Optional;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
 import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.stackgres.common.JobUtil;
 import io.stackgres.common.StackGresContext;
@@ -19,10 +16,12 @@ import io.stackgres.common.crd.sgbackup.StackGresBackup;
 import io.stackgres.common.crd.sgbackup.StackGresBackupProcess;
 import io.stackgres.common.crd.sgbackup.StackGresBackupStatus;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
-import io.stackgres.common.labels.ClusterLabelMapper;
+import io.stackgres.common.labels.LabelMapperForCluster;
 import io.stackgres.common.resource.CustomResourceFinder;
 import io.stackgres.common.resource.ResourceFinder;
 import io.stackgres.operator.conciliation.factory.backup.BackupJob;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,13 +31,13 @@ public class BackupStatusManager {
   private static final Logger LOGGER = LoggerFactory.getLogger(BackupStatusManager.class);
 
   private final CustomResourceFinder<StackGresCluster> clusterFinder;
-  private final ClusterLabelMapper clusterLabelMapper;
+  private final LabelMapperForCluster clusterLabelMapper;
   private final ResourceFinder<Job> jobFinder;
 
   @Inject
   public BackupStatusManager(
       CustomResourceFinder<StackGresCluster> clusterFinder,
-      ClusterLabelMapper clusterLabelMapper,
+      LabelMapperForCluster clusterLabelMapper,
       ResourceFinder<Job> jobFinder) {
     this.clusterFinder = clusterFinder;
     this.clusterLabelMapper = clusterLabelMapper;
@@ -57,7 +56,9 @@ public class BackupStatusManager {
     Optional<Boolean> isBackupJobCompletedOrFailed = JobUtil.isJobCompleteOrFailed(backupJob);
     Optional<Boolean> isBackupJobActive = JobUtil.isJobActive(backupJob);
     if (isBackupJobCompletedOrFailed.isPresent()) {
-      if (Boolean.TRUE.equals(isBackupJobCompletedOrFailed.get())) {
+      if (Boolean.TRUE.equals(isBackupJobCompletedOrFailed.get())
+          && source.getStatus().getBackupInformation() != null
+          && source.getStatus().getInternalName() != null) {
         setStatus(source, BackupStatus.COMPLETED);
       } else {
         setStatus(source, BackupStatus.FAILED);

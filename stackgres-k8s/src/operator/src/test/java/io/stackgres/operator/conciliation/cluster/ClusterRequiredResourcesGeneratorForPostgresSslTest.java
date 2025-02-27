@@ -16,6 +16,7 @@ import java.util.Optional;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
 import io.quarkus.test.junit.QuarkusTest;
+import io.stackgres.common.PatroniUtil;
 import io.stackgres.common.crd.SecretKeySelector;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSsl;
 import io.stackgres.operator.conciliation.factory.cluster.PostgresSslSecret;
@@ -35,20 +36,20 @@ class ClusterRequiredResourcesGeneratorForPostgresSslTest
     unmockBackupConfig();
     mockPgConfig();
     when(poolingConfigFinder.findByNameAndNamespace(cluster.getSpec()
-        .getConfiguration().getConnectionPoolingConfig(), clusterNamespace))
+        .getConfigurations().getSgPoolingConfig(), clusterNamespace))
         .thenReturn(Optional.empty());
     when(profileConfigFinder.findByNameAndNamespace(
-        cluster.getSpec().getResourceProfile(), clusterNamespace))
+        cluster.getSpec().getSgInstanceProfile(), clusterNamespace))
         .thenReturn(Optional.of(instanceProfile));
 
     generator.getRequiredResources(cluster);
 
     verify(postgresConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getConfiguration().getPostgresConfig(), clusterNamespace);
+        cluster.getSpec().getConfigurations().getSgPostgresConfig(), clusterNamespace);
     verify(poolingConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getConfiguration().getConnectionPoolingConfig(), clusterNamespace);
+        cluster.getSpec().getConfigurations().getSgPoolingConfig(), clusterNamespace);
     verify(profileConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getResourceProfile(), clusterNamespace);
+        cluster.getSpec().getSgInstanceProfile(), clusterNamespace);
     verify(secretFinder, times(3)).findByNameAndNamespace(any(), any());
   }
 
@@ -61,20 +62,20 @@ class ClusterRequiredResourcesGeneratorForPostgresSslTest
     unmockBackupConfig();
     mockPgConfig();
     when(poolingConfigFinder.findByNameAndNamespace(cluster.getSpec()
-        .getConfiguration().getConnectionPoolingConfig(), clusterNamespace))
+        .getConfigurations().getSgPoolingConfig(), clusterNamespace))
         .thenReturn(Optional.empty());
     when(profileConfigFinder.findByNameAndNamespace(
-        cluster.getSpec().getResourceProfile(), clusterNamespace))
+        cluster.getSpec().getSgInstanceProfile(), clusterNamespace))
         .thenReturn(Optional.of(instanceProfile));
 
     generator.getRequiredResources(cluster);
 
     verify(postgresConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getConfiguration().getPostgresConfig(), clusterNamespace);
+        cluster.getSpec().getConfigurations().getSgPostgresConfig(), clusterNamespace);
     verify(poolingConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getConfiguration().getConnectionPoolingConfig(), clusterNamespace);
+        cluster.getSpec().getConfigurations().getSgPoolingConfig(), clusterNamespace);
     verify(profileConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getResourceProfile(), clusterNamespace);
+        cluster.getSpec().getSgInstanceProfile(), clusterNamespace);
     verify(secretFinder, times(3)).findByNameAndNamespace(any(), any());
   }
 
@@ -87,20 +88,20 @@ class ClusterRequiredResourcesGeneratorForPostgresSslTest
     unmockBackupConfig();
     mockPgConfig();
     when(poolingConfigFinder.findByNameAndNamespace(cluster.getSpec()
-        .getConfiguration().getConnectionPoolingConfig(), clusterNamespace))
+        .getConfigurations().getSgPoolingConfig(), clusterNamespace))
         .thenReturn(Optional.empty());
     when(profileConfigFinder.findByNameAndNamespace(
-        cluster.getSpec().getResourceProfile(), clusterNamespace))
+        cluster.getSpec().getSgInstanceProfile(), clusterNamespace))
         .thenReturn(Optional.of(instanceProfile));
 
     generator.getRequiredResources(cluster);
 
     verify(postgresConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getConfiguration().getPostgresConfig(), clusterNamespace);
+        cluster.getSpec().getConfigurations().getSgPostgresConfig(), clusterNamespace);
     verify(poolingConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getConfiguration().getConnectionPoolingConfig(), clusterNamespace);
+        cluster.getSpec().getConfigurations().getSgPoolingConfig(), clusterNamespace);
     verify(profileConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getResourceProfile(), clusterNamespace);
+        cluster.getSpec().getSgInstanceProfile(), clusterNamespace);
     verify(secretFinder, times(3)).findByNameAndNamespace(any(), any());
   }
 
@@ -113,21 +114,21 @@ class ClusterRequiredResourcesGeneratorForPostgresSslTest
     unmockBackupConfig();
     mockPgConfig();
     when(poolingConfigFinder.findByNameAndNamespace(cluster.getSpec()
-        .getConfiguration().getConnectionPoolingConfig(), clusterNamespace))
+        .getConfigurations().getSgPoolingConfig(), clusterNamespace))
         .thenReturn(Optional.empty());
     when(profileConfigFinder.findByNameAndNamespace(
-        cluster.getSpec().getResourceProfile(), clusterNamespace))
+        cluster.getSpec().getSgInstanceProfile(), clusterNamespace))
         .thenReturn(Optional.of(instanceProfile));
 
     assertException("Certificate secret missing-test-secret was not found");
 
     verify(postgresConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getConfiguration().getPostgresConfig(), clusterNamespace);
+        cluster.getSpec().getConfigurations().getSgPostgresConfig(), clusterNamespace);
     verify(poolingConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getConfiguration().getConnectionPoolingConfig(), clusterNamespace);
+        cluster.getSpec().getConfigurations().getSgPoolingConfig(), clusterNamespace);
     verify(profileConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getResourceProfile(), clusterNamespace);
-    verify(secretFinder, times(1)).findByNameAndNamespace(any(), any());
+        cluster.getSpec().getSgInstanceProfile(), clusterNamespace);
+    verify(secretFinder, times(2)).findByNameAndNamespace(any(), any());
   }
 
   @Test
@@ -139,21 +140,21 @@ class ClusterRequiredResourcesGeneratorForPostgresSslTest
     unmockBackupConfig();
     mockPgConfig();
     when(poolingConfigFinder.findByNameAndNamespace(cluster.getSpec()
-        .getConfiguration().getConnectionPoolingConfig(), clusterNamespace))
+        .getConfigurations().getSgPoolingConfig(), clusterNamespace))
         .thenReturn(Optional.empty());
     when(profileConfigFinder.findByNameAndNamespace(
-        cluster.getSpec().getResourceProfile(), clusterNamespace))
+        cluster.getSpec().getSgInstanceProfile(), clusterNamespace))
         .thenReturn(Optional.of(instanceProfile));
 
     assertException("Private key secret missing-test-secret was not found");
 
     verify(postgresConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getConfiguration().getPostgresConfig(), clusterNamespace);
+        cluster.getSpec().getConfigurations().getSgPostgresConfig(), clusterNamespace);
     verify(poolingConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getConfiguration().getConnectionPoolingConfig(), clusterNamespace);
+        cluster.getSpec().getConfigurations().getSgPoolingConfig(), clusterNamespace);
     verify(profileConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getResourceProfile(), clusterNamespace);
-    verify(secretFinder, times(2)).findByNameAndNamespace(any(), any());
+        cluster.getSpec().getSgInstanceProfile(), clusterNamespace);
+    verify(secretFinder, times(3)).findByNameAndNamespace(any(), any());
   }
 
   @Test
@@ -165,21 +166,21 @@ class ClusterRequiredResourcesGeneratorForPostgresSslTest
     unmockBackupConfig();
     mockPgConfig();
     when(poolingConfigFinder.findByNameAndNamespace(cluster.getSpec()
-        .getConfiguration().getConnectionPoolingConfig(), clusterNamespace))
+        .getConfigurations().getSgPoolingConfig(), clusterNamespace))
         .thenReturn(Optional.empty());
     when(profileConfigFinder.findByNameAndNamespace(
-        cluster.getSpec().getResourceProfile(), clusterNamespace))
+        cluster.getSpec().getSgInstanceProfile(), clusterNamespace))
         .thenReturn(Optional.of(instanceProfile));
 
     assertException("Certificate key test-certificate was not found in secret test-secret");
 
     verify(postgresConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getConfiguration().getPostgresConfig(), clusterNamespace);
+        cluster.getSpec().getConfigurations().getSgPostgresConfig(), clusterNamespace);
     verify(poolingConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getConfiguration().getConnectionPoolingConfig(), clusterNamespace);
+        cluster.getSpec().getConfigurations().getSgPoolingConfig(), clusterNamespace);
     verify(profileConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getResourceProfile(), clusterNamespace);
-    verify(secretFinder, times(1)).findByNameAndNamespace(any(), any());
+        cluster.getSpec().getSgInstanceProfile(), clusterNamespace);
+    verify(secretFinder, times(2)).findByNameAndNamespace(any(), any());
   }
 
   @Test
@@ -191,21 +192,21 @@ class ClusterRequiredResourcesGeneratorForPostgresSslTest
     unmockBackupConfig();
     mockPgConfig();
     when(poolingConfigFinder.findByNameAndNamespace(cluster.getSpec()
-        .getConfiguration().getConnectionPoolingConfig(), clusterNamespace))
+        .getConfigurations().getSgPoolingConfig(), clusterNamespace))
         .thenReturn(Optional.empty());
     when(profileConfigFinder.findByNameAndNamespace(
-        cluster.getSpec().getResourceProfile(), clusterNamespace))
+        cluster.getSpec().getSgInstanceProfile(), clusterNamespace))
         .thenReturn(Optional.of(instanceProfile));
 
     assertException("Private key key test-private-key was not found in secret test-secret");
 
     verify(postgresConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getConfiguration().getPostgresConfig(), clusterNamespace);
+        cluster.getSpec().getConfigurations().getSgPostgresConfig(), clusterNamespace);
     verify(poolingConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getConfiguration().getConnectionPoolingConfig(), clusterNamespace);
+        cluster.getSpec().getConfigurations().getSgPoolingConfig(), clusterNamespace);
     verify(profileConfigFinder).findByNameAndNamespace(
-        cluster.getSpec().getResourceProfile(), clusterNamespace);
-    verify(secretFinder, times(2)).findByNameAndNamespace(any(), any());
+        cluster.getSpec().getSgInstanceProfile(), clusterNamespace);
+    verify(secretFinder, times(3)).findByNameAndNamespace(any(), any());
   }
 
   private void mockPostgresSsl() {
@@ -222,10 +223,10 @@ class ClusterRequiredResourcesGeneratorForPostgresSslTest
         .thenReturn(Optional.of(new SecretBuilder()
             .withData(Map.ofEntries(
                 Map.entry(
-                    PostgresSslSecret.CERTIFICATE_KEY,
+                    PatroniUtil.CERTIFICATE_KEY,
                     ResourceUtil.encodeSecret("test-certificate")),
                 Map.entry(
-                    PostgresSslSecret.PRIVATE_KEY_KEY,
+                    PatroniUtil.PRIVATE_KEY_KEY,
                     ResourceUtil.encodeSecret("test-private-key"))))
             .build()));
   }

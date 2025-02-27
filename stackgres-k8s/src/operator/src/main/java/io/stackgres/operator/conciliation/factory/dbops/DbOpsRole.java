@@ -5,13 +5,13 @@
 
 package io.stackgres.operator.conciliation.factory.dbops;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Stream;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
 import io.fabric8.kubernetes.api.model.HasMetadata;
+import io.fabric8.kubernetes.api.model.LocalObjectReference;
 import io.fabric8.kubernetes.api.model.ServiceAccount;
 import io.fabric8.kubernetes.api.model.ServiceAccountBuilder;
 import io.fabric8.kubernetes.api.model.rbac.PolicyRuleBuilder;
@@ -21,7 +21,6 @@ import io.fabric8.kubernetes.api.model.rbac.RoleBindingBuilder;
 import io.fabric8.kubernetes.api.model.rbac.RoleBuilder;
 import io.fabric8.kubernetes.api.model.rbac.RoleRefBuilder;
 import io.fabric8.kubernetes.api.model.rbac.SubjectBuilder;
-import io.stackgres.common.DbOpsUtil;
 import io.stackgres.common.crd.CommonDefinition;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgdbops.StackGresDbOps;
@@ -30,6 +29,8 @@ import io.stackgres.operator.conciliation.OperatorVersionBinder;
 import io.stackgres.operator.conciliation.ResourceGenerator;
 import io.stackgres.operator.conciliation.dbops.StackGresDbOpsContext;
 import io.stackgres.operatorframework.resource.ResourceUtil;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
 @Singleton
 @OperatorVersionBinder
@@ -56,8 +57,7 @@ public class DbOpsRole implements ResourceGenerator<StackGresDbOpsContext> {
     return Stream.<HasMetadata>of(
         createServiceAccount(context),
         createRole(context),
-        createRoleBinding(context))
-        .filter(resource -> !DbOpsUtil.isAlreadyCompleted(context.getSource()));
+        createRoleBinding(context));
   }
 
   /**
@@ -75,6 +75,11 @@ public class DbOpsRole implements ResourceGenerator<StackGresDbOpsContext> {
         .withNamespace(serviceAccountNamespace)
         .withLabels(labels)
         .endMetadata()
+        .withImagePullSecrets(Optional.ofNullable(context.getConfig().getSpec().getImagePullSecrets())
+            .stream()
+            .flatMap(List::stream)
+            .map(LocalObjectReference.class::cast)
+            .toList())
         .build();
 
   }

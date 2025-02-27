@@ -5,18 +5,14 @@
 
 package io.stackgres.common.resource;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
 import io.fabric8.kubernetes.api.model.ConfigMap;
-import io.fabric8.kubernetes.api.model.ConfigMapList;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
-import io.fabric8.kubernetes.client.dsl.Resource;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
-public class ConfigMapWriter extends AbstractResourceWriter<
-    ConfigMap, ConfigMapList, Resource<ConfigMap>> {
+public class ConfigMapWriter extends AbstractResourceWriter<ConfigMap> {
 
   @Inject
   public ConfigMapWriter(KubernetesClient client) {
@@ -24,10 +20,7 @@ public class ConfigMapWriter extends AbstractResourceWriter<
   }
 
   @Override
-  protected MixedOperation<
-          ConfigMap,
-          ConfigMapList,
-          Resource<ConfigMap>> getResourceEndpoints(KubernetesClient client) {
+  protected MixedOperation<ConfigMap, ?, ?> getResourceEndpoints(KubernetesClient client) {
     return client.configMaps();
   }
 

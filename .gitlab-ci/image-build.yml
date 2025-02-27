@@ -1,18 +1,19 @@
 
 .build image:
-  image: $CI_REGISTRY/$CI_PROJECT_PATH/$SG_CI_IMAGE_NAME
+  image: $CI_REGISTRY/$SG_CI_PROJECT_PATH/$SG_CI_IMAGE_NAME
   stage: image build
   timeout: 1 hour
   script:
     - |
       [ "$DEBUG" != true ] || set -x
       export IMAGE_TAG="${CI_COMMIT_TAG:-"$CI_COMMIT_SHORT_SHA"}$IMAGE_SUFFIX"
-      export IMAGE_NAME="$CI_REGISTRY/$CI_PROJECT_PATH/$IMAGE_BASE_NAME:$IMAGE_TAG"
-      docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+      export IMAGE_NAME="$CI_REGISTRY/$SG_CI_PROJECT_PATH/$IMAGE_BASE_NAME:$IMAGE_TAG"
+      mkdir -p $HOME/.docker                                                                                                                                                                               
+      cat "$DOCKER_AUTH_CONFIG" > "$HOME/.docker/config.json"                                                                                                                                              
+      echo | docker login "$CI_REGISTRY" || \
+        docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
       flock "$LOCK_FILE" \
         sh stackgres-k8s/ci/build/build-gitlab.sh build \
-          --copy 'stackgres-k8s/ci/build/target/config.json' \
-          --copy 'stackgres-k8s/ci/build/target/image-hashes' \
           "$IMAGE_MODULE_NAME"
       HASH_IMAGE_NAME="$(sh stackgres-k8s/ci/build/build-functions.sh image_name "$IMAGE_MODULE_NAME")"
       docker pull "$HASH_IMAGE_NAME"
@@ -21,7 +22,7 @@
   retry: 2
 
 .build image multi archs:
-  image: docker:20.10.12
+  image: docker:24.0.7
   stage: image build multi archs
   timeout: 1 hour
   script:
@@ -29,8 +30,11 @@
       [ "$DEBUG" != true ] || set -x
       export IMAGE_TAG="${CI_COMMIT_TAG:-"$CI_COMMIT_SHORT_SHA"}$IMAGE_SUFFIX"
       export IMAGE_NAME="$IMAGE_BASE_NAME:$IMAGE_TAG"
-      export TARGET_IMAGE_NAME="$CI_REGISTRY/$CI_PROJECT_PATH/$IMAGE_NAME"
-      docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+      export TARGET_IMAGE_NAME="$CI_REGISTRY/$SG_CI_PROJECT_PATH/$IMAGE_NAME"
+      mkdir -p $HOME/.docker                                                                                                                                                                               
+      cat "$DOCKER_AUTH_CONFIG" > "$HOME/.docker/config.json"                                                                                                                                              
+      echo | docker login "$CI_REGISTRY" || \
+        docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
       cd stackgres-k8s/src
       ARCH_LIST="amd64 $(
         if [ "$DO_ARM" = true ] \
@@ -73,11 +77,16 @@
     - linux-amd64
   variables:
     IMAGE_SUFFIX: '-amd64'
-  only:
-    variables:
-      - $SKIP_NATIVE != "true" && $CI_COMMIT_REF_NAME =~ /^main.*$/
-      - $SKIP_NATIVE != "true"  && $CI_COMMIT_TAG && $CI_COMMIT_TAG !~ /^latest-.*$/
-      - $DO_NATIVE
+  rules:
+  - if: |
+      ( ( $CI_PIPELINE_SOURCE == 'merge_request_event'
+      || $CI_PIPELINE_SOURCE == 'push'
+      || $CI_PIPELINE_SOURCE == 'schedule'
+      || $CI_PIPELINE_SOURCE == 'trigger'
+      || $CI_COMMIT_TAG )
+      && ( ( $SKIP_NATIVE != "true" && $CI_COMMIT_REF_NAME =~ /^main.*$/ )
+      || ( $SKIP_NATIVE != "true"  && $CI_COMMIT_TAG )
+      || $DO_NATIVE ) )
 
 build operator jvm image amd64:
   extends: .build jvm image amd64
@@ -107,12 +116,12 @@ build cluster-controller jvm image amd64:
     LOCK_FILE: stackgres-cluster-controller-build-jvm-image
     IMAGE_MODULE_NAME: cluster-controller-jvm-image
 
-build distributedlogs-controller jvm image amd64:
+build stream jvm image amd64:
   extends: .build jvm image amd64
   variables:
-    IMAGE_BASE_NAME: stackgres/distributedlogs-controller
-    LOCK_FILE: stackgres-distributedlogs-controller-build-jvm-image
-    IMAGE_MODULE_NAME: distributedlogs-controller-jvm-image
+    IMAGE_BASE_NAME: stackgres/stream
+    LOCK_FILE: stackgres-stream-build-jvm-image
+    IMAGE_MODULE_NAME: stream-jvm-image
 
 build operator native image amd64:
   extends: .build native image amd64
@@ -142,12 +151,12 @@ build cluster-controller native image amd64:
     LOCK_FILE: stackgres-cluster-controller-build-native-image
     IMAGE_MODULE_NAME: cluster-controller-native-image
 
-build distributedlogs-controller native image amd64:
+.build stream native image amd64:
   extends: .build native image amd64
   variables:
-    IMAGE_BASE_NAME: stackgres/distributedlogs-controller
-    LOCK_FILE: stackgres-distributedlogs-controller-build-native-image
-    IMAGE_MODULE_NAME: distributedlogs-controller-native-image
+    IMAGE_BASE_NAME: stackgres/stream
+    LOCK_FILE: stackgres-stream-build-native-image
+    IMAGE_MODULE_NAME: stream-native-image
 
 build admin-ui image amd64:
   extends: .build image
@@ -171,10 +180,13 @@ build admin-ui image amd64:
     - linux-arm64
   variables:
     IMAGE_SUFFIX: '-jvm-arm64'
-  only:
-    variables:
-      - $SKIP_ARM != "true" && $CI_COMMIT_TAG && $CI_COMMIT_TAG !~ /^latest-.*$/
-      - $DO_ARM
+  rules:
+  - if: |
+     ( ( $CI_PIPELINE_SOURCE =~ /^(push|schedule|trigger)$/ || $CI_COMMIT_TAG
+       || ( $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_SHA == null ) )
+       && (
+        ( $SKIP_ARM != "true" && $CI_COMMIT_TAG )
+        || $DO_ARM ) )
 
 .build native image arm64:
   extends: .build image
@@ -185,10 +197,13 @@ build admin-ui image amd64:
     - linux-arm64
   variables:
     IMAGE_SUFFIX: '-arm64'
-  only:
-    variables:
-      - $SKIP_NATIVE != "true" && $SKIP_ARM != "true" && $CI_COMMIT_TAG && $CI_COMMIT_TAG !~ /^latest-.*$/
-      - $DO_NATIVE && $DO_ARM
+  rules:
+  - if: |
+     ( ( $CI_PIPELINE_SOURCE =~ /^(push|schedule|trigger)$/ || $CI_COMMIT_TAG
+       || ( $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_SHA == null ) )
+       && (
+        ( $SKIP_NATIVE != "true" && $SKIP_ARM != "true" && $CI_COMMIT_TAG )
+        || ( $DO_NATIVE && $DO_ARM ) ) )
 
 build operator jvm image arm64:
   extends: .build jvm image arm64
@@ -218,12 +233,12 @@ build cluster-controller jvm image arm64:
     LOCK_FILE: stackgres-cluster-controller-build-jvm-image
     IMAGE_MODULE_NAME: cluster-controller-jvm-image
 
-build distributedlogs-controller jvm image arm64:
+build stream jvm image arm64:
   extends: .build jvm image arm64
   variables:
-    IMAGE_BASE_NAME: stackgres/distributedlogs-controller
-    LOCK_FILE: stackgres-distributedlogs-controller-build-jvm-image
-    IMAGE_MODULE_NAME: distributedlogs-controller-jvm-image
+    IMAGE_BASE_NAME: stackgres/stream
+    LOCK_FILE: stackgres-stream-build-jvm-image
+    IMAGE_MODULE_NAME: stream-jvm-image
 
 build operator native image arm64:
   extends: .build native image arm64
@@ -253,12 +268,12 @@ build cluster-controller native image arm64:
     LOCK_FILE: stackgres-cluster-controller-build-native-image
     IMAGE_MODULE_NAME: cluster-controller-native-image
 
-build distributedlogs-controller native image arm64:
+.build stream native image arm64:
   extends: .build native image arm64
   variables:
-    IMAGE_BASE_NAME: stackgres/distributedlogs-controller
-    LOCK_FILE: stackgres-distributedlogs-controller-build-native-image
-    IMAGE_MODULE_NAME: distributedlogs-controller-native-image
+    IMAGE_BASE_NAME: stackgres/stream
+    LOCK_FILE: stackgres-stream-build-native-image
+    IMAGE_MODULE_NAME: stream-native-image
 
 build admin-ui image arm64:
   extends: .build image
@@ -272,10 +287,13 @@ build admin-ui image arm64:
     IMAGE_BASE_NAME: stackgres/admin-ui
     LOCK_FILE: stackgres-adminui-build-image
     IMAGE_MODULE_NAME: admin-ui-image
-  only:
-    variables:
-      - $SKIP_ARM != "true" && $CI_COMMIT_TAG && $CI_COMMIT_TAG !~ /^latest-.*$/
-      - $DO_ARM
+  rules:
+  - if: |
+     ( ( $CI_PIPELINE_SOURCE =~ /^(push|schedule|trigger)$/ || $CI_COMMIT_TAG
+       || ( $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_SHA == null ) )
+       && (
+        ( $SKIP_ARM != "true" && $CI_COMMIT_TAG )
+        ||  $DO_ARM ) )
 
 .build jvm image multi archs:
   extends: .build image multi archs
@@ -290,11 +308,14 @@ build admin-ui image arm64:
     - stackgres-runner-v2
   variables:
     IMAGE_SUFFIX: ''
-  only:
-    variables:
-      - $SKIP_NATIVE != "true" && $CI_COMMIT_REF_NAME =~ /^main.*$/
-      - $SKIP_NATIVE != "true" && $CI_COMMIT_TAG && $CI_COMMIT_TAG !~ /^latest-.*$/
-      - $DO_NATIVE
+  rules:
+  - if: |
+     ( ( $CI_PIPELINE_SOURCE =~ /^(push|schedule|trigger)$/ || $CI_COMMIT_TAG
+       || ( $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_SHA == null ) )
+       && (
+        ( $SKIP_NATIVE != "true" && $CI_COMMIT_REF_NAME =~ /^main.*$/ )
+        || ( $SKIP_NATIVE != "true" && $CI_COMMIT_TAG )
+        || $DO_NATIVE ) )
 
 build operator jvm image multi archs:
   extends: .build jvm image multi archs
@@ -316,10 +337,10 @@ build cluster-controller jvm image multi archs:
   variables:
     IMAGE_BASE_NAME: stackgres/cluster-controller
 
-build distributedlogs-controller jvm image multi archs:
+build stream jvm image multi archs:
   extends: .build jvm image multi archs
   variables:
-    IMAGE_BASE_NAME: stackgres/distributedlogs-controller
+    IMAGE_BASE_NAME: stackgres/stream
 
 build operator native image multi archs:
   extends: .build native image multi archs
@@ -341,10 +362,10 @@ build cluster-controller native image multi archs:
   variables:
     IMAGE_BASE_NAME: stackgres/cluster-controller
 
-build distributedlogs-controller native image multi archs:
+.build stream native image multi archs:
   extends: .build native image multi archs
   variables:
-    IMAGE_BASE_NAME: stackgres/distributedlogs-controller
+    IMAGE_BASE_NAME: stackgres/stream
 
 build admin-ui image multi archs:
   extends: .build image multi archs
@@ -354,7 +375,7 @@ build admin-ui image multi archs:
     IMAGE_SUFFIX: ''
     IMAGE_BASE_NAME: stackgres/admin-ui
 
-.build helm operator image amd64:
+.build operator bundle image amd64:
   extends: .build image
   dependencies:
     - build amd64
@@ -363,9 +384,9 @@ build admin-ui image multi archs:
     - linux-amd64
   variables:
     IMAGE_SUFFIX: '-amd64'
-    IMAGE_BASE_NAME: stackgres/helm-operator
+    IMAGE_BASE_NAME: stackgres/operator-bundle
 
-.build helm operator image arm64:
+.build operator bundle image arm64:
   extends: .build image
   dependencies:
     - build arm64
@@ -374,90 +395,103 @@ build admin-ui image multi archs:
     - linux-arm64
   variables:
     IMAGE_SUFFIX: '-arm64'
-    IMAGE_BASE_NAME: stackgres/helm-operator
-  only:
-    variables:
-      - $SKIP_ARM != "true" && $CI_COMMIT_TAG && $CI_COMMIT_TAG !~ /^latest-.*$/
-      - $DO_ARM
+    IMAGE_BASE_NAME: stackgres/operator-bundle
+  rules:
+  - if: |
+     ( ( $CI_PIPELINE_SOURCE =~ /^(push|schedule|trigger)$/ || $CI_COMMIT_TAG
+       || ( $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_SHA == null ) )
+       && (
+        ( $SKIP_ARM != "true" && $CI_COMMIT_TAG )
+        ||  $DO_ARM ) )
 
-build helm operator image amd64:
-  extends: .build helm operator image amd64
+build operator bundle image amd64:
+  extends: .build operator bundle image amd64
   variables:
-    LOCK_FILE: stackgres-helm-operator-build-image
-    IMAGE_MODULE_NAME: helm-operator-image
+    LOCK_FILE: stackgres-operator-bundle-build-image
+    IMAGE_MODULE_NAME: operator-bundle-image
 
-build helm operator image arm64:
-  extends: .build helm operator image arm64
+build operator bundle image arm64:
+  extends: .build operator bundle image arm64
   variables:
-    LOCK_FILE: stackgres-helm-operator-build-image
-    IMAGE_MODULE_NAME: helm-operator-image
+    LOCK_FILE: stackgres-operator-bundle-build-image
+    IMAGE_MODULE_NAME: operator-bundle-image
 
-build helm operator bundle image amd64:
-  extends: .build helm operator image amd64
-  variables:
-    IMAGE_BASE_NAME: stackgres/helm-operator-bundle
-    LOCK_FILE: stackgres-helm-operator-bundle-build-image
-    IMAGE_MODULE_NAME: helm-operator-bundle-image
-
-build helm operator bundle image arm64:
-  extends: .build helm operator image arm64
-  variables:
-    IMAGE_BASE_NAME: stackgres/helm-operator-bundle
-    LOCK_FILE: stackgres-helm-operator-bundle-build-image
-    IMAGE_MODULE_NAME: helm-operator-bundle-image
-
-build helm operator openshift image amd64:
-  extends: .build helm operator image amd64
+build operator openshift bundle image amd64:
+  extends: .build operator bundle image amd64
   variables:
     IMAGE_SUFFIX: '-openshift-amd64'
-    LOCK_FILE: stackgres-helm-operator-openshift-build-image
-    IMAGE_MODULE_NAME: helm-operator-openshift-image
+    LOCK_FILE: stackgres-operator-openshift-bundle-build-image
+    IMAGE_MODULE_NAME: operator-openshift-bundle-image
 
-build helm operator openshift image arm64:
-  extends: .build helm operator image arm64
+build operator openshift bundle image arm64:
+  extends: .build operator bundle image arm64
   variables:
     IMAGE_SUFFIX: '-openshift-arm64'
-    LOCK_FILE: stackgres-helm-operator-openshift-build-image
-    IMAGE_MODULE_NAME: helm-operator-openshift-image
+    LOCK_FILE: stackgres-operator-openshift-bundle-build-image
+    IMAGE_MODULE_NAME: operator-openshift-bundle-image
 
-build helm operator openshift bundle image amd64:
-  extends: .build helm operator image amd64
-  variables:
-    IMAGE_SUFFIX: '-openshift-amd64'
-    IMAGE_BASE_NAME: stackgres/helm-operator-bundle
-    LOCK_FILE: stackgres-helm-operator-openshift-bundle-build-image
-    IMAGE_MODULE_NAME: helm-operator-openshift-bundle-image
-
-build helm operator openshift bundle image arm64:
-  extends: .build helm operator image arm64
-  variables:
-    IMAGE_SUFFIX: '-openshift-arm64'
-    IMAGE_BASE_NAME: stackgres/helm-operator-bundle
-    LOCK_FILE: stackgres-helm-operator-openshift-bundle-build-image
-    IMAGE_MODULE_NAME: helm-operator-openshift-bundle-image
-
-.build helm operator image multi archs:
+.build operator bundle image multi archs:
   extends: .build image multi archs
   tags:
     - stackgres-runner-v2
   variables:
-    IMAGE_BASE_NAME: stackgres/helm-operator
+    IMAGE_BASE_NAME: stackgres/operator-bundle
 
-build helm operator image multi archs:
-  extends: .build helm operator image multi archs
+build operator bundle image multi archs:
+  extends: .build operator bundle image multi archs
 
-build helm operator bundle image multi archs:
-  extends: .build helm operator image multi archs
-  variables:
-    IMAGE_BASE_NAME: stackgres/helm-operator-bundle
-
-build helm operator openshift image multi archs:
-  extends: .build helm operator image multi archs
+build operator openshift bundle image multi archs:
+  extends: .build operator bundle image multi archs
   variables:
     IMAGE_SUFFIX: '-openshift'
 
-build helm operator openshift bundle image multi archs:
-  extends: .build helm operator image multi archs
+.build pglambda javascript image amd64:
+  extends: .build image
+  tags:
+    - stackgres-runner-v2
+    - linux-amd64
   variables:
-    IMAGE_SUFFIX: '-openshift'
-    IMAGE_BASE_NAME: stackgres/helm-operator-bundle
+    IMAGE_SUFFIX: '-javascript-amd64'
+    IMAGE_BASE_NAME: stackgres/pglambda
+
+.build pglambda javascript image arm64:
+  extends: .build image
+  dependencies:
+    - build arm64
+  tags:
+    - stackgres-runner-v2
+    - linux-arm64
+  variables:
+    IMAGE_SUFFIX: '-javascript-arm64'
+    IMAGE_BASE_NAME: stackgres/pglambda
+  rules:
+  - if: |
+     ( ( $CI_PIPELINE_SOURCE =~ /^(push|schedule|trigger)$/ || $CI_COMMIT_TAG
+       || ( $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_SHA == null ) )
+       && (
+       ( $SKIP_ARM != "true" && $CI_COMMIT_TAG )
+       || $DO_ARM ) )
+
+build pglambda javascript image amd64:
+  extends: .build pglambda javascript image amd64
+  variables:
+    LOCK_FILE: stackgres-pglambda-javascript-build-image
+    IMAGE_MODULE_NAME: pglambda-javascript-image
+
+build pglambda javascript image arm64:
+  extends: .build pglambda javascript image arm64
+  variables:
+    LOCK_FILE: stackgres-pglambda-javascript-build-image
+    IMAGE_MODULE_NAME: pglambda-javascript-image
+
+.build pglambda javascript image multi archs:
+  extends: .build image multi archs
+  tags:
+    - stackgres-runner-v2
+  variables:
+    IMAGE_BASE_NAME: stackgres/pglambda
+
+build pglambda javascript image multi archs:
+  extends: .build pglambda javascript image multi archs
+  variables:
+    IMAGE_SUFFIX: '-javascript'

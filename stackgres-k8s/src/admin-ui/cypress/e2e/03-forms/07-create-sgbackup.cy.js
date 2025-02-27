@@ -50,7 +50,7 @@ describe('Create SGBackup', () => {
                     }
                 },
                 postgres: {
-                    version: "13.3",
+                    version: "15.2",
                     flavor: "vanilla"
                 }
             }  
@@ -85,7 +85,7 @@ describe('Create SGBackup', () => {
                     }
                 },
                 postgres: {
-                    version: "13.3",
+                    version: "15.2",
                     flavor: "vanilla"
                 }
             }  
@@ -146,6 +146,19 @@ describe('Create SGBackup', () => {
 
         cy.get('label[data-field="spec.managedLifecycle"]')
             .click()
+
+        // Test Dry Run
+        cy.get('form#createBackup button[data-field="dryRun"]')
+            .click()
+
+        cy.get('#crdSummary')
+            .should('be.visible')
+
+        cy.get('#crdSummary span.close')
+            .click()
+        
+        cy.get('#crdSummary')
+            .should('not.exist')
 
         // Test Submit form
         cy.get('form#createBackup button[type="submit"]')

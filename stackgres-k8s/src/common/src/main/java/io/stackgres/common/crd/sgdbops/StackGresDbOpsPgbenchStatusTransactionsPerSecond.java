@@ -9,7 +9,6 @@ import java.util.Objects;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
 import io.sundr.builder.annotations.Buildable;
@@ -22,11 +21,11 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresDbOpsPgbenchStatusTransactionsPerSecond {
 
-  @JsonProperty("excludingConnectionsEstablishing")
   private StackGresDbOpsPgbenchStatusMeasure excludingConnectionsEstablishing;
 
-  @JsonProperty("includingConnectionsEstablishing")
   private StackGresDbOpsPgbenchStatusMeasure includingConnectionsEstablishing;
+
+  private StackGresDbOpsPgbenchStatusTransactionsPerSecondOverTime overTime;
 
   public StackGresDbOpsPgbenchStatusMeasure getExcludingConnectionsEstablishing() {
     return excludingConnectionsEstablishing;
@@ -46,9 +45,18 @@ public class StackGresDbOpsPgbenchStatusTransactionsPerSecond {
     this.includingConnectionsEstablishing = includingConnectionsEstablishing;
   }
 
+  public StackGresDbOpsPgbenchStatusTransactionsPerSecondOverTime getOverTime() {
+    return overTime;
+  }
+
+  public void setOverTime(StackGresDbOpsPgbenchStatusTransactionsPerSecondOverTime overTime) {
+    this.overTime = overTime;
+  }
+
   @Override
   public int hashCode() {
-    return Objects.hash(excludingConnectionsEstablishing, includingConnectionsEstablishing);
+    return Objects.hash(excludingConnectionsEstablishing, includingConnectionsEstablishing,
+        overTime);
   }
 
   @Override
@@ -59,10 +67,10 @@ public class StackGresDbOpsPgbenchStatusTransactionsPerSecond {
     if (!(obj instanceof StackGresDbOpsPgbenchStatusTransactionsPerSecond)) {
       return false;
     }
-    StackGresDbOpsPgbenchStatusTransactionsPerSecond other =
-        (StackGresDbOpsPgbenchStatusTransactionsPerSecond) obj;
+    StackGresDbOpsPgbenchStatusTransactionsPerSecond other = (StackGresDbOpsPgbenchStatusTransactionsPerSecond) obj;
     return Objects.equals(excludingConnectionsEstablishing, other.excludingConnectionsEstablishing)
-        && Objects.equals(includingConnectionsEstablishing, other.includingConnectionsEstablishing);
+        && Objects.equals(includingConnectionsEstablishing, other.includingConnectionsEstablishing)
+        && Objects.equals(overTime, other.overTime);
   }
 
   @Override

@@ -8,16 +8,13 @@ package io.stackgres.operator.validation.shardedcluster;
 import java.util.List;
 import java.util.Optional;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.storage.StorageClass;
 import io.stackgres.common.ErrorType;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
-import io.stackgres.common.crd.sgcluster.StackGresClusterPod;
+import io.stackgres.common.crd.sgcluster.StackGresClusterPods;
+import io.stackgres.common.crd.sgcluster.StackGresClusterPodsPersistentVolume;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
-import io.stackgres.common.crd.sgcluster.StackGresPodPersistentVolume;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedCluster;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterSpec;
 import io.stackgres.common.labels.LabelFactoryForCluster;
@@ -28,15 +25,15 @@ import io.stackgres.common.resource.ResourceScanner;
 import io.stackgres.operator.common.StackGresShardedClusterReview;
 import io.stackgres.operator.validation.PersistentVolumeSizeExpansionValidator;
 import io.stackgres.operator.validation.ValidationType;
-import io.stackgres.operatorframework.admissionwebhook.Operation;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jetbrains.annotations.NotNull;
 
 @Singleton
 @ValidationType(ErrorType.FORBIDDEN_CLUSTER_UPDATE)
 public class ShardsPersistentVolumeSizeExpansionValidator
-    extends PersistentVolumeSizeExpansionValidator<StackGresShardedClusterReview,
-        StackGresShardedCluster, StackGresCluster>
+    extends PersistentVolumeSizeExpansionValidator<StackGresShardedClusterReview, StackGresShardedCluster>
     implements ShardedClusterValidator {
 
   private final ResourceFinder<StorageClass> finder;
@@ -47,7 +44,7 @@ public class ShardsPersistentVolumeSizeExpansionValidator
 
   private final LabelFactoryForShardedCluster labelFactory;
 
-  private final LabelFactoryForCluster<StackGresCluster> clusterLabelFactory;
+  private final LabelFactoryForCluster clusterLabelFactory;
 
   @Inject
   public ShardsPersistentVolumeSizeExpansionValidator(
@@ -55,7 +52,7 @@ public class ShardsPersistentVolumeSizeExpansionValidator
       CustomResourceScanner<StackGresCluster> clusterScanner,
       LabelFactoryForShardedCluster labelFactory,
       ResourceScanner<PersistentVolumeClaim> pvcScanner,
-      LabelFactoryForCluster<StackGresCluster> clusterLabelFactory) {
+      LabelFactoryForCluster clusterLabelFactory) {
     this.finder = finder;
     this.clusterScanner = clusterScanner;
     this.labelFactory = labelFactory;
@@ -65,7 +62,7 @@ public class ShardsPersistentVolumeSizeExpansionValidator
 
   @Override
   public @NotNull String getVolumeSize(StackGresShardedCluster cluster) {
-    return cluster.getSpec().getShards().getPod().getPersistentVolume().getSize();
+    return cluster.getSpec().getShards().getPods().getPersistentVolume().getSize();
   }
 
   @Override
@@ -73,14 +70,9 @@ public class ShardsPersistentVolumeSizeExpansionValidator
     return Optional.of(cluster)
         .map(StackGresShardedCluster::getSpec)
         .map(StackGresShardedClusterSpec::getShards)
-        .map(StackGresClusterSpec::getPod)
-        .map(StackGresClusterPod::getPersistentVolume)
-        .map(StackGresPodPersistentVolume::getStorageClass);
-  }
-
-  @Override
-  public boolean isOperationUpdate(StackGresShardedClusterReview review) {
-    return review.getRequest().getOperation() == Operation.UPDATE;
+        .map(StackGresClusterSpec::getPods)
+        .map(StackGresClusterPods::getPersistentVolume)
+        .map(StackGresClusterPodsPersistentVolume::getStorageClass);
   }
 
   @Override
@@ -94,7 +86,7 @@ public class ShardsPersistentVolumeSizeExpansionValidator
   }
 
   @Override
-  public LabelFactoryForCluster<StackGresCluster> getLabelFactory() {
+  public LabelFactoryForCluster getLabelFactory() {
     return clusterLabelFactory;
   }
 

@@ -12,9 +12,6 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgcluster.StackGresClusterPostgres;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
@@ -24,6 +21,8 @@ import io.stackgres.common.resource.CustomResourceScheduler;
 import io.stackgres.operator.common.StackGresClusterReview;
 import io.stackgres.operator.initialization.PostgresConfigurationFactory;
 import io.stackgres.operator.initialization.PostgresDefaultFactoriesProvider;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.jooq.lambda.Unchecked;
 
 @ApplicationScoped
@@ -48,7 +47,7 @@ public class DefaultPostgresDelegator implements ClusterMutator {
   public StackGresCluster mutate(StackGresClusterReview review, StackGresCluster resource) {
     return getMutator(review)
         .map(mutator -> mutator.mutate(review, resource))
-        .orElseThrow(IllegalStateException::new);
+        .orElseThrow(IllegalArgumentException::new);
   }
 
   private Optional<DefaultPostgresMutator> getMutator(StackGresClusterReview review) {

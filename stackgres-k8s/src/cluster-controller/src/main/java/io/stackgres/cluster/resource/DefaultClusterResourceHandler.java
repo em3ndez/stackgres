@@ -7,24 +7,22 @@ package io.stackgres.cluster.resource;
 
 import java.util.stream.Stream;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.stackgres.cluster.common.StackGresClusterContext;
-import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.labels.LabelFactoryForCluster;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class DefaultClusterResourceHandler
     extends AbstractClusterResourceHandler {
 
-  private final LabelFactoryForCluster<StackGresCluster> labelFactory;
+  private final LabelFactoryForCluster labelFactory;
 
   @Inject
   public DefaultClusterResourceHandler(
-      LabelFactoryForCluster<StackGresCluster> labelFactory) {
+      LabelFactoryForCluster labelFactory) {
     this.labelFactory = labelFactory;
   }
 

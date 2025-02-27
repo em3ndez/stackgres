@@ -5,35 +5,33 @@
 
 package io.stackgres.operator.conciliation.factory.cluster;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.inject.Any;
-import javax.enterprise.inject.Instance;
-import javax.inject.Inject;
-
-import io.stackgres.operator.conciliation.ResourceDiscoverer;
+import io.stackgres.operator.conciliation.AbstractDiscoverer;
 import io.stackgres.operator.conciliation.factory.PodTemplateFactory;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Any;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class PodTemplateFactoryDiscovererImpl
-    extends ResourceDiscoverer<PodTemplateFactory<ClusterContainerContext>>
+    extends AbstractDiscoverer<PodTemplateFactory<ClusterContainerContext>>
     implements PodTemplateFactoryDiscoverer<ClusterContainerContext> {
 
   @Inject
   public PodTemplateFactoryDiscovererImpl(
-      @Any
-          Instance<PodTemplateFactory<ClusterContainerContext>> instance) {
-    init(instance);
+      @Any Instance<PodTemplateFactory<ClusterContainerContext>> instance) {
+    super(instance);
   }
 
   @Override
   public PodTemplateFactory<ClusterContainerContext> discoverPodSpecFactory(
       ClusterContainerContext context) {
-    var podTemplateFactories = resourceHub.get(context.getClusterContext().getVersion());
+    var podTemplateFactories = hub.get(context.getClusterContext().getVersion());
 
     if (podTemplateFactories.size() != 1) {
-      throw new IllegalStateException(
+      throw new IllegalArgumentException(
           "It should be a single pod template factory per StackGres Version");
     }
-    return podTemplateFactories.get(0);
+    return podTemplateFactories.getFirst();
   }
 }

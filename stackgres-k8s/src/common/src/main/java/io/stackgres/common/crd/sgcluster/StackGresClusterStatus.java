@@ -9,8 +9,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-import javax.validation.Valid;
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -18,6 +16,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.crd.Condition;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.Valid;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -27,31 +26,50 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresClusterStatus {
 
-  @JsonProperty("conditions")
+  private Integer instances;
+
+  private String labelSelector;
+
   @JsonInclude(JsonInclude.Include.NON_EMPTY)
   @Valid
   private List<Condition> conditions = new ArrayList<>();
 
-  @JsonProperty("podStatuses")
   @Valid
   private List<StackGresClusterPodStatus> podStatuses;
 
-  @JsonProperty("dbOps")
   @Valid
   private StackGresClusterDbOpsStatus dbOps;
 
-  @JsonProperty("managedSql")
   @Valid
   private StackGresClusterManagedSqlStatus managedSql;
 
-  @JsonProperty("arch")
   private String arch;
 
-  @JsonProperty("os")
   private String os;
 
-  @JsonProperty("labelPrefix")
   private String labelPrefix;
+
+  @JsonProperty("replicationInitializationFailedSGBackup")
+  private String replicationInitializationFailedSgBackup;
+
+  @Valid
+  private StackGresClusterServiceBindingStatus binding;
+
+  public Integer getInstances() {
+    return instances;
+  }
+
+  public void setInstances(Integer instances) {
+    this.instances = instances;
+  }
+
+  public String getLabelSelector() {
+    return labelSelector;
+  }
+
+  public void setLabelSelector(String labelSelector) {
+    this.labelSelector = labelSelector;
+  }
 
   public List<Condition> getConditions() {
     return conditions;
@@ -109,9 +127,26 @@ public class StackGresClusterStatus {
     this.labelPrefix = labelPrefix;
   }
 
+  public StackGresClusterServiceBindingStatus getBinding() {
+    return binding;
+  }
+
+  public void setBinding(StackGresClusterServiceBindingStatus binding) {
+    this.binding = binding;
+  }
+
+  public String getReplicationInitializationFailedSgBackup() {
+    return replicationInitializationFailedSgBackup;
+  }
+
+  public void setReplicationInitializationFailedSgBackup(String replicationInitializationFailedSgBackup) {
+    this.replicationInitializationFailedSgBackup = replicationInitializationFailedSgBackup;
+  }
+
   @Override
   public int hashCode() {
-    return Objects.hash(arch, conditions, dbOps, labelPrefix, managedSql, os, podStatuses);
+    return Objects.hash(arch, binding, conditions, dbOps, instances, labelPrefix, labelSelector, managedSql, os,
+        podStatuses, replicationInitializationFailedSgBackup);
   }
 
   @Override
@@ -123,10 +158,12 @@ public class StackGresClusterStatus {
       return false;
     }
     StackGresClusterStatus other = (StackGresClusterStatus) obj;
-    return Objects.equals(arch, other.arch) && Objects.equals(conditions, other.conditions)
-        && Objects.equals(dbOps, other.dbOps) && Objects.equals(labelPrefix, other.labelPrefix)
-        && Objects.equals(managedSql, other.managedSql) && Objects.equals(os, other.os)
-        && Objects.equals(podStatuses, other.podStatuses);
+    return Objects.equals(arch, other.arch) && Objects.equals(binding, other.binding)
+        && Objects.equals(conditions, other.conditions) && Objects.equals(dbOps, other.dbOps)
+        && Objects.equals(instances, other.instances) && Objects.equals(labelPrefix, other.labelPrefix)
+        && Objects.equals(labelSelector, other.labelSelector) && Objects.equals(managedSql, other.managedSql)
+        && Objects.equals(os, other.os) && Objects.equals(podStatuses, other.podStatuses)
+        && Objects.equals(replicationInitializationFailedSgBackup, other.replicationInitializationFailedSgBackup);
   }
 
   @Override

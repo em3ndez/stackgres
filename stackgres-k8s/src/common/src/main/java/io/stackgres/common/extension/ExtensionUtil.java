@@ -17,16 +17,14 @@ import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import javax.ws.rs.core.UriBuilder;
-
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.stackgres.common.StackGresComponent;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgcluster.StackGresClusterExtension;
 import io.stackgres.common.crd.sgcluster.StackGresClusterInstalledExtension;
 import io.stackgres.common.crd.sgcluster.StackGresClusterStatus;
+import jakarta.ws.rs.core.UriBuilder;
 import org.jetbrains.annotations.Nullable;
 import org.jooq.lambda.Seq;
 import org.jooq.lambda.tuple.Tuple;
@@ -92,7 +90,7 @@ public interface ExtensionUtil {
                 .orElseThrow(() -> new IllegalArgumentException(
                     "Can not find available version of extension "
                     + getDescription(tt.v1, tt.v2, tt.v3)))))
-            .collect(ImmutableList.toImmutableList())));
+            .toList()));
   }
 
   static Map<StackGresExtensionIndexAnyVersion, List<StackGresExtensionMetadata>>
@@ -119,7 +117,7 @@ public interface ExtensionUtil {
                 .orElseThrow(() -> new IllegalArgumentException(
                     "Can not find available version of extension "
                     + getDescription(tt.v1, tt.v2, tt.v3)))))
-            .collect(ImmutableList.toImmutableList()));
+            .toList());
   }
 
   static Map<String, StackGresExtensionPublisher> toPublishersIndex(
@@ -262,18 +260,6 @@ public interface ExtensionUtil {
     return Optional.ofNullable(cluster).map(StackGresCluster::getStatus)
         .map(StackGresClusterStatus::getArch)
         .or(() -> osDetector.map(OsDetector::getArch));
-  }
-
-  static Optional<String> getClusterArch(ExtensionRequest extensionRequest,
-                                         Optional<OsDetector> osDetector) {
-    return extensionRequest.getArch()
-        .or(() -> osDetector.map(OsDetector::getArch));
-  }
-
-  static Optional<String> getClusterOs(ExtensionRequest extensionRequest,
-                                       Optional<OsDetector> osDetector) {
-    return extensionRequest.getOs()
-        .or(() -> osDetector.map(OsDetector::getOs));
   }
 
   static String getClusterOs(@Nullable StackGresCluster cluster) {

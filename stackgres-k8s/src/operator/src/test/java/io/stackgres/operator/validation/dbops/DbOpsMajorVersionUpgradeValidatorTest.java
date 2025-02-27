@@ -16,7 +16,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.OwnerReferenceBuilder;
 import io.stackgres.common.StackGresComponent;
@@ -29,7 +28,7 @@ import io.stackgres.common.crd.sgcluster.StackGresClusterStatus;
 import io.stackgres.common.crd.sgpgconfig.StackGresPostgresConfig;
 import io.stackgres.common.fixture.Fixtures;
 import io.stackgres.common.resource.AbstractCustomResourceFinder;
-import io.stackgres.operator.common.DbOpsReview;
+import io.stackgres.operator.common.StackGresDbOpsReview;
 import io.stackgres.operator.common.fixture.AdmissionReviewFixtures;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
 import org.jooq.lambda.Seq;
@@ -55,7 +54,7 @@ class DbOpsMajorVersionUpgradeValidatorTest {
               Seq.of(StackGresComponent.LATEST)
               .append(StackGresComponent.POSTGRESQL.getLatest().streamOrderedMajorVersions())
               .append(SUPPORTED_POSTGRES_VERSIONS)
-              .collect(ImmutableList.toImmutableList())));
+              .toList()));
   private static final String FIRST_PG_MAJOR_VERSION =
       StackGresComponent.POSTGRESQL.getLatest().streamOrderedMajorVersions()
           .skipWhile(p -> !p.startsWith("13"))
@@ -101,7 +100,7 @@ class DbOpsMajorVersionUpgradeValidatorTest {
 
   @Test
   void givenValidStackGresVersionOnCreation_shouldNotFail() throws ValidationFailed {
-    final DbOpsReview review = getCreationReview();
+    final StackGresDbOpsReview review = getCreationReview();
     review.getRequest().getObject().getSpec().getMajorVersionUpgrade().setPostgresVersion(
         FIRST_PG_MINOR_VERSION);
 
@@ -129,7 +128,7 @@ class DbOpsMajorVersionUpgradeValidatorTest {
 
   @Test
   void givenValidStackGresVersionFromStatusOnCreation_shouldNotFail() throws ValidationFailed {
-    final DbOpsReview review = getCreationReview();
+    final StackGresDbOpsReview review = getCreationReview();
     review.getRequest().getObject().getSpec().getMajorVersionUpgrade().setPostgresVersion(
         FIRST_PG_MINOR_VERSION);
 
@@ -150,7 +149,7 @@ class DbOpsMajorVersionUpgradeValidatorTest {
 
   @Test
   void givenSameStackGresVersionOnCreation_shouldFail() {
-    final DbOpsReview review = getCreationReview();
+    final StackGresDbOpsReview review = getCreationReview();
     review.getRequest().getObject().getSpec().getMajorVersionUpgrade().setPostgresVersion(
         FIRST_PG_MINOR_VERSION);
 
@@ -176,7 +175,7 @@ class DbOpsMajorVersionUpgradeValidatorTest {
 
   @Test
   void givenInvalidStackGresVersionOnCreation_shouldFail() {
-    final DbOpsReview review = getCreationReview();
+    final StackGresDbOpsReview review = getCreationReview();
     review.getRequest().getObject().getSpec().getMajorVersionUpgrade().setPostgresVersion(
         FIRST_PG_MINOR_VERSION);
 
@@ -202,7 +201,7 @@ class DbOpsMajorVersionUpgradeValidatorTest {
 
   @Test
   void givenInvalidStackGresMajorVersionOnCreation_shouldFail() {
-    final DbOpsReview review = getCreationReview();
+    final StackGresDbOpsReview review = getCreationReview();
     review.getRequest().getObject().getSpec().getMajorVersionUpgrade().setPostgresVersion(
         SECOND_PG_MAJOR_VERSION);
 
@@ -228,7 +227,7 @@ class DbOpsMajorVersionUpgradeValidatorTest {
 
   @Test
   void givenValidStackGresVersionButWrongConfigOnCreation_shouldFail() throws ValidationFailed {
-    final DbOpsReview review = getCreationReview();
+    final StackGresDbOpsReview review = getCreationReview();
     review.getRequest().getObject().getSpec().getMajorVersionUpgrade().setPostgresVersion(
         FIRST_PG_MINOR_VERSION);
 
@@ -254,7 +253,7 @@ class DbOpsMajorVersionUpgradeValidatorTest {
 
   @Test
   void givenValidStackGresVersionButMissingConfigOnCreation_shouldFail() throws ValidationFailed {
-    final DbOpsReview review = getCreationReview();
+    final StackGresDbOpsReview review = getCreationReview();
     review.getRequest().getObject().getSpec().getMajorVersionUpgrade().setPostgresVersion(
         FIRST_PG_MINOR_VERSION);
 
@@ -275,7 +274,7 @@ class DbOpsMajorVersionUpgradeValidatorTest {
 
   @Test
   void givenManagedClusterOnCreation_shouldFail() {
-    final DbOpsReview review = getCreationReview();
+    final StackGresDbOpsReview review = getCreationReview();
     cluster.getMetadata().setOwnerReferences(List.of(
         new OwnerReferenceBuilder()
         .withKind("SGShardedCluster")
@@ -298,7 +297,7 @@ class DbOpsMajorVersionUpgradeValidatorTest {
         + " SGShardedCluster test", resultMessage);
   }
 
-  private DbOpsReview getCreationReview() {
+  private StackGresDbOpsReview getCreationReview() {
     return AdmissionReviewFixtures.dbOps().loadMajorVersionUpgradeCreate().get();
   }
 

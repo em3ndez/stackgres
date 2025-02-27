@@ -8,28 +8,21 @@ package io.stackgres.common.crd.sgdbops;
 import java.time.format.DateTimeParseException;
 import java.util.Objects;
 
-import javax.validation.constraints.AssertTrue;
-
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.stackgres.common.validation.FieldReference;
 import io.stackgres.common.validation.FieldReference.ReferencedField;
+import jakarta.validation.constraints.AssertTrue;
 
 public abstract class StackGresDbOpsRepackConfig {
 
-  @JsonProperty("noOrder")
   protected Boolean noOrder;
 
-  @JsonProperty("waitTimeout")
   protected String waitTimeout;
 
-  @JsonProperty("noKillBackend")
   protected Boolean noKillBackend;
 
-  @JsonProperty("noAnalyze")
   protected Boolean noAnalyze;
 
-  @JsonProperty("excludeExtension")
   protected Boolean excludeExtension;
 
   @ReferencedField("waitTimeout")

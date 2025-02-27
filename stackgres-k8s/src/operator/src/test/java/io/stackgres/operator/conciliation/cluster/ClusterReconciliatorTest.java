@@ -20,12 +20,14 @@ import io.stackgres.common.event.EventEmitter;
 import io.stackgres.common.fixture.Fixtures;
 import io.stackgres.common.resource.CustomResourceFinder;
 import io.stackgres.common.resource.CustomResourceScheduler;
-import io.stackgres.operator.conciliation.ComparisonDelegator;
-import io.stackgres.operator.conciliation.Conciliator;
+import io.stackgres.operator.conciliation.AbstractConciliator;
+import io.stackgres.operator.conciliation.DeployedResourcesCache;
 import io.stackgres.operator.conciliation.HandlerDelegator;
+import io.stackgres.operator.conciliation.Metrics;
 import io.stackgres.operator.conciliation.ReconciliationResult;
 import io.stackgres.operator.conciliation.StatusManager;
 import io.stackgres.operator.conciliation.factory.cluster.KubernetessMockResourceGenerationUtil;
+import io.stackgres.testutil.JsonUtil;
 import org.jooq.lambda.tuple.Tuple;
 import org.jooq.lambda.tuple.Tuple2;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,7 +43,9 @@ class ClusterReconciliatorTest {
   @Mock
   CustomResourceFinder<StackGresCluster> finder;
   @Mock
-  Conciliator<StackGresCluster> conciliator;
+  AbstractConciliator<StackGresCluster> conciliator;
+  @Mock
+  DeployedResourcesCache deployedResourcesCache;
   @Mock
   HandlerDelegator<StackGresCluster> handlerDelegator;
   @Mock
@@ -51,7 +55,7 @@ class ClusterReconciliatorTest {
   @Mock
   CustomResourceScheduler<StackGresCluster> clusterScheduler;
   @Mock
-  ComparisonDelegator<StackGresCluster> resourceComparator;
+  Metrics metrics;
 
   private ClusterReconciliator reconciliator;
 
@@ -60,11 +64,13 @@ class ClusterReconciliatorTest {
     ClusterReconciliator.Parameters parameters = new ClusterReconciliator.Parameters();
     parameters.finder = finder;
     parameters.conciliator = conciliator;
+    parameters.deployedResourcesCache = deployedResourcesCache;
     parameters.handlerDelegator = handlerDelegator;
     parameters.eventController = eventController;
     parameters.statusManager = statusManager;
     parameters.clusterScheduler = clusterScheduler;
-    parameters.resourceComparator = resourceComparator;
+    parameters.objectMapper = JsonUtil.jsonMapper();
+    parameters.metrics = metrics;
     reconciliator = new ClusterReconciliator(parameters);
   }
 
@@ -82,7 +88,7 @@ class ClusterReconciliatorTest {
             Collections.emptyList(),
             Collections.emptyList()));
 
-    reconciliator.reconciliationCycle(cluster, false);
+    reconciliator.reconciliationCycle(cluster, 0, false);
 
     verify(conciliator).evalReconciliationState(cluster);
     creations.forEach(resource -> verify(handlerDelegator).create(cluster, resource));
@@ -104,7 +110,7 @@ class ClusterReconciliatorTest {
             patches,
             Collections.emptyList()));
 
-    reconciliator.reconciliationCycle(cluster, false);
+    reconciliator.reconciliationCycle(cluster, 0, false);
 
     verify(conciliator).evalReconciliationState(cluster);
     patches.forEach(resource -> verify(handlerDelegator).patch(cluster, resource.v1, resource.v2));
@@ -123,7 +129,7 @@ class ClusterReconciliatorTest {
             Collections.emptyList(),
             deletions));
 
-    reconciliator.reconciliationCycle(cluster, false);
+    reconciliator.reconciliationCycle(cluster, 0, false);
 
     verify(conciliator).evalReconciliationState(cluster);
     deletions.forEach(resource -> verify(handlerDelegator).delete(cluster, resource));

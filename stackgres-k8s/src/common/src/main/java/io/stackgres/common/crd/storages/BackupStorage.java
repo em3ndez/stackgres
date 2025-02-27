@@ -8,16 +8,14 @@ package io.stackgres.common.crd.storages;
 import java.util.Objects;
 import java.util.Optional;
 
-import javax.validation.Valid;
-import javax.validation.constraints.NotNull;
-
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -27,23 +25,18 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class BackupStorage {
 
-  @JsonProperty("type")
   @NotNull(message = "The storage type is required")
   private String type;
 
-  @JsonProperty("s3")
   @Valid
   private AwsS3Storage s3;
 
-  @JsonProperty("s3Compatible")
   @Valid
   private AwsS3CompatibleStorage s3Compatible;
 
-  @JsonProperty("gcs")
   @Valid
   private GoogleCloudStorage gcs;
 
-  @JsonProperty("azureBlob")
   @Valid
   private AzureBlobStorage azureBlob;
 

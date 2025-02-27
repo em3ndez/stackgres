@@ -9,6 +9,7 @@ import static io.stackgres.common.StackGresUtil.getPostgresFlavorComponent;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -33,13 +34,15 @@ class DefaultBackupPathMutatorTest {
 
   private StackGresClusterReview review;
   private DefaultBackupPathMutator mutator;
+  private Instant defaultTimestamp;
 
   @BeforeEach
   void setUp() throws NoSuchFieldException, IOException {
     review = AdmissionReviewFixtures.cluster().loadCreate().get();
     review.getRequest().getObject().getSpec().getPostgres().setVersion(POSTGRES_VERSION);
 
-    mutator = new DefaultBackupPathMutator();
+    defaultTimestamp = Instant.now();
+    mutator = new DefaultBackupPathMutator(defaultTimestamp);
   }
 
   @Test
@@ -53,10 +56,9 @@ class DefaultBackupPathMutatorTest {
     final StackGresCluster cluster = review.getRequest().getObject();
     cluster.getMetadata().setAnnotations(
         Map.of(StackGresContext.VERSION_KEY, StackGresVersion.LATEST.getVersion()));
-    cluster.getSpec().getConfiguration().setBackupPath(null);
     var backupConfiguration = new StackGresClusterBackupConfiguration();
-    backupConfiguration.setObjectStorage("backupconf");
-    cluster.getSpec().getConfiguration().setBackups(List.of(backupConfiguration));
+    backupConfiguration.setSgObjectStorage("backupconf");
+    cluster.getSpec().getConfigurations().setBackups(List.of(backupConfiguration));
 
     final StackGresCluster actualCluster = mutate(review);
 
@@ -69,18 +71,17 @@ class DefaultBackupPathMutatorTest {
         BackupStorageUtil.getPath(
             cluster.getMetadata().getNamespace(),
             cluster.getMetadata().getName(),
+            defaultTimestamp,
             postgresMajorVersion),
-        actualCluster.getSpec().getConfiguration().getBackups().get(0).getPath());
+        actualCluster.getSpec().getConfigurations().getBackups().get(0).getPath());
   }
 
   @Test
   void clusterWithBackupsPath_shouldSetNothing() {
-    review.getRequest().getObject().getSpec().getConfiguration().setBackupConfig(null);
-    review.getRequest().getObject().getSpec().getConfiguration().setBackupPath(null);
-    review.getRequest().getObject().getSpec().getConfiguration().setBackups(new ArrayList<>());
-    review.getRequest().getObject().getSpec().getConfiguration().getBackups()
+    review.getRequest().getObject().getSpec().getConfigurations().setBackups(new ArrayList<>());
+    review.getRequest().getObject().getSpec().getConfigurations().getBackups()
         .add(new StackGresClusterBackupConfiguration());
-    review.getRequest().getObject().getSpec().getConfiguration().getBackups()
+    review.getRequest().getObject().getSpec().getConfigurations().getBackups()
         .get(0).setPath("test");
     StackGresCluster actualCluster = mutate(review);
 

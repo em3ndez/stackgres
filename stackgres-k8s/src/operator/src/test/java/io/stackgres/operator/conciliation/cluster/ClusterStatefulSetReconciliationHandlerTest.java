@@ -5,8 +5,7 @@
 
 package io.stackgres.operator.conciliation.cluster;
 
-import static io.stackgres.common.PatroniUtil.HISTORY_KEY;
-import static io.stackgres.operator.conciliation.AbstractStatefulSetReconciliationHandler.PLACEHOLDER_NODE_SELECTOR;
+import static io.stackgres.operator.conciliation.AbstractStatefulSetWithPrimaryReconciliationHandler.PLACEHOLDER_NODE_SELECTOR;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -26,19 +25,16 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Random;
 import java.util.stream.Stream;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import io.fabric8.kubernetes.api.model.Endpoints;
-import io.fabric8.kubernetes.api.model.EndpointsBuilder;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.OwnerReference;
-import io.fabric8.kubernetes.api.model.OwnerReferenceBuilder;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaimBuilder;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -54,8 +50,12 @@ import io.stackgres.common.fixture.Fixtures;
 import io.stackgres.common.labels.ClusterLabelFactory;
 import io.stackgres.common.labels.ClusterLabelMapper;
 import io.stackgres.common.labels.LabelFactoryForCluster;
+import io.stackgres.common.patroni.PatroniCtl;
+import io.stackgres.common.patroni.PatroniHistoryEntry;
+import io.stackgres.common.patroni.PatroniMember;
 import io.stackgres.common.resource.ResourceFinder;
 import io.stackgres.common.resource.ResourceScanner;
+import io.stackgres.operatorframework.resource.ResourceUtil;
 import io.stackgres.testutil.JsonUtil;
 import io.stackgres.testutil.StringUtils;
 import org.jooq.lambda.Seq;
@@ -67,10 +67,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
-import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.ArgumentsProvider;
-import org.junit.jupiter.params.provider.ArgumentsSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -83,7 +81,7 @@ class ClusterStatefulSetReconciliationHandlerTest {
   protected static final Logger LOGGER = LoggerFactory.getLogger(
       ClusterStatefulSetReconciliationHandlerTest.class);
 
-  private final LabelFactoryForCluster<StackGresCluster> labelFactory =
+  private final LabelFactoryForCluster labelFactory =
       new ClusterLabelFactory(new ClusterLabelMapper());
 
   @Mock
@@ -96,10 +94,16 @@ class ClusterStatefulSetReconciliationHandlerTest {
   private ResourceFinder<StatefulSet> statefulSetFinder;
 
   @Mock
-  private ResourceFinder<Endpoints> endpointsFinder;
+  private PatroniCtl patroniCtl;
+
+  @Mock
+  private PatroniCtl.PatroniCtlInstance patroniCtlInstance;
 
   @Mock
   private ClusterDefaultReconciliationHandler defaultHandler;
+
+  @Mock
+  private ClusterDefaultReconciliationHandler protectHandler;
 
   private ObjectMapper objectMapper = JsonUtil.jsonMapper();
 
@@ -118,8 +122,8 @@ class ClusterStatefulSetReconciliationHandlerTest {
   @BeforeEach
   void setUp() {
     handler = new ClusterStatefulSetReconciliationHandler(
-        defaultHandler, labelFactory, statefulSetFinder,
-        podScanner, pvcScanner, endpointsFinder, objectMapper);
+        defaultHandler, protectHandler, labelFactory, statefulSetFinder,
+        podScanner, pvcScanner, patroniCtl, objectMapper);
     requiredStatefulSet = Fixtures.statefulSet().loadRequired().get();
 
     cluster = new StackGresCluster();
@@ -129,6 +133,10 @@ class ClusterStatefulSetReconciliationHandlerTest {
     cluster.setSpec(new StackGresClusterSpec());
 
     deployedStatefulSet = Fixtures.statefulSet().loadDeployed().get();
+    lenient().when(defaultHandler.patch(any(), any(StatefulSet.class), any()))
+        .then(invocationOnMock -> invocationOnMock.getArgument(1));
+    lenient().when(patroniCtl.instanceFor(any()))
+        .thenReturn(patroniCtlInstance);
   }
 
   @Test
@@ -147,7 +155,7 @@ class ClusterStatefulSetReconciliationHandlerTest {
 
   @Test
   void createResource_shouldCreateTheResource() {
-    when(defaultHandler.patch(any(), any(StatefulSet.class), any()))
+    when(defaultHandler.create(any(), any(StatefulSet.class)))
         .thenReturn(requiredStatefulSet);
 
     HasMetadata sts = handler.create(cluster, requiredStatefulSet);
@@ -156,17 +164,17 @@ class ClusterStatefulSetReconciliationHandlerTest {
   }
 
   @Test
-  @DisplayName("Scaling down StatefulSet without non disrputable Pods should result in the same"
+  @DisplayName("Scaling down StatefulSet without non disrputable Pod should result in the same"
       + " number of desired replicas")
   void scaleDownStatefulSetWithoutNonDisruptablePods_shouldResultInSameNumberOfDesiredReplicas() {
-    final int desiredReplicas = setUpDownscale(1, 0, 0, PrimaryPosition.FIRST);
+    final int desiredReplicas = setUpDownscale(1, false, 0, PrimaryPosition.FIRST);
 
     StatefulSet sts = (StatefulSet) handler.patch(
         cluster, requiredStatefulSet, deployedStatefulSet);
 
     assertEquals(desiredReplicas, sts.getSpec().getReplicas());
 
-    verify(podScanner, times(4)).findByLabelsAndNamespace(anyString(), anyMap());
+    verify(podScanner, times(3)).getResourcesInNamespaceWithLabels(anyString(), anyMap());
     verify(defaultHandler).patch(any(), any(StatefulSet.class), any());
     verify(defaultHandler, never()).patch(any(), any(Pod.class), any());
     verify(defaultHandler, never()).delete(any(), any(StatefulSet.class));
@@ -174,55 +182,19 @@ class ClusterStatefulSetReconciliationHandlerTest {
   }
 
   @Test
-  @DisplayName("Scaling up StatefulSet without non disrputable Pods should result in the same"
+  @DisplayName("Scaling up StatefulSet without non disrputable Pod should result in the same"
       + " number of desired replicas")
   void scaleUpWithoutNonDisrputablePods_shouldResultInTheSameNumberOfDesiredReplicas() {
-    final int desiredReplicas = setUpUpscale(1, 0, 0, PrimaryPosition.FIRST);
+    final int desiredReplicas = setUpUpscale(1, false, 0, PrimaryPosition.FIRST);
 
     StatefulSet sts = (StatefulSet) handler.patch(
         cluster, requiredStatefulSet, deployedStatefulSet);
 
     assertEquals(desiredReplicas, sts.getSpec().getReplicas());
 
-    verify(podScanner, times(4)).findByLabelsAndNamespace(anyString(), anyMap());
+    verify(podScanner, times(3)).getResourcesInNamespaceWithLabels(anyString(), anyMap());
     verify(defaultHandler).patch(any(), any(StatefulSet.class), any());
     verify(defaultHandler, never()).patch(any(), any(Pod.class), any());
-    verify(defaultHandler, never()).delete(any(), any(StatefulSet.class));
-    verify(defaultHandler, never()).patch(any(), any(PersistentVolumeClaim.class), any());
-  }
-
-  @Test
-  @DisplayName("Scaling down StatefulSet with non disruptable Pods should result in the number of"
-      + " desired replicas minus the disruptable Pods")
-  void scalingDown_NumberOfDesiredReplicasMinusTheDisruptablePods() {
-    final int desiredReplicas = setUpDownscale(1, 1, 0, PrimaryPosition.FIRST);
-
-    StatefulSet sts = (StatefulSet) handler.patch(
-        cluster, requiredStatefulSet, deployedStatefulSet);
-
-    assertEquals(desiredReplicas - 1, sts.getSpec().getReplicas());
-
-    verify(podScanner, times(4)).findByLabelsAndNamespace(anyString(), anyMap());
-    verify(defaultHandler).patch(any(), any(StatefulSet.class), any());
-    verify(defaultHandler, times(1)).patch(any(), any(Pod.class), any());
-    verify(defaultHandler, never()).delete(any(), any(StatefulSet.class));
-    verify(defaultHandler, never()).patch(any(), any(PersistentVolumeClaim.class), any());
-  }
-
-  @Test
-  @DisplayName("Scaling up StatefulSet with disrputable Pods with index bigger than replicas"
-      + " count should result in the same number of desired replicas minus the disruptable Pods")
-  void scaleUpWithIndexBiggerThanReplicasCount_NumberOfDesiredReplicasMinusTheDisruptablePods() {
-    final int desiredReplicas = setUpUpscale(1, 1, 1, PrimaryPosition.FIRST);
-
-    StatefulSet sts = (StatefulSet) handler.patch(
-        cluster, requiredStatefulSet, deployedStatefulSet);
-
-    assertEquals(desiredReplicas - 1, sts.getSpec().getReplicas());
-
-    verify(podScanner, times(4)).findByLabelsAndNamespace(anyString(), anyMap());
-    verify(defaultHandler).patch(any(), any(StatefulSet.class), any());
-    verify(defaultHandler, atMostOnce()).patch(any(), any(Pod.class), any());
     verify(defaultHandler, never()).delete(any(), any(StatefulSet.class));
     verify(defaultHandler, never()).patch(any(), any(PersistentVolumeClaim.class), any());
   }
@@ -235,17 +207,25 @@ class ClusterStatefulSetReconciliationHandlerTest {
     }
   }
 
-  @ParameterizedTest
-  @ArgumentsSource(Source.class)
-  @DisplayName("Scaling up StatefulSet with non disrputable Pods with index lower than replicas"
+  @Test
+  @DisplayName("Scaling up StatefulSet with non disrputable Pod with index lower than replicas"
       + " count should result in the same number of desired replicas and fix disruptable Label")
-  void scaleUpWithIndexLowerThanReplicasCount_DesiredReplicasAndFixDisruptableLabel(Integer i) {
-    final int desiredReplicas = setUpUpscale(3, 1, 0, PrimaryPosition.FIRST_NONDISRUPTABLE);
+  void scaleUpWithIndexLowerThanReplicasCount_DesiredReplicasAndFixDisruptableLabel() {
+    final int desiredReplicas = setUpUpscale(3, true, 0, PrimaryPosition.FIRST_NONDISRUPTABLE);
 
     ArgumentCaptor<HasMetadata> podArgumentCaptor = ArgumentCaptor.forClass(HasMetadata.class);
 
     lenient().when(defaultHandler.patch(any(), any(Pod.class), any()))
         .then(invocationOnMock -> invocationOnMock.getArgument(1));
+
+    var history = List.of(new PatroniHistoryEntry());
+    history.get(0).setNewLeader(
+        this.podList.stream()
+        .filter(pod -> pod.getMetadata().getLabels().get(PatroniUtil.ROLE_KEY)
+            .equals(PatroniUtil.PRIMARY_ROLE))
+        .findFirst().get().getMetadata().getName());
+    when(patroniCtlInstance.history())
+        .thenReturn(history);
 
     StatefulSet sts = (StatefulSet) handler.patch(
         cluster, requiredStatefulSet, deployedStatefulSet);
@@ -256,12 +236,12 @@ class ClusterStatefulSetReconciliationHandlerTest {
     for (var updatedPod : podArgumentCaptor.getAllValues()
         .stream().filter(Pod.class::isInstance).toList()) {
       String disruptableValue = updatedPod.getMetadata().getLabels()
-          .get(labelFactory.labelMapper().disruptibleKey(cluster));
+          .get(labelFactory.labelMapper().disruptableKey(cluster));
 
       assertEquals(StackGresContext.RIGHT_VALUE, disruptableValue);
     }
 
-    verify(podScanner, times(4)).findByLabelsAndNamespace(anyString(), anyMap());
+    verify(podScanner, times(4)).getResourcesInNamespaceWithLabels(anyString(), anyMap());
     verify(defaultHandler).patch(any(), any(StatefulSet.class), any());
     verify(defaultHandler, atMostOnce()).patch(any(), any(Pod.class), any());
     verify(defaultHandler, never()).delete(any(), any(StatefulSet.class));
@@ -269,11 +249,11 @@ class ClusterStatefulSetReconciliationHandlerTest {
   }
 
   @Test
-  @DisplayName("Scaling down StatefulSet without non disrputable Pods and primary Pod about"
+  @DisplayName("Scaling down StatefulSet without non disrputable Pod and primary Pod about"
       + " to be disrupted should result in the number of desired replicas minus one and make"
       + " the primary Pod non disruptable")
   void scaleDownPods_shouldResultDesiredReplicasMinusOneThePrimaryPodNonDisruptable() {
-    final int desiredReplicas = setUpDownscale(1, 0, 0, PrimaryPosition.LAST_DISRUPTABLE);
+    final int desiredReplicas = setUpDownscale(1, false, 0, PrimaryPosition.LAST_DISRUPTABLE);
 
     when(defaultHandler.patch(any(), any(Pod.class), any()))
         .then(invocationOnMock -> invocationOnMock.getArgument(1));
@@ -281,23 +261,23 @@ class ClusterStatefulSetReconciliationHandlerTest {
     StatefulSet sts = (StatefulSet) handler.patch(
         cluster, requiredStatefulSet, deployedStatefulSet);
 
-    assertEquals(desiredReplicas - 1, sts.getSpec().getReplicas());
+    assertEquals(desiredReplicas, sts.getSpec().getReplicas());
 
-    verify(defaultHandler, times(2)).patch(any(), any(Pod.class), any());
+    verify(defaultHandler, times(1)).patch(any(), any(Pod.class), any());
     ArgumentCaptor<HasMetadata> podArgumentCaptor = ArgumentCaptor.forClass(HasMetadata.class);
     verify(defaultHandler, atLeastOnce()).patch(any(), podArgumentCaptor.capture(), any());
     var updatedPod = podArgumentCaptor.getAllValues().stream()
         .filter(Pod.class::isInstance).map(Pod.class::cast).findFirst().orElseThrow();
 
     String disruptableValue = updatedPod.getMetadata().getLabels()
-        .get(labelFactory.labelMapper().disruptibleKey(cluster));
+        .get(labelFactory.labelMapper().disruptableKey(cluster));
     String podRole = updatedPod.getMetadata().getLabels()
         .get(PatroniUtil.ROLE_KEY);
 
     assertEquals(StackGresContext.WRONG_VALUE, disruptableValue);
     assertEquals(PatroniUtil.PRIMARY_ROLE, podRole);
 
-    verify(podScanner, times(4)).findByLabelsAndNamespace(anyString(), anyMap());
+    verify(podScanner, times(4)).getResourcesInNamespaceWithLabels(anyString(), anyMap());
     verify(defaultHandler).patch(any(), any(StatefulSet.class), any());
     verify(defaultHandler, never()).delete(any(), any(StatefulSet.class));
     verify(defaultHandler, never()).patch(any(), any(PersistentVolumeClaim.class), any());
@@ -308,19 +288,15 @@ class ClusterStatefulSetReconciliationHandlerTest {
       + " and distance of 1 should result in the number of desired replicas minus one and"
       + " make the primary Pod non disruptable")
   void missingPrimaryPod_shouldResultDesiredReplicasMinusOneThePrimaryPodNonDisruptable() {
-    final int desiredReplicas = setUpNoScale(1, 1, 1, PrimaryPosition.LAST_NONDISRUPTABLE_MISSING);
+    final int desiredReplicas = setUpNoScale(
+        1, true, 1, PrimaryPosition.FIRST_NONDISRUPTABLE_MISSING);
 
-    when(endpointsFinder.findByNameAndNamespace(any(), any()))
-        .thenReturn(Optional.of(new EndpointsBuilder()
-            .withNewMetadata()
-            .withAnnotations(ImmutableMap.of(HISTORY_KEY,
-                "[[1,25987816,"
-                + "\"no recovery target specified\","
-                + "\"2021-10-18T23:31:45.550086+00:00\","
-                + "\"" + requiredStatefulSet.getMetadata().getName()
-                + "-" + (desiredReplicas) + "\"]]"))
-            .endMetadata()
-            .build()));
+    var history = List.of(new PatroniHistoryEntry());
+    history.get(0).setNewLeader(
+        requiredStatefulSet.getMetadata().getName()
+        + "-" + (desiredReplicas));
+    when(patroniCtlInstance.history())
+        .thenReturn(history);
     when(defaultHandler.patch(any(), any(StatefulSet.class), any()))
         .then(invocationOnMock -> {
           int podIndex = desiredReplicas - 1;
@@ -339,79 +315,74 @@ class ClusterStatefulSetReconciliationHandlerTest {
 
     assertEquals(desiredReplicas - 1, sts.getSpec().getReplicas());
 
-    verify(podScanner, times(7)).findByLabelsAndNamespace(anyString(), anyMap());
+    verify(podScanner, times(6)).getResourcesInNamespaceWithLabels(anyString(), anyMap());
     verify(defaultHandler, times(3)).patch(any(), any(StatefulSet.class), any());
-    verify(defaultHandler, times(2)).patch(any(), any(Pod.class), any());
+    verify(defaultHandler, times(1)).patch(any(), any(Pod.class), any());
     verify(defaultHandler, never()).delete(any(), any(StatefulSet.class));
     verify(defaultHandler, never()).patch(any(), any(PersistentVolumeClaim.class), any());
   }
 
   @Test
   @DisplayName("Primary Pod with index bigger than replicas and distance of 1 with a placeholder"
-      + " Pod should result in the number of desired replicas minus one and make the primary Pod"
+      + " Pod should result in the number of desired replicas and make the primary Pod"
       + " non disruptable")
   void primaryPodWithPlchldrPods_shouldResultDesiredReplicasMinusOneThePrimaryPodNonDisruptable() {
     final int desiredReplicas =
-        setUpNoScaleWithPlaceholders(1, 1, 1, PrimaryPosition.LAST_DISRUPTABLE);
+        setUpNoScaleWithPlaceholders(1, true, 1, PrimaryPosition.FIRST_NONDISRUPTABLE);
 
-    when(endpointsFinder.findByNameAndNamespace(any(), any()))
-        .thenReturn(Optional.of(new EndpointsBuilder()
-            .withNewMetadata()
-            .withAnnotations(ImmutableMap.of(HISTORY_KEY,
-                "[[1,25987816,"
-                + "\"no recovery target specified\","
-                + "\"2021-10-18T23:31:45.550086+00:00\","
-                + "\"" + requiredStatefulSet.getMetadata().getName()
-                + "-" + (desiredReplicas) + "\"]]"))
-            .endMetadata()
-            .build()));
+    var history = List.of(new PatroniHistoryEntry());
+    history.get(0).setNewLeader(
+        requiredStatefulSet.getMetadata().getName()
+        + "-" + (desiredReplicas));
+    when(patroniCtlInstance.history())
+        .thenReturn(history);
 
     StatefulSet sts = (StatefulSet) handler.patch(
         cluster, requiredStatefulSet, deployedStatefulSet);
 
-    assertEquals(desiredReplicas - 1, sts.getSpec().getReplicas());
+    assertEquals(desiredReplicas, sts.getSpec().getReplicas());
 
-    verify(podScanner, times(5)).findByLabelsAndNamespace(anyString(), anyMap());
+    verify(podScanner, times(4)).getResourcesInNamespaceWithLabels(anyString(), anyMap());
     verify(defaultHandler, times(1)).patch(any(), any(StatefulSet.class), any());
-    verify(defaultHandler, times(2)).patch(any(), any(Pod.class), any());
+    verify(defaultHandler, times(1)).patch(any(), any(Pod.class), any());
     verify(defaultHandler, times(1)).delete(any(), any(Pod.class));
     verify(defaultHandler, never()).patch(any(), any(PersistentVolumeClaim.class), any());
   }
 
   @Test
-  @DisplayName("Scaling down StatefulSet with non disrputable Pods and primary Pod non"
-      + " disruptible about to be disrupted should result in the number of desired replicas"
-      + " minus the disruptable Pods")
-  void scaleDownNonDisrputablePodsPrimaryPodNonDisruptible_DesiredReplicasMinusDisruptablePods() {
-    final int desiredReplicas = setUpDownscale(1, 1, 0, PrimaryPosition.FIRST_NONDISRUPTABLE);
+  @DisplayName("Scaling down StatefulSet with non disrputable Pod and primary Pod non"
+      + " disruptable about to be disrupted should result in the number of desired replicas"
+      + " minus the disruptable Pod")
+  void scaleDownNonDisrputablePodsPrimaryPodNonDisruptable_DesiredReplicasMinusDisruptablePods() {
+    final int desiredReplicas = setUpDownscale(1, true, 0, PrimaryPosition.FIRST_NONDISRUPTABLE);
 
     StatefulSet sts = (StatefulSet) handler.patch(
         cluster, requiredStatefulSet, deployedStatefulSet);
 
-    assertEquals(desiredReplicas - 1, sts.getSpec().getReplicas());
+    assertEquals(desiredReplicas, sts.getSpec().getReplicas());
 
-    verify(podScanner, times(4)).findByLabelsAndNamespace(anyString(), anyMap());
+    verify(podScanner, times(4)).getResourcesInNamespaceWithLabels(anyString(), anyMap());
     verify(defaultHandler).patch(any(), any(StatefulSet.class), any());
-    verify(defaultHandler, times(1)).patch(any(), any(Pod.class), any());
+    verify(defaultHandler, never()).patch(any(), any(Pod.class), any());
     verify(defaultHandler, never()).delete(any(), any(StatefulSet.class));
     verify(defaultHandler, never()).patch(any(), any(PersistentVolumeClaim.class), any());
   }
 
   @Test
-  @DisplayName("Scaling down StatefulSet with non disrputable Pods and primary Pod non"
-      + " disruptible and distance bigger than 0 should result in the number of desired replicas"
-      + " minus the disruptable Pods")
+  @DisplayName("Scaling down StatefulSet with non disrputable Pod and primary Pod non"
+      + " disruptable and distance bigger than 0 should result in the number of desired replicas"
+      + " minus the disruptable Pod")
   void scaleDownNonDisputPodsPrimaryPodNonDisrupDistBig0_DesiredReplicasMinusTheDisruptablePods() {
-    final int desiredReplicas = setUpDownscale(1, 1, 1, PrimaryPosition.FIRST_NONDISRUPTABLE);
+    final int desiredReplicas = setUpDownscale(1, true, 1, PrimaryPosition.FIRST_NONDISRUPTABLE);
 
     StatefulSet sts = (StatefulSet) handler.patch(
         cluster, requiredStatefulSet, deployedStatefulSet);
 
-    assertEquals(desiredReplicas - 1, sts.getSpec().getReplicas());
+    assertEquals(desiredReplicas, sts.getSpec().getReplicas());
 
-    verify(podScanner, times(4)).findByLabelsAndNamespace(anyString(), anyMap());
+    verify(podScanner, times(4)).getResourcesInNamespaceWithLabels(anyString(), anyMap());
     verify(defaultHandler).patch(any(), any(StatefulSet.class), any());
-    verify(defaultHandler, times(1)).patch(any(), any(Pod.class), any());
+    verify(defaultHandler, never()).patch(any(), any(Pod.class), any());
     verify(defaultHandler, never()).delete(any(), any(StatefulSet.class));
     verify(defaultHandler, never()).patch(any(), any(PersistentVolumeClaim.class), any());
   }
@@ -427,7 +398,7 @@ class ClusterStatefulSetReconciliationHandlerTest {
 
   @Test
   void givenPodAnnotationChanges_shouldBeAppliedDirectlyToPods() {
-    final int replicas = setUpNoScale(1, 0, 0, PrimaryPosition.FIRST);
+    final int replicas = setUpNoScale(1, false, 0, PrimaryPosition.FIRST);
 
     final Map<String, String> requiredAnnotations = Map
         .of(StringUtils.getRandomString(), StringUtils.getRandomString(),
@@ -473,7 +444,7 @@ class ClusterStatefulSetReconciliationHandlerTest {
 
   @Test
   void givenPodLabelsChanges_shouldBeAppliedDirectlyToPods() {
-    final int replicas = setUpNoScale(1, 0, 0, PrimaryPosition.FIRST);
+    final int replicas = setUpNoScale(1, false, 0, PrimaryPosition.FIRST);
 
     final Map<String, String> requiredLabels = Seq.seq(Map
         .of(StringUtils.getRandomString(), StringUtils.getRandomString(),
@@ -515,10 +486,11 @@ class ClusterStatefulSetReconciliationHandlerTest {
 
   @Test
   void givenPodOwnerReferenceChanges_shouldBeAppliedDirectlyToPods(TestInfo testInfo) {
-    setUpUpscale(2, 0, 0, PrimaryPosition.FIRST);
+    setUpUpscale(2, false, 0, PrimaryPosition.FIRST);
 
     deployedStatefulSet.getMetadata().setUid(StringUtils.getRandomString());
-    final List<OwnerReference> requiredOwnerReferences = getOwnerReferences(deployedStatefulSet);
+    final List<OwnerReference> requiredOwnerReferences = List.of(
+        ResourceUtil.getControllerOwnerReference(deployedStatefulSet));
 
     when(defaultHandler.patch(any(), any(StatefulSet.class), any()))
         .thenReturn(deployedStatefulSet);
@@ -537,7 +509,7 @@ class ClusterStatefulSetReconciliationHandlerTest {
         .of(StringUtils.getRandomString(), StringUtils.getRandomString(),
             "same-key", "new-value");
 
-    final int desiredReplicas = setUpNoScale(1, 0, 0, PrimaryPosition.FIRST);
+    final int desiredReplicas = setUpNoScale(1, false, 0, PrimaryPosition.FIRST);
     requiredStatefulSet.getSpec().getVolumeClaimTemplates().forEach(pvc -> pvc
         .getMetadata().setAnnotations(requiredAnnotations));
     final var deployedAnnotations = Seq.seq(pvcList).map(pvc -> Tuple
@@ -587,7 +559,7 @@ class ClusterStatefulSetReconciliationHandlerTest {
         .of(StringUtils.getRandomString(), StringUtils.getRandomString(),
             "same-key", "new-value");
 
-    final int desiredReplicas = setUpNoScale(1, 0, 0, PrimaryPosition.FIRST);
+    final int desiredReplicas = setUpNoScale(1, false, 0, PrimaryPosition.FIRST);
     requiredStatefulSet.getSpec().getVolumeClaimTemplates().forEach(pvc -> pvc
         .getMetadata().setLabels(requiredLabels));
     final var deployedLabels = Seq.seq(pvcList).map(pvc -> Tuple
@@ -633,11 +605,11 @@ class ClusterStatefulSetReconciliationHandlerTest {
         });
   }
 
-  private int setUpNoScale(int min, int nonDisruptiblePods, int distance,
+  private int setUpNoScale(int min, boolean nonDisruptablePod, int distance,
       PrimaryPosition primaryPosition) {
     final int replicas = getRandomDesiredReplicas(min);
 
-    setUpPods(replicas, replicas, nonDisruptiblePods, true, distance, primaryPosition,
+    setUpPods(replicas, nonDisruptablePod, true, distance, primaryPosition,
         false);
 
     setStatefulSetMocks(replicas, true);
@@ -645,11 +617,11 @@ class ClusterStatefulSetReconciliationHandlerTest {
     return replicas;
   }
 
-  private int setUpNoScaleWithPlaceholders(int min, int afterDistancePods, int distance,
+  private int setUpNoScaleWithPlaceholders(int min, boolean nonDisruptablePod, int distance,
       PrimaryPosition primaryPosition) {
     final int replicas = getRandomDesiredReplicas(min);
 
-    setUpPods(replicas, replicas + 2, afterDistancePods, false, distance,
+    setUpPods(replicas + distance, nonDisruptablePod, false, distance,
         primaryPosition, true);
 
     setStatefulSetMocks(replicas, false);
@@ -657,11 +629,11 @@ class ClusterStatefulSetReconciliationHandlerTest {
     return replicas;
   }
 
-  private int setUpDownscale(int min, int nonDisruptiblePods, int distance,
+  private int setUpDownscale(int min, boolean nonDisruptablePod, int distance,
       PrimaryPosition primaryPosition) {
     final int desiredReplicas = getRandomDesiredReplicas(min);
 
-    setUpPods(desiredReplicas, desiredReplicas + 1, nonDisruptiblePods, true, distance,
+    setUpPods(desiredReplicas + 1, nonDisruptablePod, true, distance,
         primaryPosition, false);
 
     setStatefulSetMocks(desiredReplicas, false);
@@ -669,11 +641,11 @@ class ClusterStatefulSetReconciliationHandlerTest {
     return desiredReplicas;
   }
 
-  private int setUpUpscale(int min, int nonDisruptiblePods, int distance,
+  private int setUpUpscale(int min, boolean nonDisruptablePod, int distance,
       PrimaryPosition primaryPosition) {
     final int desiredReplicas = getRandomDesiredReplicas(min);
 
-    setUpPods(desiredReplicas, desiredReplicas - 1, nonDisruptiblePods, true, distance,
+    setUpPods(desiredReplicas - 1, nonDisruptablePod, true, distance,
         primaryPosition, false);
 
     setStatefulSetMocks(desiredReplicas, false);
@@ -699,43 +671,45 @@ class ClusterStatefulSetReconciliationHandlerTest {
   }
 
   @SuppressWarnings("unchecked")
-  private void setUpPods(int desiredReplicas, int currentReplicas, int afterDistancePods,
-      boolean afterDistanceNonDisruptible, int distance, PrimaryPosition primaryPosition,
+  private void setUpPods(int currentReplicas, boolean nonDisruptablePod,
+      boolean afterDistanceNonDisruptable, int distance, PrimaryPosition primaryPosition,
       boolean withPlaceholders) {
     final int primaryIndex = getPrimaryIndex(
-        currentReplicas + distance, afterDistancePods, primaryPosition);
+        currentReplicas, nonDisruptablePod, distance, primaryPosition);
     final Map<String, String> commonPodLabels = new HashMap<>(
         requiredStatefulSet.getSpec().getSelector().getMatchLabels());
 
     Map<String, String> disruptablePodLabels = new HashMap<>(commonPodLabels);
     disruptablePodLabels.put(
-        labelFactory.labelMapper().disruptibleKey(cluster), StackGresContext.RIGHT_VALUE);
+        labelFactory.labelMapper().disruptableKey(cluster), StackGresContext.RIGHT_VALUE);
 
     Map<String, String> nonDisruptablePodLabels = new HashMap<>(commonPodLabels);
     nonDisruptablePodLabels.put(
-        labelFactory.labelMapper().disruptibleKey(cluster), StackGresContext.WRONG_VALUE);
+        labelFactory.labelMapper().disruptableKey(cluster), StackGresContext.WRONG_VALUE);
 
     podList.clear();
-    final int startPodIndex = currentReplicas - afterDistancePods;
-    final int endPodIndex = currentReplicas + distance;
+    final int endPodIndex = nonDisruptablePod
+        ? currentReplicas + distance : currentReplicas + distance - 1;
 
-    for (int podIndex = 0; podIndex < endPodIndex; podIndex++) {
-      if (!withPlaceholders && podIndex >= startPodIndex && podIndex < startPodIndex + distance) {
+    for (int podIndex = 0; podIndex <= endPodIndex; podIndex++) {
+      if (!withPlaceholders
+          && podIndex > currentReplicas - 1 && podIndex <= currentReplicas + distance - 1) {
         continue;
       }
       if (podIndex == primaryIndex
-          && primaryPosition == PrimaryPosition.LAST_NONDISRUPTABLE_MISSING) {
+          && primaryPosition == PrimaryPosition.FIRST_NONDISRUPTABLE_MISSING) {
         continue;
       }
       addPod(podIndex, podIndex == primaryIndex,
-          afterDistanceNonDisruptible && podIndex >= startPodIndex + distance,
-          withPlaceholders && podIndex >= startPodIndex && podIndex < startPodIndex + distance,
+          afterDistanceNonDisruptable && podIndex >= currentReplicas,
+          withPlaceholders
+          && podIndex > currentReplicas - 1 && podIndex <= currentReplicas + distance - 1,
           true);
       addPvcs(podIndex);
     }
 
     lenient().when(podScanner
-        .findByLabelsAndNamespace(any(), any()))
+        .getResourcesInNamespaceWithLabels(any(), any()))
             .then(arguments -> {
               return podList
                   .stream()
@@ -744,60 +718,81 @@ class ClusterStatefulSetReconciliationHandlerTest {
                           .entrySet().stream().anyMatch(
                               podLabel -> podLabel.getKey().equals(label.getKey())
                               && podLabel.getValue().equals(label.getValue()))))
-                  .collect(ImmutableList.toImmutableList());
+                  .toList();
             });
 
     lenient().when(pvcScanner
-        .findByLabelsAndNamespace(any(), any()))
+        .getResourcesInNamespaceWithLabels(any(), any()))
             .then(arguments -> {
               return pvcList
                   .stream()
                   .filter(pvc -> ((Map<String, String>) arguments.getArgument(1))
                       .entrySet().stream().allMatch(label -> pvc.getMetadata().getLabels()
                           .entrySet().stream().anyMatch(label::equals)))
-                  .collect(ImmutableList.toImmutableList());
+                  .toList();
             });
 
     lenient().doAnswer(arguments -> {
       podList.remove(arguments.getArgument(0));
       return null;
     }).when(defaultHandler).delete(any(), any(Pod.class));
+
+    lenient().when(patroniCtlInstance.list()).thenReturn(
+        podList
+        .stream()
+        .map(pod -> {
+          var member = new PatroniMember();
+          member.setMember(pod.getMetadata().getName());
+          if (Objects.equals(
+              PatroniUtil.PRIMARY_ROLE,
+              pod.getMetadata().getLabels().get(PatroniUtil.ROLE_KEY))) {
+            member.setRole(PatroniMember.LEADER);
+          }
+          if (Objects.equals(
+              PatroniUtil.REPLICA_ROLE,
+              pod.getMetadata().getLabels().get(PatroniUtil.ROLE_KEY))) {
+            member.setRole(PatroniMember.REPLICA);
+          }
+          return member;
+        })
+        .toList());
   }
 
-  private int getPrimaryIndex(int desiredReplicas, int nonDisruptiblePods,
-      PrimaryPosition primaryPosition) {
-    int primaryIndex = 0;
-
+  private int getPrimaryIndex(int desiredReplicas, boolean nonDisruptablePod,
+      int distance, PrimaryPosition primaryPosition) {
     switch (primaryPosition) {
+      case FIRST:
+        return 0;
       case LAST_DISRUPTABLE:
-        primaryIndex = desiredReplicas - 1;
-        break;
+        return desiredReplicas - 1;
       case FIRST_NONDISRUPTABLE:
-        primaryIndex = desiredReplicas - nonDisruptiblePods - 1;
-        break;
-      case LAST_NONDISRUPTABLE_MISSING:
-        primaryIndex = desiredReplicas - 1;
-        break;
+      case FIRST_NONDISRUPTABLE_MISSING:
+        return nonDisruptablePod
+            ? desiredReplicas + distance : desiredReplicas + distance - 1;
       default:
-        break;
+        throw new IllegalArgumentException("Primary position " + primaryPosition + " unrecognized");
     }
-    return primaryIndex;
   }
 
-  private void addPlaceholderPod(int podIndex, boolean disruptible) {
-    addPod(podIndex, false, disruptible, true, false);
+  private void addPlaceholderPod(int podIndex, boolean disruptable) {
+    addPod(podIndex, false, disruptable, true, false);
   }
 
-  private void addPrimaryPod(int podIndex, boolean disruptible) {
-    addPod(podIndex, true, disruptible, false, false);
+  private void addPrimaryPod(int podIndex, boolean disruptable) {
+    addPod(podIndex, true, disruptable, false, false);
   }
 
-  private void addPod(int podIndex, boolean primary, boolean nonDisruptible, boolean placeholder,
+  private void addPod(int podIndex, boolean primary, boolean nonDisruptable, boolean placeholder,
       boolean setRole) {
+    LOGGER.info("Pod {} ({}{}{})",
+        podIndex,
+        primary ? "primary" : "replica",
+        nonDisruptable ? " non disruptable" : "",
+        placeholder ? " placeholder" : "");
     final Map<String, String> podLabels = new HashMap<>(
         requiredStatefulSet.getSpec().getSelector().getMatchLabels());
-    podLabels.put(labelFactory.labelMapper().disruptibleKey(cluster),
-        nonDisruptible ? StackGresContext.WRONG_VALUE : StackGresContext.RIGHT_VALUE);
+    podLabels.put(labelFactory.labelMapper().disruptableKey(cluster),
+        nonDisruptable ? StackGresContext.WRONG_VALUE : StackGresContext.RIGHT_VALUE);
     if (!placeholder && setRole) {
       podLabels.put(PatroniUtil.ROLE_KEY,
           primary ? PatroniUtil.PRIMARY_ROLE : PatroniUtil.REPLICA_ROLE);
@@ -810,7 +805,9 @@ class ClusterStatefulSetReconciliationHandlerTest {
         .withLabels(ImmutableMap.<String, String>builder()
             .putAll(podLabels)
             .build())
-        .withOwnerReferences(getOwnerReferences(requiredStatefulSet))
+        .withOwnerReferences(List.of(
+            ResourceUtil.getControllerOwnerReference(requiredStatefulSet),
+            ResourceUtil.getOwnerReference(cluster)))
         .endMetadata()
         .withNewSpec()
         .withNodeSelector(
@@ -833,19 +830,10 @@ class ClusterStatefulSetReconciliationHandlerTest {
         .withLabels(ImmutableMap.<String, String>builder()
             .putAll(pvcMetadata.getLabels())
             .build())
-        .withOwnerReferences(getOwnerReferences(requiredStatefulSet))
+        .withOwnerReferences(List.of(
+            ResourceUtil.getControllerOwnerReference(requiredStatefulSet),
+            ResourceUtil.getOwnerReference(cluster)))
         .endMetadata()
-        .build());
-  }
-
-  private ImmutableList<OwnerReference> getOwnerReferences(HasMetadata resource) {
-    return ImmutableList.of(new OwnerReferenceBuilder()
-        .withApiVersion(resource.getApiVersion())
-        .withKind(resource.getKind())
-        .withName(resource.getMetadata().getName())
-        .withUid(resource.getMetadata().getUid())
-        .withBlockOwnerDeletion(true)
-        .withController(true)
         .build());
   }
 
@@ -853,6 +841,6 @@ class ClusterStatefulSetReconciliationHandlerTest {
     FIRST,
     LAST_DISRUPTABLE,
     FIRST_NONDISRUPTABLE,
-    LAST_NONDISRUPTABLE_MISSING;
+    FIRST_NONDISRUPTABLE_MISSING;
   }
 }

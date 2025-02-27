@@ -49,21 +49,65 @@ export const mixin = {
         const vc = this;
 
         let kind = (vc.$route.meta.componentName + 's').toLowerCase();
+        let action = vc.$route.name.startsWith('Create') ? 'create' : (vc.$route.name.startsWith('Edit') ? 'patch' : 'list');
+        let namespace = vc.$route.params.hasOwnProperty('namespace') ? vc.$route.params.namespace : 'any';
 
         return ( vc.loggedIn && vc.isReady && !vc.notFound && 
           ( 
-            ( vc.$route.name.startsWith('Create') && vc.iCan('create', kind, vc.$route.params.namespace) ) || 
-            ( vc.$route.name.startsWith('Edit') && vc.iCan('patch', kind, vc.$route.params.namespace) ) ||
-            ( ( !vc.$route.name.startsWith('Edit') && !vc.$route.name.startsWith('Create') ) && vc.iCan('list', kind, vc.$route.params.namespace) )
+            ( (kind === 'users') && vc.havePermissionsTo.get.users ) ||
+            ( ['clusterroles', 'namespaces'].includes(kind) && vc.iCan(action, kind) ) ||
+            vc.iCan(action, kind, namespace)
           )
         )
-      }
+      },
+
+      havePermissionsTo() {
+        const vc = this;
+        const namespace = vc.$route.params.hasOwnProperty('namespace') ? vc.$route.params.namespace : 'any';
+        return {
+            get: {
+                users: vc.iCan('list', 'secrets', 'any') &&
+                    vc.iCan('list', 'rolebindings', 'any') &&
+                    vc.iCan('list', 'clusterrolebindings')
+            },
+            patch: {
+                users: vc.iCan('get', 'secrets', namespace) &&
+                    vc.iCan('patch', 'secrets', namespace) &&
+                    vc.iCan('list', 'rolebindings', namespace) &&
+                    vc.iCan('create', 'rolebindings', namespace) &&
+                    vc.iCan('patch', 'rolebindings', namespace) &&
+                    vc.iCan('delete', 'rolebindings', namespace) &&
+                    vc.iCan('list', 'clusterrolebindings') &&
+                    vc.iCan('create', 'clusterrolebindings') &&
+                    vc.iCan('patch', 'clusterrolebindings') &&
+                    vc.iCan('delete', 'clusterrolebindings') 
+            },
+            create: {
+                users: vc.iCan('create', 'secrets', namespace) &&
+                    vc.iCan('list', 'rolebindings', namespace) &&
+                    vc.iCan('create', 'rolebindings', namespace) &&
+                    vc.iCan('patch', 'rolebindings', namespace) &&
+                    vc.iCan('list', 'clusterrolebindings') &&
+                    vc.iCan('create', 'clusterrolebindings') &&
+                    vc.iCan('patch', 'clusterrolebindings')
+            },
+            delete: {
+                users: vc.iCan('delete', 'secrets', namespace) &&
+                    vc.iCan('list', 'rolebindings', namespace) &&
+                    vc.iCan('patch', 'rolebindings', namespace) &&
+                    vc.iCan('delete', 'rolebindings', namespace) &&
+                    vc.iCan('list', 'clusterrolebindings') &&
+                    vc.iCan('patch', 'clusterrolebindings') &&
+                    vc.iCan('delete', 'clusterrolebindings')
+            }
+        }
+      },
   
     },
     methods: {
 
       isNull(el) {
-        return ( (el === null) || ( (typeof el === 'string') && !el.length ) || (Array.isArray(el) && !el.length) || ((typeof el === 'object') && !Object.keys(el).length) );
+        return ( (el === null) || ( (typeof el === 'string') && !el.length ) || (Array.isArray(el) && !el.length) || ((typeof el === 'object') && !Object.keys(el).length) || (typeof el === 'undefined') );
       },
 
       isNullObject(obj) {
@@ -152,7 +196,7 @@ export const mixin = {
 
       },
 
-      fetchAPI  (kind = '') {
+      fetchAPI(kind = '') {
 
         const vc = this
 
@@ -162,20 +206,23 @@ export const mixin = {
   
           $('#reload').addClass('active');
     
-          if(!store.state.permissions.allowed.namespaced.length) {
+          if(!store.state.permissions.allowed.namespaced.length || (kind === 'can_i')) {
             // Read and set user permissions first
             sgApi
             .get('can_i')
             .then( function(response) {
               store.commit('setPermissions', response.data);
-              vc.fetchAPI();
+
+              if(kind !== 'can_i') {
+                vc.fetchAPI();
+              }
+
             })
             .catch(function(err) {
               console.log(err);
               vc.checkAuthError(err);
             });
           } else {
-
 
             if ( vc.iCan('list', 'namespaces') && ( !kind.length || (kind == 'namespaces') ) ) {
               /* Namespaces Data */
@@ -187,6 +234,12 @@ export const mixin = {
                   router.push('/')
                   vc.notify('The namespace you were browsing has been deleted from the server')
                 }
+
+                // Read user permissions again if response differs from curren namespaces list
+                if(store.state.allNamespaces.length && (store.state.allNamespaces.toString() !== response.data.toString()) ) {
+                  vc.fetchAPI('can_i');
+                }
+
                 store.commit('addNamespaces', response.data);
     
               }).catch(function(err) {
@@ -195,7 +248,7 @@ export const mixin = {
               });
             }
       
-            if ( vc.iCan('list', 'sgclusters') && ( !kind.length || (kind == 'sgclusters') ) ){
+            if ( vc.iCan('list', 'sgclusters', 'all') && ( !kind.length || (kind == 'sgclusters') ) ){
               /* Clusters Data */
               sgApi
               .get('sgclusters')
@@ -212,7 +265,7 @@ export const mixin = {
                     status: {}
                   };
                   
-                  if(!store.state.namespaces.includes(item.metadata.namespace))
+                  if(!store.state.allNamespaces.includes(item.metadata.namespace))
                     store.commit('updateNamespaces', item.metadata.namespace);
     
                   store.commit('updateClusters', cluster);
@@ -242,7 +295,7 @@ export const mixin = {
       
             }
 
-            if ( vc.iCan('list', 'sgshardedclusters') && ( !kind.length || (kind == 'sgshardedclusters') ) ){
+            if ( vc.iCan('list', 'sgshardedclusters', 'all') && ( !kind.length || (kind == 'sgshardedclusters') ) ){
               /* Clusters Data */
               sgApi
               .get('sgshardedclusters')
@@ -251,7 +304,6 @@ export const mixin = {
                 vc.lookupCRDs('sgshardedclusters', response.data);
       
                 response.data.forEach( function(item, index) {
-    
                   var cluster = {
                     name: item.metadata.name,
                     data: item,
@@ -267,11 +319,10 @@ export const mixin = {
                     console.log(err);
                   });
 
-                  if(!store.state.namespaces.includes(item.metadata.namespace))
+                  if(!store.state.allNamespaces.includes(item.metadata.namespace))
                     store.commit('updateNamespaces', item.metadata.namespace);
     
                   store.commit('updateShardedClusters', cluster);
-    
                 });
                 
               }).catch(function(err) {
@@ -280,8 +331,33 @@ export const mixin = {
               });
       
             }
+
+            if ( vc.iCan('list', 'sgstreams', 'all') && ( !kind.length || (kind == 'sgstreams') ) ){
+              /* SGStreams Data */
+              sgApi
+              .get('sgstreams')
+              .then( function(response){
+    
+                vc.lookupCRDs('sgstreams', response.data);
       
-            if ( vc.iCan('list', 'sgbackups') && ( !kind.length || (kind == 'sgbackups') )) {
+                let sgstreams = [];
+      
+                response.data.forEach(function(item, index){
+                  sgstreams.push({
+                    name: item.metadata.name,
+                    data: item
+                  })
+                })
+    
+                store.commit('addSgStreams', sgstreams);
+      
+              }).catch(function(err) {
+                console.log(err);
+                vc.checkAuthError(err);
+              });
+            }
+      
+            if ( vc.iCan('list', 'sgbackups', 'all') && ( !kind.length || (kind == 'sgbackups') )) {
               
               /* Backups */
               sgApi
@@ -294,7 +370,7 @@ export const mixin = {
       
                   response.data.forEach( function(item, index) {
                     
-                    if(store.state.namespaces.indexOf(item.metadata.namespace) === -1)
+                    if(store.state.allNamespaces.indexOf(item.metadata.namespace) === -1)
                       store.commit('updateNamespaces', item.metadata.namespace);
     
                     if(!index)
@@ -308,13 +384,15 @@ export const mixin = {
       
                   });
       
-                  store.state.sgclusters.forEach(function(cluster, index){
-                    let backups = store.state.sgbackups.find(b => ( (cluster.name == b.data.spec.sgCluster) && (cluster.data.metadata.namespace == b.data.metadata.namespace) ) );
-            
-                    if ( typeof backups !== "undefined" )
-                      cluster.hasBackups = true; // Enable/Disable Backups button
-      
-                  });
+                  if(store.state.sgclusters !== null) {
+                    store.state.sgclusters.forEach(function(cluster, index) {
+                      let backups = store.state.sgbackups.find(b => ( (cluster.name == b.data.spec.sgCluster) && (cluster.data.metadata.namespace == b.data.metadata.namespace) ) );
+              
+                      if ( typeof backups !== "undefined" )
+                        cluster.hasBackups = true; // Enable/Disable Backups button
+        
+                    });
+                  }
       
               }).catch(function(err) {
                 console.log(err);
@@ -322,7 +400,7 @@ export const mixin = {
               });
             }
       
-            if ( vc.iCan('list', 'sgpgconfigs') && (!kind.length || (kind == 'sgpgconfigs') ) ){
+            if ( vc.iCan('list', 'sgpgconfigs', 'all') && (!kind.length || (kind == 'sgpgconfigs') ) ){
       
               /* PostgreSQL Config */
               sgApi
@@ -333,7 +411,7 @@ export const mixin = {
       
                 response.data.forEach( function(item, index) {
                     
-                  if(store.state.namespaces.indexOf(item.metadata.namespace) === -1)
+                  if(store.state.allNamespaces.indexOf(item.metadata.namespace) === -1)
                     store.commit('updateNamespaces', item.metadata.namespace);
                   
                   if(!index)
@@ -352,7 +430,7 @@ export const mixin = {
               });
             }
       
-            if ( vc.iCan('get', 'sgpoolconfigs') && ( !kind.length || (kind == 'sgpoolconfig') ) ){
+            if ( vc.iCan('get', 'sgpoolconfigs', 'all') && ( !kind.length || (kind == 'sgpoolconfig') ) ){
       
               /* Connection Pooling Config */
               sgApi
@@ -363,7 +441,7 @@ export const mixin = {
       
                 response.data.forEach( function(item, index) {
                     
-                    if(store.state.namespaces.indexOf(item.metadata.namespace) === -1)
+                    if(store.state.allNamespaces.indexOf(item.metadata.namespace) === -1)
                       store.commit('updateNamespaces', item.metadata.namespace);
                     
                     if(!index)
@@ -382,7 +460,7 @@ export const mixin = {
               });
             }
       
-            if ( vc.iCan('list', 'sginstanceprofiles') && (!kind.length || (kind == 'sginstanceprofiles') ) ) {
+            if ( vc.iCan('list', 'sginstanceprofiles', 'all') && (!kind.length || (kind == 'sginstanceprofiles') ) ) {
       
               /* Profiles */
               sgApi
@@ -393,7 +471,7 @@ export const mixin = {
       
                 response.data.forEach( function(item, index) {
                     
-                  if(store.state.namespaces.indexOf(item.metadata.namespace) === -1)
+                  if(store.state.allNamespaces.indexOf(item.metadata.namespace) === -1)
                     store.commit('updateNamespaces', item.metadata.namespace);
                   
                   if(!index)
@@ -412,7 +490,7 @@ export const mixin = {
               });
             }
       
-            if ( vc.iCan('list', 'storageclasses') && ( !kind.length || (kind == 'storageclasses') )) {
+            if ( (store.state.storageClasses !== null) && (!kind.length || (kind == 'storageclasses')) ) {
               /* Storage Classes Data */
               sgApi
               .get('storageclasses')
@@ -421,12 +499,18 @@ export const mixin = {
                 store.commit('addStorageClasses', response.data);
       
               }).catch(function(err) {
+
+                // Make sure to set storageClasses to null when user has no permissions
+                if(vc.hasProp(err, 'response.status') && (err.response.status === 403)) {
+                  store.commit('addStorageClasses', null);
+                }
+
                 console.log(err);
                 vc.checkAuthError(err);
               });
             }
       
-            if ( vc.iCan('list', 'sgdistributedlogs') && ( !kind.length || (kind == 'sgdistributedlogs') ) ){
+            if ( vc.iCan('list', 'sgdistributedlogs', 'all') && ( !kind.length || (kind == 'sgdistributedlogs') ) ){
               /* Distributed Logs Data */
               sgApi
               .get('sgdistributedlogs')
@@ -451,7 +535,7 @@ export const mixin = {
               });
             }
     
-            if ( vc.iCan('list', 'sgdbops') && ( !kind.length || (kind == 'sgdbops') ) ){
+            if ( vc.iCan('list', 'sgdbops', 'all') && ( !kind.length || (kind == 'sgdbops') ) ){
               /* DbOps Data */
               sgApi
               .get('sgdbops')
@@ -476,7 +560,7 @@ export const mixin = {
               });
             }
 
-            if ( vc.iCan('list', 'sgobjectstorages') && ( !kind.length || (kind == 'sgobjectstorages') ) ){
+            if ( vc.iCan('list', 'sgobjectstorages', 'all') && ( !kind.length || (kind == 'sgobjectstorages') ) ){
               /* Distributed Logs Data */
               sgApi
               .get('sgobjectstorages')
@@ -487,7 +571,7 @@ export const mixin = {
                 var sgobjectstorages = [];
       
                 response.data.forEach(function(item, index){
-                  if(store.state.namespaces.indexOf(item.metadata.namespace) === -1)
+                  if(store.state.allNamespaces.indexOf(item.metadata.namespace) === -1)
                     store.commit('updateNamespaces', item.metadata.namespace);
                   
                   if(!index)
@@ -505,7 +589,7 @@ export const mixin = {
               });
             }
 
-            if ( vc.iCan('list', 'sgscripts') && ( !kind.length || (kind == 'sgscripts') ) ){
+            if ( vc.iCan('list', 'sgscripts', 'all') && ( !kind.length || (kind == 'sgscripts') ) ){
               /* Scripts Data */
               sgApi
               .get('sgscripts')
@@ -516,7 +600,7 @@ export const mixin = {
                 var sgscripts = [];
       
                 response.data.forEach(function(item, index){
-                  if(store.state.namespaces.indexOf(item.metadata.namespace) === -1)
+                  if(store.state.allNamespaces.indexOf(item.metadata.namespace) === -1)
                     store.commit('updateNamespaces', item.metadata.namespace);
                   
                   if(!index)
@@ -533,6 +617,18 @@ export const mixin = {
                 vc.checkAuthError(err);
               });
             }
+          }
+
+          if ( (store.state.sgconfigs === null) || (kind == 'sgconfigs')){
+            /* Operator Config Data */
+            sgApi
+            .get('sgconfigs')
+            .then( function(response){
+              store.commit('setSGConfigs', response.data);
+            }).catch(function(err) {
+              console.log(err);
+              vc.checkAuthError(err);
+            });
           }
 
           if(!Object.keys(store.state.tooltips).length && !store.state.tooltips.hasOwnProperty('error')) {
@@ -601,6 +697,33 @@ export const mixin = {
 
               store.commit('setApplications', response.data.applications);
     
+            }).catch(function(err) {
+              console.log(err);
+              vc.checkAuthError(err);
+            });
+
+          }
+
+          if(!store.state.dashboardsList.length) {
+
+            /* Get Grafana Dashboards */
+            axios
+			      .get('/grafana-list')
+            .then( function(response) {
+              if( (typeof response.data == 'object') && response.data.length ) {
+                store.commit('setDashboardsList', response.data);
+              } else {
+                let msg = {
+                  title: '',
+                  detail: 'There was a problem when trying to access the list of Grafana\'s monitoring dashboards available. Please confirm the REST API is functioning properly and that you have correctly setup the operator\'s credentials to access Grafana.',
+                  type: 'https://stackgres.io/doc/latest/install/prerequisites/monitoring/#installing-grafana-and-create-basic-dashboards',
+                  status: 403
+                };
+
+                if(typeof store.state.notifications.messages.find(m => m.message.details === msg.detail) === 'undefined') {
+                  vc.notify(msg,'error');
+                }
+              }
             }).catch(function(err) {
               console.log(err);
               vc.checkAuthError(err);
@@ -680,9 +803,19 @@ export const mixin = {
   
       iCan( action = 'any', kind, namespace = '' ) {
         const vc = this;
-          
-          if(namespace.length) { // If filtered by namespace
-  
+
+        if(namespace.length) { // If filtered by namespace
+          if(namespace === 'all') {
+            return (store.state.permissions.allowed.namespaced.filter(n => 
+              (n.resources[kind].includes(action)) ).length == store.state.permissions.allowed.namespaced.length
+            );
+          } else if ( (namespace === 'any') && (kind !== 'clusterroles') ) {
+            return typeof (store.state.permissions.allowed.namespaced.find(n => 
+              (n.resources[kind].includes(action)) )
+            ) !== 'undefined';
+          } else if (kind === 'clusterroles') {
+            return vc.havePermissionsTo.get.users
+          } else {
             let permissions = store.state.permissions.allowed.namespaced.find(p => (p.namespace == namespace));
             return (
               (typeof permissions != 'undefined') &&
@@ -692,22 +825,12 @@ export const mixin = {
                 )
               )
             )
-
-          } else if( !['namespaces', 'storageclasses'].includes(kind) && (action != 'any') ) { // For CRDs when no namespace indicated
-            
-            return (store.state.permissions.allowed.namespaced.filter(n => 
-              (n.resources[kind].includes(action)) ).length == store.state.permissions.allowed.namespaced.length
-            );
-
-          } else if(['namespaces', 'storageclasses'].includes(kind)) {
-
-            return store.state.permissions.allowed.unnamespaced[kind].includes(action)
-          
-          } else {
-            
-            return !store.state.permissions.forbidden.includes(kind)
-            
           }
+
+        } else {
+          return store.state.permissions.allowed.unnamespaced.hasOwnProperty(kind) && 
+            ( (action === 'any') || store.state.permissions.allowed.unnamespaced[kind].includes(action) )
+        }
   
       },
   
@@ -833,7 +956,10 @@ export const mixin = {
             break;
           
           default:
-            crd = JSON.parse(JSON.stringify(store.state[kind.toLowerCase()].find(c => ( (namespace == c.data.metadata.namespace) && (name == c.name) ))))
+            crd = JSON.parse(JSON.stringify(store.state[kind.toLowerCase()].find(c => ( 
+              (namespace == (c.hasOwnProperty('data') ? c.data.metadata.namespace : c.metadata.namespace)) && 
+              (name == (c.hasOwnProperty('name') ? c.name : c.metadata.name) ) 
+            ))))
             break;
         }
         
@@ -887,133 +1013,140 @@ export const mixin = {
 
       // Sort tables by an specific parameter
       sortTable( table, param, direction, type = 'alphabetical' ) {
-        const vc = this;
 
-        var backupFixedParams = ['data.spec.subjectToRetentionPolicy','data.metadata.name','data.spec.sgCluster','data.status.process.status'];
-        
-        table.sort((a,b) => {
-          let modifier = 1;
+        if(table === null) {
+          return null
+        } else if (!table.length) {
+          return table
+        } else {
+          const vc = this;
+
+          var backupFixedParams = ['data.spec.subjectToRetentionPolicy','data.metadata.name','data.spec.sgCluster','data.status.process.status'];
           
-          if(direction === 'desc') modifier = -1;
+          table.sort((a,b) => {
+            let modifier = 1;
+            
+            if(direction === 'desc') modifier = -1;
 
-          // If sorting backups first validate its state
-          if(a.data.hasOwnProperty('status') && a.hasOwnProperty('duration')) {
-            // If record is not sortable by the provided param
-            if(a.data.status !== null) {
-              if( (a.data.status.process.status == 'Failed') && !backupFixedParams.includes(param)){
-                return 1
-              } else if ((a.data.status.process.status == 'Running') && !backupFixedParams.includes(param)){
-                return -1
+            // If sorting backups first validate its state
+            if(a.data.hasOwnProperty('status') && a.hasOwnProperty('duration')) {
+              // If record is not sortable by the provided param
+              if(a.data.status !== null) {
+                if( (a.data.status.process.status == 'Failed') && !backupFixedParams.includes(param)){
+                  return 1
+                } else if ((a.data.status.process.status == 'Running') && !backupFixedParams.includes(param)){
+                  return -1
+                }
               }
+            } 
+
+            if (param == 'data.status.conditions') { // If dbOps sorted by Status
+
+              if(a.data.hasOwnProperty('status')) {
+                a = a.data.status.conditions.find(c => (c.status === 'True') )
+                a = a.type
+              } else {
+                a = '-'
+              }
+
+              if(b.data.hasOwnProperty('status')) {
+                b = b.data.status.conditions.find(c => (c.status === 'True') )
+                b = b.type
+              } else {
+                b = '-'
+              }
+
+            } else if (param == 'data.spec.runAt' ) { // If dbOps sorted by runAt
+              
+              a = a.data.spec.hasOwnProperty('runAt') ? a.data.spec.runAt : (vc.hasProp(a, 'data.status.opStarted') ? a.data.status.opStarted : '-');
+              b = b.data.spec.hasOwnProperty('runAt') ? b.data.spec.runAt : (vc.hasProp(b, 'data.status.opStarted') ? b.data.status.opStarted : '-');
+
+            } else if (param == 'data.status.elapsed' ) { // If dbOps sorted by elapsed
+              
+              if( a.data.hasOwnProperty('status') ) {
+                let lastStatus = a.data.status.conditions.find(c => (c.status === 'True') )
+                let begin = moment(a.data.status.opStarted)
+                let finish = (lastStatus.type == 'Running') ? moment() : moment(lastStatus.lastTransitionTime);
+                a = moment.duration(finish.diff(begin));
+              } else {
+                a = -1
+              }
+
+              if( b.data.hasOwnProperty('status') ) {
+                let lastStatus = b.data.status.conditions.find(c => (c.status === 'True') )
+                let begin = moment(b.data.status.opStarted)
+                let finish = (lastStatus.type == 'Running') ? moment() : moment(lastStatus.lastTransitionTime);
+                b = moment.duration(finish.diff(begin));
+              } else {
+                b = -1
+              }
+
+            } else { // Every other param
+
+              if(vc.hasParams( a, param.split(".")))
+                a = eval("a."+param);
+              else
+                a = '';
+
+              if(vc.hasParams( b, param.split(".")))
+                b = eval("b."+param);
+              else
+                b = '';
+
             }
-          } 
 
-          if (param == 'data.status.conditions') { // If dbOps sorted by Status
+            switch(type) {
 
-            if(a.data.hasOwnProperty('status')) {
-              a = a.data.status.conditions.find(c => (c.status === 'True') )
-              a = a.type
-            } else {
-              a = '-'
-            }
+              case 'timestamp':
 
-            if(b.data.hasOwnProperty('status')) {
-              b = b.data.status.conditions.find(c => (c.status === 'True') )
-              b = b.type
-            } else {
-              b = '-'
-            }
+                if(moment(a).isValid && moment(b).isValid) {
 
-          } else if (param == 'data.spec.runAt' ) { // If dbOps sorted by runAt
-            
-            a = a.data.spec.hasOwnProperty('runAt') ? a.data.spec.runAt : (vc.hasProp(a, 'data.status.opStarted') ? a.data.status.opStarted : '-');
-            b = b.data.spec.hasOwnProperty('runAt') ? b.data.spec.runAt : (vc.hasProp(b, 'data.status.opStarted') ? b.data.status.opStarted : '-');
+                  if(moment(a).isBefore(moment(b)))
+                    return -1 * modifier;
+                
+                  if(moment(a).isAfter(moment(b)))
+                    return 1 * modifier;  
 
-          } else if (param == 'data.status.elapsed' ) { // If dbOps sorted by elapsed
-            
-            if( a.data.hasOwnProperty('status') ) {
-              let lastStatus = a.data.status.conditions.find(c => (c.status === 'True') )
-              let begin = moment(a.data.status.opStarted)
-              let finish = (lastStatus.type == 'Running') ? moment() : moment(lastStatus.lastTransitionTime);
-              a = moment.duration(finish.diff(begin));
-            } else {
-              a = -1
-            }
-
-            if( b.data.hasOwnProperty('status') ) {
-              let lastStatus = b.data.status.conditions.find(c => (c.status === 'True') )
-              let begin = moment(b.data.status.opStarted)
-              let finish = (lastStatus.type == 'Running') ? moment() : moment(lastStatus.lastTransitionTime);
-              b = moment.duration(finish.diff(begin));
-            } else {
-              b = -1
-            }
-
-          } else { // Every other param
-
-            if(vc.hasParams( a, param.split(".")))
-              a = eval("a."+param);
-            else
-              a = '';
-
-            if(vc.hasParams( b, param.split(".")))
-              b = eval("b."+param);
-            else
-              b = '';
-
-          }
-
-          switch(type) {
-
-            case 'timestamp':
-
-              if(moment(a).isValid && moment(b).isValid) {
-
-                if(moment(a).isBefore(moment(b)))
+                } else if (!moment(a).isValid && moment(b).isValid) {
                   return -1 * modifier;
-              
-                if(moment(a).isAfter(moment(b)))
-                  return 1 * modifier;  
-
-              } else if (!moment(a).isValid && moment(b).isValid) {
-                return -1 * modifier;
-              } else if (moment(a).isValid && !moment(b).isValid) {
-                return 1 * modifier;
-              }
-              
-              break;
-
-            case 'memory':
-              
-              if( vc.getBytes(a) < vc.getBytes(b) )
-                return -1 * modifier;
-              
-              if( vc.getBytes(a) > vc.getBytes(b) )
-                return 1 * modifier;
-              
-              break;
-            
-            default: // alphabetical, duration, cpu
-
-              if(type == 'cpu') {
-                a = a.includes('m') ? (parseFloat(a.replace('m','')/1000)) : a;
-                b = b.includes('m') ? (parseFloat(b.replace('m','')/1000)) : b;
-              }
-                          
-              if( a < b )
-                return -1 * modifier;
-              
-              if( a > b )
-                return 1 * modifier;
-              
+                } else if (moment(a).isValid && !moment(b).isValid) {
+                  return 1 * modifier;
+                }
+                
                 break;
-            
-          }
-          
-          return 0;
-        });
 
-        return table;
+              case 'memory':
+                
+                if( vc.getBytes(a) < vc.getBytes(b) )
+                  return -1 * modifier;
+                
+                if( vc.getBytes(a) > vc.getBytes(b) )
+                  return 1 * modifier;
+                
+                break;
+              
+              default: // alphabetical, duration, cpu
+
+                if(type == 'cpu') {
+                  a = a.includes('m') ? (parseFloat(a.replace('m','')/1000)) : a;
+                  b = b.includes('m') ? (parseFloat(b.replace('m','')/1000)) : b;
+                }
+                            
+                if( a < b )
+                  return -1 * modifier;
+                
+                if( a > b )
+                  return 1 * modifier;
+                
+                  break;
+              
+            }
+            
+            return 0;
+          });
+
+          return table;
+        }
 
       },
 
@@ -1076,7 +1209,7 @@ export const mixin = {
             params.forEach(function(item, index){
               tooltipText = tooltipText[item]
             })
-            return tooltipText.description
+            return tooltipText.hasOwnProperty('description') ? tooltipText.description : 'Information not available'
           } else {
             return 'Information not available'
           }
@@ -1223,46 +1356,50 @@ export const mixin = {
       lookupCRDs(kind, crds) {
         const vc = this;
 
-       store.state[kind].forEach(function(item, index) {
+        if(store.state[kind] === null) {
+          store.commit('initKind', kind);
+        } else {
+          store.state[kind].forEach(function(item, index) {
 
-          let foundItem = crds.find(e => (e.metadata.name == item.data.metadata.name) && (e.metadata.namespace == item.data.metadata.namespace))
+            let foundItem = crds.find(e => (e.metadata.name == item.data.metadata.name) && (e.metadata.namespace == item.data.metadata.namespace))
 
-          if(typeof foundItem == 'undefined') {
+            if(typeof foundItem == 'undefined') {
 
-            store.commit('removeResource', {
-              kind: kind,
-              name: item.data.metadata.name,
-              namespace: item.data.metadata.namespace,
-            })
+              store.commit('removeResource', {
+                kind: kind,
+                name: item.data.metadata.name,
+                namespace: item.data.metadata.namespace,
+              })
 
-            if(vc.$route.params.hasOwnProperty('name') && (item.data.metadata.name == vc.$route.params.name)) {
+              if(vc.$route.params.hasOwnProperty('name') && (item.data.metadata.name == vc.$route.params.name)) {
 
-              switch(kind) {
-          
-                case 'clusters':
-                  router.push('/' + item.data.metadata.namespace + '/sgclusters')
-                  break;
+                switch(kind) {
+            
+                  case 'clusters':
+                    router.push('/' + item.data.metadata.namespace + '/sgclusters')
+                    break;
+                  
+                  default:
+                    router.push('/' + item.data.metadata.namespace + '/' + kind);
+                    break;
+                }
+
+                vc.notify('The resource you were browsing has been deleted from the server')
+              } else if ((kind == 'backups') && vc.$route.params.hasOwnProperty('backupname') && (item.data.metadata.name == vc.$route.params.backupname) ) {
                 
-                default:
-                  router.push('/' + item.data.metadata.namespace + '/' + kind);
-                  break;
-              }
+                if(vc.$route.params.hasOwnProperty('name')) {
+                  router.push('/' + item.data.metadata.namespace + '/sgcluster/' + vc.$route.params.name + '/sgbackups')
+                } else {
+                  router.push('/' + item.data.metadata.namespace + '/sgbackups')
+                }
+                vc.notify('The resource you were browsing has been deleted from the server')
 
-              vc.notify('The resource you were browsing has been deleted from the server')
-            } else if ((kind == 'backups') && vc.$route.params.hasOwnProperty('backupname') && (item.data.metadata.name == vc.$route.params.backupname) ) {
-              
-              if(vc.$route.params.hasOwnProperty('name')) {
-                router.push('/' + item.data.metadata.namespace + '/sgcluster/' + vc.$route.params.name + '/sgbackups')
-              } else {
-                router.push('/' + item.data.metadata.namespace + '/sgbackups')
-              }
-              vc.notify('The resource you were browsing has been deleted from the server')
+              }  
 
-            }  
+            }
 
-          }
-
-        })
+          })
+        }
       },
 
       // Pagination handle
@@ -1310,7 +1447,7 @@ export const mixin = {
       },
 
       splitUppercase(text) {
-        return text.split(/(?=[A-Z])/).join(' ')
+        return text.split(/(?=[A-Z])/).join(' ').replace(text[0], text[0].toUpperCase());
       },
       
       getDateString() {
@@ -1327,7 +1464,7 @@ export const mixin = {
           dayString = fullDate.toISOString().slice(0, fullDate.toISOString().indexOf('T'));
         }
           
-        return dayString + '-' + timeString.replace(/:/g,'-')
+        return dayString + '-' + timeString.replace(/:/g,'-').replaceAll('.','-');
       }, 
             
       checkValidSteps(data, source) {
@@ -1378,6 +1515,43 @@ export const mixin = {
         prop.splice( index, 1 );
       },
 
+      uploadFile(e, prop) {
+        const vc = this;
+        var files = e.target.files || e.target.dataTransfer.files;
+
+        if (!files.length){
+            console.log("File not loaded")
+            return;
+        } else {
+            var reader = new FileReader();
+            
+            reader.onload = function(e) {
+                if(!prop.includes('.')) {
+                    vc.$set(vc, prop, e.target.result);
+                } else {
+                    let el = {};
+                    let props = prop.split('.');
+                    for(var i = 0; i < props.length - 1; i++) {
+                        el = Object.keys(el).length ? el[props[i]] : vc[props[i]];
+                    }
+                    vc.$set(el, props[props.length - 1], e.target.result);
+                }
+            };
+            reader.readAsText(files[0]);
+        }
+      },
+
+      validateDryRun(data) {
+        const vc = this;
+        if(vc.showSummary) {
+            vc.previewCRD = {};
+            vc.previewCRD['data'] = data;
+        } else {
+            vc.dryRun = false;
+        }
+        store.commit('loading', false);
+      }
+
     },
       
   
@@ -1388,15 +1562,17 @@ export const mixin = {
     mounted: function() {
       const vc = this;
 
-      $(window).on('resize', function() {
-        vc.pagination.rows = parseInt(($(window).innerHeight() - 480)/40)
-        vc.pagination.rows = (vc.pagination.rows <= 0) ? 1 : vc.pagination.rows
-        vc.pageChange({
-          pageNumber: 1,
-          pageSize: vc.pagination.rows
-        })
-      });
-      $(window).resize()
+      if(vc.hasOwnProperty('pagination')) {
+        $(window).on('resize', function() {
+          vc.pagination.rows = parseInt(($(window).innerHeight() - 480)/40)
+          vc.pagination.rows = (vc.pagination.rows <= 0) ? 1 : vc.pagination.rows
+          vc.pageChange({
+            pageNumber: 1,
+            pageSize: vc.pagination.rows
+          })
+        });
+        $(window).resize()
+      }
 
       // Setup currentPath for sidebar use
       store.commit('setCurrentPath', {

@@ -11,6 +11,10 @@ spec:
   instances: {{ .Values.cluster.instances }}
   postgres:
     {{- toYaml .Values.cluster.postgres | nindent 4 }}
+  {{- with .Values.cluster.autoscaling }}
+  autoscaling:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   {{- with .Values.cluster.replication }}
   replication:
     {{- toYaml . | nindent 4 }}
@@ -22,10 +26,78 @@ spec:
   configurations: 
     sgPostgresConfig: {{ quote .Values.cluster.configurations.sgPostgresConfig }}
     sgPoolingConfig: {{ quote .Values.cluster.configurations.sgPoolingConfig }}
+    {{- with .Values.cluster.configurations.observability }}
+    observability:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- if not .Values.cluster.disableBackups }}
     {{- with .Values.cluster.configurations.backups }}
     {{- if .sgObjectStorage }}
     backups:
     - {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- with .Values.cluster.configurations.patroni }}
+    patroni:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- if .Values.credentials }}
+    credentials:
+      {{- with .Values.credentials.patroni }}
+      patroni:
+        {{- with .restApiPassword }}
+        restApiPassword:
+          name: {{ $.Release.Name }}-users
+          key: restapi-password
+        {{- end }}
+      {{- end }}
+      {{- with .Values.credentials.users }}
+      users:
+        {{- with .superuser }}
+        superuser:
+          {{- with .username }}
+          username:
+            name: {{ $.Release.Name }}-users
+            key: superuser-username
+          {{- end }}
+          {{- with .password }}
+          password:
+            name: {{ $.Release.Name }}-users
+            key: superuser-password
+          {{- end }}
+        {{- end }}
+        {{- with .replication }}
+        replication:
+          {{- with .username }}
+          username:
+            name: {{ $.Release.Name }}-users
+            key: replication-username
+          {{- end }}
+          {{- with .password }}
+          password:
+            name: {{ $.Release.Name }}-users
+            key: replication-password
+          {{- end }}
+        {{- end }}
+        {{- with .authenticator }}
+        authenticator:
+          {{- with .username }}
+          username:
+            name: {{ $.Release.Name }}-users
+            key: authenticator-username
+          {{- end }}
+          {{- with .password }}
+          password:
+            name: {{ $.Release.Name }}-users
+            key: authenticator-password
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- else }}
+    {{- with .Values.cluster.configurations.credentials }}
+    credentials:
+      {{- toYaml . | nindent 6 }}
     {{- end }}
     {{- end }}
   sgInstanceProfile: {{ quote .Values.cluster.sgInstanceProfile }}
@@ -67,8 +139,8 @@ spec:
     {{- with .Values.cluster.pods.disablePostgresUtil }}
     disablePostgresUtil: {{ . }}
     {{- end }}
-    {{- with .Values.cluster.pods.disableMetricsExporter }}
-    disableMetricsExporter: {{ . }}
+    {{- with .Values.cluster.pods.disableEnvoy }}
+    disableEnvoy: {{ . }}
     {{- end }}
     {{- with .Values.cluster.pods.scheduling }}
     scheduling:
@@ -87,6 +159,10 @@ spec:
     {{- end }}
     {{- with .Values.cluster.pods.customInitContainers }}
     customInitContainers:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.cluster.pods.customVolumeMounts }}
+    customVolumeMounts:
       {{- toYaml . | nindent 6 }}
     {{- end }}
   {{- if .Values.distributedLogs.enabled }}

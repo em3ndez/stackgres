@@ -10,7 +10,6 @@ import java.util.Objects;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.validation.ValidEnumList;
@@ -24,31 +23,23 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresClusterNonProduction {
 
-  @JsonProperty("disableClusterPodAntiAffinity")
-  public Boolean disableClusterPodAntiAffinity;
+  Boolean disableClusterPodAntiAffinity;
 
-  @JsonProperty("disablePatroniResourceRequirements")
-  public Boolean disablePatroniResourceRequirements;
+  Boolean disablePatroniResourceRequirements;
 
-  @JsonProperty("disableClusterResourceRequirements")
-  public Boolean disableClusterResourceRequirements;
+  Boolean disableClusterResourceRequirements;
 
-  @JsonProperty("enableSetPatroniCpuRequests")
-  public Boolean enableSetPatroniCpuRequests;
+  Boolean enableSetPatroniCpuRequests;
 
-  @JsonProperty("enableSetClusterCpuRequests")
-  public Boolean enableSetClusterCpuRequests;
+  Boolean enableSetClusterCpuRequests;
 
-  @JsonProperty("enableSetPatroniMemoryRequests")
-  public Boolean enableSetPatroniMemoryRequests;
+  Boolean enableSetPatroniMemoryRequests;
 
-  @JsonProperty("enableSetClusterMemoryRequests")
-  public Boolean enableSetClusterMemoryRequests;
+  Boolean enableSetClusterMemoryRequests;
 
-  @JsonProperty("enabledFeatureGates")
   @ValidEnumList(enumClass = StackGresFeatureGates.class, allowNulls = true,
       message = "enabledFeatureGates must contain only babelfish-flavor")
-  public List<String> enabledFeatureGates;
+  List<String> enabledFeatureGates;
 
   public Boolean getDisableClusterPodAntiAffinity() {
     return disableClusterPodAntiAffinity;

@@ -115,20 +115,20 @@ class ScriptsConfigMutatorTest {
     review.getRequest().getObject().getStatus().getManagedSql().setScripts(null);
 
     StackGresCluster expected = JsonUtil.copy(review.getRequest().getObject());
-    expected.getSpec().getManagedSql().getScripts().add(new StackGresClusterManagedScriptEntry());
-    expected.getSpec().getManagedSql().getScripts().get(1)
+    expected.getSpec().getManagedSql().getScripts().add(0, new StackGresClusterManagedScriptEntry());
+    expected.getSpec().getManagedSql().getScripts().get(0)
         .setId(1);
-    expected.getSpec().getManagedSql().getScripts().get(1)
+    expected.getSpec().getManagedSql().getScripts().get(0)
         .setSgScript(ManagedSqlUtil.defaultName(expected));
     expected.getStatus().getManagedSql().setScripts(new ArrayList<>());
     expected.getStatus().getManagedSql().getScripts()
         .add(new StackGresClusterManagedScriptEntryStatus());
     expected.getStatus().getManagedSql().getScripts().get(0)
-        .setId(0);
+        .setId(1);
     expected.getStatus().getManagedSql().getScripts()
         .add(new StackGresClusterManagedScriptEntryStatus());
     expected.getStatus().getManagedSql().getScripts().get(1)
-        .setId(1);
+        .setId(0);
     JsonNode expectedCluster = JsonUtil.toJson(expected);
 
     review.getRequest().getObject().setStatus(null);
@@ -272,6 +272,26 @@ class ScriptsConfigMutatorTest {
     review.getRequest().getObject().getSpec().getManagedSql().getScripts().remove(1);
     StackGresCluster expected = JsonUtil.copy(review.getRequest().getObject());
     expected.getStatus().getManagedSql().getScripts().remove(1);
+    JsonNode expectedCluster = JsonUtil.toJson(expected);
+
+    StackGresCluster result = mutator.mutate(
+        review, JsonUtil.copy(review.getRequest().getObject()));
+
+    JsonUtil.assertJsonEquals(
+        expectedCluster,
+        JsonUtil.toJson(result));
+  }
+
+  @Test
+  void updateClusterWithDefaultRemovedWithDifferentId_shouldAddDefaultAndResetStatus() {
+    StackGresClusterReview review = AdmissionReviewFixtures.cluster()
+        .loadUpdateWithManagedSql().get();
+
+    review.getRequest().getObject().getStatus().getManagedSql().getScripts().get(0).setId(4);
+    StackGresCluster expected = JsonUtil.copy(review.getRequest().getObject());
+    review.getRequest().getObject().getSpec().getManagedSql().getScripts().remove(0);
+    expected.getSpec().getManagedSql().getScripts().get(0).setId(4);
+    expected.getStatus().getManagedSql().getScripts().get(0).setId(4);
     JsonNode expectedCluster = JsonUtil.toJson(expected);
 
     StackGresCluster result = mutator.mutate(

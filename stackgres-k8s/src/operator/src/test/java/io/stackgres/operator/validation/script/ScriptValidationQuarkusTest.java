@@ -7,8 +7,6 @@ package io.stackgres.operator.validation.script;
 
 import static org.hamcrest.Matchers.is;
 
-import javax.inject.Inject;
-
 import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
@@ -21,6 +19,7 @@ import io.restassured.http.ContentType;
 import io.stackgres.operator.common.StackGresScriptReview;
 import io.stackgres.operator.common.fixture.AdmissionReviewFixtures;
 import io.stackgres.operator.validation.ValidationUtil;
+import jakarta.inject.Inject;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
@@ -49,7 +48,7 @@ class ScriptValidationQuarkusTest {
               .withData(ImmutableMap.of(
                   configMapKeyRef.getKey(), "SELECT 1"))
               .build();
-          client.configMaps().create(configMap);
+          client.configMaps().resource(configMap).create();
         });
     review.getRequest().getObject().getSpec().getScripts().stream()
         .filter(script -> script.getScriptFrom() != null
@@ -64,7 +63,7 @@ class ScriptValidationQuarkusTest {
               .withData(ImmutableMap.of(
                   configMapKeyRef.getKey(), "SELECT 1"))
               .build();
-          client.secrets().create(configMap);
+          client.secrets().resource(configMap).create();
         });
   }
 

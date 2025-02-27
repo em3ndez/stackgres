@@ -10,9 +10,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder;
@@ -20,29 +17,28 @@ import io.fabric8.kubernetes.api.model.Volume;
 import io.fabric8.kubernetes.api.model.VolumeBuilder;
 import io.stackgres.common.BackupStorageUtil;
 import io.stackgres.common.ClusterContext;
-import io.stackgres.common.ClusterStatefulSetPath;
+import io.stackgres.common.ClusterPath;
 import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.StackGresVolume;
 import io.stackgres.common.crd.sgbackup.BackupStatus;
 import io.stackgres.common.crd.sgbackup.StackGresBackup;
 import io.stackgres.common.crd.sgbackup.StackGresBackupProcess;
 import io.stackgres.common.crd.sgbackup.StackGresBackupStatus;
-import io.stackgres.common.crd.sgbackupconfig.StackGresBackupConfigSpec;
-import io.stackgres.common.crd.sgbackupconfig.StackGresBaseBackupConfig;
+import io.stackgres.common.crd.sgbackup.StackGresBackupVolumeSnapshotStatus;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
-import io.stackgres.common.crd.sgcluster.StackGresClusterInitData;
+import io.stackgres.common.crd.sgcluster.StackGresClusterInitialData;
 import io.stackgres.common.crd.sgcluster.StackGresClusterRestore;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
 import io.stackgres.common.labels.LabelFactoryForCluster;
 import io.stackgres.operator.conciliation.OperatorVersionBinder;
-import io.stackgres.operator.conciliation.backup.BackupConfiguration;
-import io.stackgres.operator.conciliation.backup.BackupPerformance;
 import io.stackgres.operator.conciliation.cluster.StackGresClusterContext;
 import io.stackgres.operator.conciliation.factory.ImmutableVolumePair;
 import io.stackgres.operator.conciliation.factory.VolumeFactory;
 import io.stackgres.operator.conciliation.factory.VolumePair;
 import io.stackgres.operator.conciliation.factory.cluster.backup.AbstractBackupConfigMap;
 import io.stackgres.operator.conciliation.factory.cluster.backup.BackupEnvVarFactory;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jetbrains.annotations.NotNull;
 
 @Singleton
@@ -50,7 +46,7 @@ import org.jetbrains.annotations.NotNull;
 public class RestoreConfigMap extends AbstractBackupConfigMap
     implements VolumeFactory<StackGresClusterContext> {
 
-  private LabelFactoryForCluster<StackGresCluster> labelFactory;
+  private LabelFactoryForCluster labelFactory;
 
   public static String name(ClusterContext context) {
     final String clusterName = context.getCluster().getMetadata().getName();
@@ -91,21 +87,35 @@ public class RestoreConfigMap extends AbstractBackupConfigMap
         data.put("RESTORE_BACKUP_ERROR", "Backup is " + status);
       } else {
         final StackGresBackup backup = restoreBackup.get();
-        data.put("BACKUP_RESOURCE_VERSION",
-            backup.getMetadata().getResourceVersion());
-        data.put("RESTORE_BACKUP_ID",
+        data.put("RESTORE_BACKUP_NAME",
             backup.getStatus().getInternalName());
+        data.put("RESTORE_VOLUME_SNAPSHOT",
+            Optional.of(backup.getStatus())
+            .map(StackGresBackupStatus::getVolumeSnapshot)
+            .map(ignored -> Boolean.TRUE)
+            .map(String::valueOf)
+            .orElse(Boolean.FALSE.toString()));
+        data.put("RESTORE_BACKUP_LABEL",
+            Optional.of(backup.getStatus())
+            .map(StackGresBackupStatus::getVolumeSnapshot)
+            .map(StackGresBackupVolumeSnapshotStatus::getBackupLabel)
+            .orElse(""));
+        data.put("RESTORE_TABLESPACE_MAP",
+            Optional.of(backup.getStatus())
+            .map(StackGresBackupStatus::getVolumeSnapshot)
+            .map(StackGresBackupVolumeSnapshotStatus::getTablespaceMap)
+            .orElse(""));
 
         data.putAll(getBackupEnvVars(context,
             Optional.of(backup)
                 .map(StackGresBackup::getStatus)
                 .map(StackGresBackupStatus::getBackupPath)
                 .orElseThrow(),
-            backup.getStatus().getBackupConfig()));
+            backup.getStatus().getSgBackupConfig()));
 
         Optional.ofNullable(cluster.getSpec())
-            .map(StackGresClusterSpec::getInitData)
-            .map(StackGresClusterInitData::getRestore)
+            .map(StackGresClusterSpec::getInitialData)
+            .map(StackGresClusterInitialData::getRestore)
             .map(StackGresClusterRestore::getDownloadDiskConcurrency)
             .ifPresent(downloadDiskConcurrency -> data.put(
                 "WALG_DOWNLOAD_CONCURRENCY",
@@ -125,51 +135,20 @@ public class RestoreConfigMap extends AbstractBackupConfigMap
         .build();
   }
 
-  private Map<String, String> getBackupEnvVars(
-      StackGresClusterContext context,
-      String path,
-      StackGresBackupConfigSpec backupConfig) {
-    Map<String, String> result = new HashMap<>(
-        getBackupEnvVars(context,
-            path,
-            backupConfig.getStorage())
-    );
-    if (backupConfig.getBaseBackups() != null) {
-      result.putAll(
-          getBackupEnvVars(new BackupConfiguration(
-              backupConfig.getBaseBackups().getRetention(),
-              backupConfig.getBaseBackups().getCronSchedule(),
-              backupConfig.getBaseBackups().getCompression(),
-              path,
-              Optional.of(backupConfig.getBaseBackups())
-                  .map(StackGresBaseBackupConfig::getPerformance)
-                  .map(p -> new BackupPerformance(
-                      p.getMaxNetworkBandwidth(),
-                      p.getMaxDiskBandwidth(),
-                      p.getUploadDiskConcurrency(),
-                      p.getUploadConcurrency(),
-                      p.getDownloadConcurrency()
-                  )).orElse(null)
-          ))
-      );
-    }
-    return Map.copyOf(result);
-  }
-
   @Override
   protected String getAwsS3CompatibleCaCertificateFilePath(ClusterContext context) {
-    return ClusterStatefulSetPath.RESTORE_SECRET_PATH.path(context)
+    return ClusterPath.RESTORE_SECRET_PATH.path(context)
         + "/" + BackupEnvVarFactory.AWS_S3_COMPATIBLE_CA_CERTIFICATE_FILE_NAME;
   }
 
   @Override
   protected String getGcsCredentialsFilePath(ClusterContext context) {
-    return ClusterStatefulSetPath.RESTORE_SECRET_PATH.path(context)
+    return ClusterPath.RESTORE_SECRET_PATH.path(context)
         + "/" + BackupEnvVarFactory.GCS_CREDENTIALS_FILE_NAME;
   }
 
   @Inject
-  public void setLabelFactory(LabelFactoryForCluster<StackGresCluster> labelFactory) {
+  public void setLabelFactory(LabelFactoryForCluster labelFactory) {
     this.labelFactory = labelFactory;
   }
 }

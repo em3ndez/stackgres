@@ -7,15 +7,14 @@ package io.stackgres.operator.conciliation.factory.cluster;
 
 import java.util.List;
 
-import javax.enterprise.context.ApplicationScoped;
-
 import io.fabric8.kubernetes.api.model.EnvVar;
 import io.fabric8.kubernetes.api.model.VolumeMount;
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder;
-import io.stackgres.common.ClusterStatefulSetPath;
+import io.stackgres.common.ClusterPath;
 import io.stackgres.common.StackGresVolume;
 import io.stackgres.operator.conciliation.factory.ContainerContext;
 import io.stackgres.operator.conciliation.factory.VolumeMountsProvider;
+import jakarta.enterprise.context.ApplicationScoped;
 
 @ApplicationScoped
 public class LogVolumeMounts implements VolumeMountsProvider<ContainerContext> {
@@ -25,7 +24,7 @@ public class LogVolumeMounts implements VolumeMountsProvider<ContainerContext> {
     return List.of(
         new VolumeMountBuilder()
             .withName(StackGresVolume.LOG.getName())
-            .withMountPath(ClusterStatefulSetPath.PG_LOG_PATH.path())
+            .withMountPath(ClusterPath.PG_LOG_PATH.path())
             .build()
     );
   }
@@ -33,7 +32,7 @@ public class LogVolumeMounts implements VolumeMountsProvider<ContainerContext> {
   @Override
   public List<EnvVar> getDerivedEnvVars(ContainerContext context) {
     return List.of(
-        ClusterStatefulSetPath.PG_LOG_PATH.envVar()
+        ClusterPath.PG_LOG_PATH.envVar()
     );
   }
 }

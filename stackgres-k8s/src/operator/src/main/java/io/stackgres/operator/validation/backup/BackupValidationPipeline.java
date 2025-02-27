@@ -5,21 +5,20 @@
 
 package io.stackgres.operator.validation.backup;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.inject.Any;
-import javax.enterprise.inject.Instance;
-import javax.inject.Inject;
-
-import io.stackgres.operator.common.BackupReview;
+import io.stackgres.operator.common.StackGresBackupReview;
 import io.stackgres.operator.validation.AbstractValidationPipeline;
 import io.stackgres.operatorframework.admissionwebhook.validating.Validator;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Any;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
-public class BackupValidationPipeline extends AbstractValidationPipeline<BackupReview> {
+public class BackupValidationPipeline extends AbstractValidationPipeline<StackGresBackupReview> {
 
   @Inject
   public BackupValidationPipeline(
-      @Any Instance<Validator<BackupReview>> validatorInstances) {
+      @Any Instance<Validator<StackGresBackupReview>> validatorInstances) {
     super(validatorInstances);
   }
 

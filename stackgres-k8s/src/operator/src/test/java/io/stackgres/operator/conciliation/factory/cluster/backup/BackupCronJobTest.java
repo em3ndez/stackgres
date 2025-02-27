@@ -15,7 +15,6 @@ import java.util.stream.Stream;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.PodSecurityContext;
 import io.fabric8.kubernetes.api.model.batch.v1.CronJob;
-import io.stackgres.common.ClusterContext;
 import io.stackgres.common.KubectlUtil;
 import io.stackgres.common.crd.sgbackup.StackGresBackup;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
@@ -37,9 +36,7 @@ import org.mockito.MockitoAnnotations;
 public class BackupCronJobTest {
 
   @Mock
-  private ClusterEnvironmentVariablesFactoryDiscoverer<ClusterContext> envFactoryDiscoverer;
-  @Mock
-  private LabelFactoryForCluster<StackGresCluster> labelFactory;
+  private LabelFactoryForCluster labelFactory;
   @Mock
   private ResourceFactory<StackGresClusterContext, PodSecurityContext> clusterPodSecurityFactory;
   @Mock
@@ -49,7 +46,9 @@ public class BackupCronJobTest {
   @Mock
   private StackGresBackupContext backupContext;
   @Mock
-  private LabelMapperForCluster<StackGresCluster> labelMapperSgCluster;
+  private LabelMapperForCluster labelMapperSgCluster;
+  @Mock
+  private ClusterEnvironmentVariablesFactoryDiscoverer envFactoryDiscoverer;
   @Mock
   private BackupScriptTemplatesVolumeMounts backupScriptTemplatesVolumeMounts;
   @Mock
@@ -64,13 +63,15 @@ public class BackupCronJobTest {
   public void setup() {
     MockitoAnnotations.openMocks(this);
     backupCronJob =
-        new BackupCronJob(envFactoryDiscoverer, labelFactory, clusterPodSecurityFactory,
-            kubectl, backupScriptTemplatesVolumeMounts, backupTemplatesConfigMap);
+        new BackupCronJob(labelFactory, clusterPodSecurityFactory,
+            kubectl, envFactoryDiscoverer,
+            backupScriptTemplatesVolumeMounts, backupTemplatesConfigMap);
     sgBackup = Fixtures.backup().loadDefault().get();
     sgCluster = Fixtures.cluster().loadSchedulingBackup().get();
     backupPerformance = new BackupPerformance(10L, 10L, 1, null, null);
     backupConfig =
-        new BackupConfiguration(5, "* * * 5 *", "10", "/tmp", backupPerformance);
+        new BackupConfiguration(5, "* * * 5 *", "10", "/tmp", backupPerformance,
+            null, null, null, null, null, null, null);
     sgBackup.getSpec().setSgCluster(sgCluster.getMetadata().getName());
   }
 

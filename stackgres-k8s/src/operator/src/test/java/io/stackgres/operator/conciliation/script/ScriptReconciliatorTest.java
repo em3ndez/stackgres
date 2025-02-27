@@ -18,9 +18,10 @@ import io.stackgres.common.crd.sgscript.StackGresScript;
 import io.stackgres.common.event.EventEmitter;
 import io.stackgres.common.fixture.Fixtures;
 import io.stackgres.common.resource.CustomResourceScheduler;
-import io.stackgres.operator.conciliation.ComparisonDelegator;
-import io.stackgres.operator.conciliation.Conciliator;
+import io.stackgres.operator.conciliation.AbstractConciliator;
+import io.stackgres.operator.conciliation.DeployedResourcesCache;
 import io.stackgres.operator.conciliation.HandlerDelegator;
+import io.stackgres.operator.conciliation.Metrics;
 import io.stackgres.operator.conciliation.ReconciliationResult;
 import io.stackgres.operator.conciliation.factory.cluster.KubernetessMockResourceGenerationUtil;
 import org.jooq.lambda.tuple.Tuple;
@@ -36,7 +37,9 @@ class ScriptReconciliatorTest {
 
   private final StackGresScript script = Fixtures.script().loadDefault().get();
   @Mock
-  Conciliator<StackGresScript> conciliator;
+  AbstractConciliator<StackGresScript> conciliator;
+  @Mock
+  DeployedResourcesCache deployedResourcesCache;
   @Mock
   HandlerDelegator<StackGresScript> handlerDelegator;
   @Mock
@@ -46,7 +49,7 @@ class ScriptReconciliatorTest {
   @Mock
   CustomResourceScheduler<StackGresScript> scriptScheduler;
   @Mock
-  ComparisonDelegator<StackGresScript> resourceComparator;
+  Metrics metrics;
 
   private ScriptReconciliator reconciliator;
 
@@ -54,10 +57,12 @@ class ScriptReconciliatorTest {
   void setUp() {
     ScriptReconciliator.Parameters parameters = new ScriptReconciliator.Parameters();
     parameters.conciliator = conciliator;
+    parameters.deployedResourcesCache = deployedResourcesCache;
     parameters.handlerDelegator = handlerDelegator;
     parameters.eventController = eventController;
     parameters.statusManager = statusManager;
     parameters.scriptScheduler = scriptScheduler;
+    parameters.metrics = metrics;
     reconciliator = new ScriptReconciliator(parameters);
   }
 
@@ -75,7 +80,7 @@ class ScriptReconciliatorTest {
             Collections.emptyList(),
             Collections.emptyList()));
 
-    reconciliator.reconciliationCycle(script, false);
+    reconciliator.reconciliationCycle(script, 0, false);
 
     verify(conciliator).evalReconciliationState(script);
     creations.forEach(resource -> verify(handlerDelegator).create(script, resource));
@@ -97,7 +102,7 @@ class ScriptReconciliatorTest {
             patches,
             Collections.emptyList()));
 
-    reconciliator.reconciliationCycle(script, false);
+    reconciliator.reconciliationCycle(script, 0, false);
 
     verify(conciliator).evalReconciliationState(script);
     patches.forEach(resource -> verify(handlerDelegator).patch(script, resource.v1, resource.v2));
@@ -116,7 +121,7 @@ class ScriptReconciliatorTest {
             Collections.emptyList(),
             deletions));
 
-    reconciliator.reconciliationCycle(script, false);
+    reconciliator.reconciliationCycle(script, 0, false);
 
     verify(conciliator).evalReconciliationState(script);
     deletions.forEach(resource -> verify(handlerDelegator).delete(script, resource));

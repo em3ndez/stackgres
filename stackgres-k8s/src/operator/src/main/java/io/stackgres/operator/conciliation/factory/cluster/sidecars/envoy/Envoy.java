@@ -5,15 +5,13 @@
 
 package io.stackgres.operator.conciliation.factory.cluster.sidecars.envoy;
 
+import static io.stackgres.common.StackGresUtil.getDefaultPullPolicy;
 import static io.stackgres.common.StackGresUtil.getPostgresFlavorComponent;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -31,16 +29,15 @@ import io.fabric8.kubernetes.api.model.Volume;
 import io.fabric8.kubernetes.api.model.VolumeBuilder;
 import io.fabric8.kubernetes.api.model.VolumeMount;
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder;
-import io.stackgres.common.ClusterStatefulSetPath;
+import io.stackgres.common.ClusterPath;
 import io.stackgres.common.EnvoyUtil;
 import io.stackgres.common.StackGresComponent;
 import io.stackgres.common.StackGresContainer;
 import io.stackgres.common.StackGresContext;
-import io.stackgres.common.StackGresVersion;
 import io.stackgres.common.StackGresVolume;
 import io.stackgres.common.YamlMapperProvider;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
-import io.stackgres.common.crd.sgcluster.StackGresClusterPod;
+import io.stackgres.common.crd.sgcluster.StackGresClusterPods;
 import io.stackgres.common.crd.sgcluster.StackGresClusterPostgres;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSsl;
@@ -49,13 +46,15 @@ import io.stackgres.operator.common.Sidecar;
 import io.stackgres.operator.conciliation.OperatorVersionBinder;
 import io.stackgres.operator.conciliation.cluster.StackGresClusterContext;
 import io.stackgres.operator.conciliation.factory.ContainerFactory;
-import io.stackgres.operator.conciliation.factory.ContainerUserOverrideMounts;
 import io.stackgres.operator.conciliation.factory.ImmutableVolumePair;
 import io.stackgres.operator.conciliation.factory.RunningContainer;
+import io.stackgres.operator.conciliation.factory.UserOverrideMounts;
 import io.stackgres.operator.conciliation.factory.VolumeFactory;
 import io.stackgres.operator.conciliation.factory.VolumePair;
 import io.stackgres.operator.conciliation.factory.cluster.ClusterContainerContext;
 import io.stackgres.operatorframework.resource.ResourceUtil;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jetbrains.annotations.NotNull;
 import org.jooq.lambda.Seq;
 import org.slf4j.Logger;
@@ -63,7 +62,7 @@ import org.slf4j.LoggerFactory;
 
 @Singleton
 @Sidecar(StackGresContainer.ENVOY)
-@OperatorVersionBinder(startAt = StackGresVersion.V_1_5)
+@OperatorVersionBinder
 @RunningContainer(StackGresContainer.ENVOY)
 public class Envoy implements ContainerFactory<ClusterContainerContext>,
     VolumeFactory<StackGresClusterContext> {
@@ -84,21 +83,31 @@ public class Envoy implements ContainerFactory<ClusterContainerContext>,
           "patroni_port", EnvoyUtil.PATRONI_PORT,
           "envoy_port", EnvoyUtil.ENVOY_PORT);
 
-  protected final YamlMapperProvider yamlMapperProvider;
-  protected final LabelFactoryForCluster<StackGresCluster> labelFactory;
+  protected final YAMLMapper yamlMapper;
+  protected final LabelFactoryForCluster labelFactory;
 
   private final ObjectMapper objectMapper;
-  private final ContainerUserOverrideMounts containerUserOverrideMounts;
+  private final UserOverrideMounts userOverrideMounts;
 
   @Inject
-  public Envoy(YamlMapperProvider yamlMapperProvider,
+  public Envoy(
+      YamlMapperProvider yamlMapperProvider,
       ObjectMapper jsonMapper,
-      LabelFactoryForCluster<StackGresCluster> labelFactory,
-      ContainerUserOverrideMounts containerUserOverrideMounts) {
-    this.yamlMapperProvider = yamlMapperProvider;
+      LabelFactoryForCluster labelFactory,
+      UserOverrideMounts userOverrideMounts) {
+    this.yamlMapper = yamlMapperProvider.get();
     this.labelFactory = labelFactory;
     this.objectMapper = jsonMapper;
-    this.containerUserOverrideMounts = containerUserOverrideMounts;
+    this.userOverrideMounts = userOverrideMounts;
+  }
+
+  @Override
+  public boolean isActivated(ClusterContainerContext context) {
+    return !Optional.of(context.getClusterContext().getCluster())
+        .map(StackGresCluster::getSpec)
+        .map(StackGresClusterSpec::getPods)
+        .map(StackGresClusterPods::getDisableEnvoy)
+        .orElse(false);
   }
 
   public static String serviceName(StackGresClusterContext clusterContext) {
@@ -146,7 +155,7 @@ public class Envoy implements ContainerFactory<ClusterContainerContext>,
     container.withName(StackGresVolume.ENVOY.getName())
         .withImage(StackGresComponent.ENVOY.get(context.getClusterContext().getCluster())
             .getLatestImageName())
-        .withImagePullPolicy("IfNotPresent")
+        .withImagePullPolicy(getDefaultPullPolicy())
         .withVolumeMounts(new VolumeMountBuilder()
             .withName(StackGresVolume.ENVOY.getName())
             .withMountPath("/etc/envoy")
@@ -213,27 +222,26 @@ public class Envoy implements ContainerFactory<ClusterContainerContext>,
   private HasMetadata buildSource(StackGresClusterContext context) {
     final StackGresCluster stackGresCluster = context.getSource();
 
-    YAMLMapper yamlMapper = yamlMapperProvider.get();
     final ObjectNode envoyConfig;
     try {
       envoyConfig = (ObjectNode) yamlMapper
           .readTree(Envoy.class.getResource("/envoy/envoy.yaml"));
     } catch (Exception ex) {
-      throw new IllegalStateException("couldn't read envoy config file", ex);
+      throw new IllegalArgumentException("couldn't read envoy config file", ex);
     }
     final ObjectNode envoyConfigLds;
     try {
       envoyConfigLds = (ObjectNode) yamlMapper
           .readTree(Envoy.class.getResource("/envoy/envoy-lds.yaml"));
     } catch (Exception ex) {
-      throw new IllegalStateException("couldn't read envoy config file", ex);
+      throw new IllegalArgumentException("couldn't read envoy config file", ex);
     }
     final ObjectNode envoyConfigCds;
     try {
       envoyConfigCds = (ObjectNode) yamlMapper
           .readTree(Envoy.class.getResource("/envoy/envoy-cds.yaml"));
     } catch (Exception ex) {
-      throw new IllegalStateException("couldn't read envoy config file", ex);
+      throw new IllegalArgumentException("couldn't read envoy config file", ex);
     }
 
     Optional.of(envoyConfig.get("admin").get("address").get("socket_address"))
@@ -312,7 +320,7 @@ public class Envoy implements ContainerFactory<ClusterContainerContext>,
           "envoy-cds.json",
           objectMapper.writeValueAsString(envoyConfigCds));
     } catch (Exception ex) {
-      throw new IllegalStateException("couldn't parse envoy config file", ex);
+      throw new IllegalArgumentException("couldn't parse envoy config file", ex);
     }
 
     String namespace = stackGresCluster.getMetadata().getNamespace();
@@ -333,8 +341,8 @@ public class Envoy implements ContainerFactory<ClusterContainerContext>,
       final ObjectNode envoyConfigLds, final ObjectNode envoyConfigCds) {
     boolean disablePgBouncer = Optional
         .ofNullable(stackGresCluster.getSpec())
-        .map(StackGresClusterSpec::getPod)
-        .map(StackGresClusterPod::getDisableConnectionPooling)
+        .map(StackGresClusterSpec::getPods)
+        .map(StackGresClusterPods::getDisableConnectionPooling)
         .orElse(false);
     final String postgresEntryClusterName;
     if (disablePgBouncer) {
@@ -405,11 +413,11 @@ public class Envoy implements ContainerFactory<ClusterContainerContext>,
   }
 
   private List<VolumeMount> getVolumeMounts(ClusterContainerContext context) {
-    return Seq.seq(containerUserOverrideMounts.getVolumeMounts(context))
+    return Seq.seq(userOverrideMounts.getVolumeMounts(context))
         .append(Seq.of(
                 new VolumeMountBuilder()
                 .withName(StackGresVolume.POSTGRES_SSL.getName())
-                .withMountPath(ClusterStatefulSetPath.SSL_PATH.path())
+                .withMountPath(ClusterPath.SSL_PATH.path())
                 .withReadOnly(true)
                 .build()))
         .toList();

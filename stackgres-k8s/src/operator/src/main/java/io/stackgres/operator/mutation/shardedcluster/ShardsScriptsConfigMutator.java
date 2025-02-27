@@ -6,17 +6,20 @@
 package io.stackgres.operator.mutation.shardedcluster;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
-import javax.enterprise.context.ApplicationScoped;
-
+import io.stackgres.common.StackGresShardedClusterUtil;
 import io.stackgres.common.crd.sgcluster.StackGresClusterManagedScriptEntry;
 import io.stackgres.common.crd.sgcluster.StackGresClusterManagedSql;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedCluster;
+import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterCoordinator;
+import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterShard;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterShards;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterSpec;
 import io.stackgres.operator.common.StackGresShardedClusterReview;
 import io.stackgres.operatorframework.admissionwebhook.Operation;
+import jakarta.enterprise.context.ApplicationScoped;
 
 @ApplicationScoped
 public class ShardsScriptsConfigMutator implements ShardedClusterMutator {
@@ -28,8 +31,43 @@ public class ShardsScriptsConfigMutator implements ShardedClusterMutator {
         && review.getRequest().getOperation() != Operation.UPDATE) {
       return resource;
     }
+    setDefaultScriptIds(resource);
     fillRequiredFields(resource);
     return resource;
+  }
+
+  private void setDefaultScriptIds(StackGresShardedCluster resource) {
+    Optional.of(resource)
+        .map(StackGresShardedCluster::getSpec)
+        .map(StackGresShardedClusterSpec::getCoordinator)
+        .map(StackGresShardedClusterCoordinator::getManagedSql)
+        .map(StackGresClusterManagedSql::getScripts)
+        .stream()
+        .flatMap(List::stream)
+        .filter(scriptEntry -> Objects.equals(scriptEntry.getId(), -1))
+        .forEach(scriptEntry -> scriptEntry.setId(null));
+    Optional.of(resource)
+        .map(StackGresShardedCluster::getSpec)
+        .map(StackGresShardedClusterSpec::getShards)
+        .map(StackGresShardedClusterShards::getManagedSql)
+        .map(StackGresClusterManagedSql::getScripts)
+        .stream()
+        .flatMap(List::stream)
+        .filter(scriptEntry -> Objects.equals(scriptEntry.getId(), -1))
+        .forEach(scriptEntry -> scriptEntry.setId(null));
+    Optional.of(resource)
+        .map(StackGresShardedCluster::getSpec)
+        .map(StackGresShardedClusterSpec::getShards)
+        .map(StackGresShardedClusterShards::getOverrides)
+        .stream()
+        .flatMap(List::stream)
+        .flatMap(override -> Optional.of(override)
+            .map(StackGresShardedClusterShard::getManagedSql)
+            .map(StackGresClusterManagedSql::getScripts)
+            .stream())
+        .flatMap(List::stream)
+        .filter(scriptEntry -> Objects.equals(scriptEntry.getId(), -1))
+        .forEach(scriptEntry -> scriptEntry.setId(null));
   }
 
   private void fillRequiredFields(StackGresShardedCluster resource) {
@@ -41,7 +79,8 @@ public class ShardsScriptsConfigMutator implements ShardedClusterMutator {
         .stream()
         .flatMap(List::stream)
         .map(StackGresClusterManagedScriptEntry::getId)
-        .reduce(-1, (last, id) -> id == null || last >= id ? last : id, (u, v) -> v);
+        .reduce(StackGresShardedClusterUtil.LAST_RESERVER_SCRIPT_ID,
+            (last, id) -> id == null || last >= id ? last : id, (u, v) -> v);
     for (StackGresClusterManagedScriptEntry scriptEntry : Optional.of(resource)
         .map(StackGresShardedCluster::getSpec)
         .map(StackGresShardedClusterSpec::getShards)

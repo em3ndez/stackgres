@@ -5,14 +5,10 @@
 
 package io.stackgres.operator.conciliation.shardedcluster;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
 
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -21,13 +17,17 @@ import io.stackgres.common.StackGresProperty;
 import io.stackgres.common.crd.Condition;
 import io.stackgres.common.crd.sgcluster.ClusterStatusCondition;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
+import io.stackgres.common.crd.sgcluster.StackGresClusterServiceBindingStatus;
 import io.stackgres.common.crd.sgcluster.StackGresClusterStatus;
 import io.stackgres.common.crd.sgshardedcluster.ShardedClusterStatusCondition;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedCluster;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterStatus;
 import io.stackgres.common.labels.LabelFactoryForShardedCluster;
 import io.stackgres.operator.conciliation.StatusManager;
+import io.stackgres.operator.conciliation.factory.shardedcluster.ServiceBindingSecret;
 import io.stackgres.operatorframework.resource.ConditionUpdater;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,6 +55,11 @@ public class ShardedClusterStatusManager
 
   @Override
   public StackGresShardedCluster refreshCondition(StackGresShardedCluster source) {
+    if (source.getStatus() == null) {
+      source.setStatus(new StackGresShardedClusterStatus());
+    }
+    source.getStatus().setBinding(new StackGresClusterServiceBindingStatus());
+    source.getStatus().getBinding().setName(ServiceBindingSecret.name(source));
     if (isPendingRestart(source)) {
       updateCondition(getClusterRequiresRestart(), source);
     } else {
@@ -122,7 +127,7 @@ public class ShardedClusterStatusManager
       StackGresShardedCluster source) {
     return Optional.ofNullable(source.getStatus())
         .map(StackGresShardedClusterStatus::getConditions)
-        .orElseGet(ArrayList::new);
+        .orElse(List.of());
   }
 
   @Override

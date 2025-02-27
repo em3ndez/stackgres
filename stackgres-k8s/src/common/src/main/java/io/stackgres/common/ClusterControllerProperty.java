@@ -12,16 +12,23 @@ public enum ClusterControllerProperty implements StackGresPropertyReader {
   CLUSTER_NAMESPACE("stackgres.clusterNamespace"),
   CLUSTER_NAME("stackgres.clusterName"),
   CLUSTER_CONTROLLER_POD_NAME("stackgres.clusterControllerPodName"),
+  CLUSTER_CONTROLLER_POD_IP("stackgres.clusterControllerPodIp"),
   CLUSTER_CONTROLLER_EXTENSIONS_REPOSITORY_URLS(
       "stackgres.clusterControllerExtensionsRepositoryUrls"),
   CLUSTER_CONTROLLER_SKIP_OVERWRITE_SHARED_LIBRARIES(
       "stackgres.clusterSkipOverwriteSharedLibraries"),
   CLUSTER_CONTROLLER_RECONCILE_PGBOUNCER(
       "stackgres.clusterReconcilePgBouncer"),
+  CLUSTER_CONTROLLER_RECONCILE_PATRONI_LABELS(
+      "stackgres.clusterReconcilePatroniLabels"),
   CLUSTER_CONTROLLER_RECONCILE_PATRONI(
       "stackgres.clusterReconcilePatroni"),
   CLUSTER_CONTROLLER_RECONCILE_MANAGED_SQL(
-      "stackgres.clusterReconcileManagedSql");
+      "stackgres.clusterReconcileManagedSql"),
+  CLUSTER_CONTROLLER_RECONCILE_PATRONI_AFTER_MAJOR_VERSION_UPGRADE(
+      "stackgres.clusterReconcilePatroniAfterMajorVersionUpgrade"),
+  CLUSTER_CONTROLLER_JMX_COLLECTOR_YAML_CONFIG(
+      "stackgres.cluster.controllerJmxCollectorYamlConfig");
 
   private static final Properties APPLICATION_PROPERTIES =
       StackGresPropertyReader.readApplicationProperties(ClusterControllerProperty.class);

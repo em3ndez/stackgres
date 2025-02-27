@@ -7,9 +7,6 @@ package io.stackgres.operator.validation.script;
 
 import java.util.ArrayList;
 
-import javax.validation.constraints.AssertTrue;
-import javax.validation.constraints.NotNull;
-
 import io.stackgres.common.crd.ConfigMapKeySelector;
 import io.stackgres.common.crd.SecretKeySelector;
 import io.stackgres.common.crd.sgscript.StackGresScript;
@@ -18,15 +15,17 @@ import io.stackgres.common.crd.sgscript.StackGresScriptFrom;
 import io.stackgres.common.crd.sgscript.StackGresScriptTransactionIsolationLevel;
 import io.stackgres.operator.common.StackGresScriptReview;
 import io.stackgres.operator.common.fixture.AdmissionReviewFixtures;
+import io.stackgres.operator.validation.AbstractConstraintValidator;
 import io.stackgres.operator.validation.ConstraintValidationTest;
-import io.stackgres.operator.validation.ConstraintValidator;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.NotNull;
 import org.junit.jupiter.api.Test;
 
 class ScriptConstraintValidatorTest extends ConstraintValidationTest<StackGresScriptReview> {
 
   @Override
-  protected ConstraintValidator<StackGresScriptReview> buildValidator() {
+  protected AbstractConstraintValidator<StackGresScriptReview> buildValidator() {
     return new ScriptConstraintValidator();
   }
 

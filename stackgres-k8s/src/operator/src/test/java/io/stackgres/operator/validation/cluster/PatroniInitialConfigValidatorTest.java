@@ -5,8 +5,10 @@
 
 package io.stackgres.operator.validation.cluster;
 
+import java.util.Map;
+
 import io.stackgres.common.crd.sgcluster.StackGresClusterPatroni;
-import io.stackgres.common.crd.sgcluster.StackGresClusterPatroniInitialConfig;
+import io.stackgres.common.crd.sgcluster.StackGresClusterPatroniConfig;
 import io.stackgres.operator.common.StackGresClusterReview;
 import io.stackgres.operator.common.fixture.AdmissionReviewFixtures;
 import io.stackgres.operator.utils.ValidationUtils;
@@ -36,11 +38,11 @@ class PatroniInitialConfigValidatorTest {
   @Test
   void givenAValidCreationWithPatroniInitialConfig_shouldPass() throws ValidationFailed {
     final StackGresClusterReview review = getCreationReview();
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .setPatroni(new StackGresClusterPatroni());
-    review.getRequest().getObject().getSpec().getConfiguration()
-        .getPatroni().setInitialConfig(new StackGresClusterPatroniInitialConfig());
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
+        .getPatroni().setInitialConfig(new StackGresClusterPatroniConfig());
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getPatroni().getInitialConfig().put("scope", "test");
 
     validator.validate(review);
@@ -56,9 +58,9 @@ class PatroniInitialConfigValidatorTest {
   @Test
   void givenAValidUpdateWithoutPatroniConfig_shouldPass() throws ValidationFailed {
     final StackGresClusterReview review = getUpdateReview();
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .setPatroni(null);
-    review.getRequest().getOldObject().getSpec().getConfiguration()
+    review.getRequest().getOldObject().getSpec().getConfigurations()
         .setPatroni(null);
 
     validator.validate(review);
@@ -67,22 +69,191 @@ class PatroniInitialConfigValidatorTest {
   @Test
   void givenAValidUpdateWithoutPatroniInitialConfig_shouldPass() throws ValidationFailed {
     final StackGresClusterReview review = getUpdateReview();
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getPatroni().setInitialConfig(null);
-    review.getRequest().getOldObject().getSpec().getConfiguration()
+    review.getRequest().getOldObject().getSpec().getConfigurations()
         .getPatroni().setInitialConfig(null);
 
     validator.validate(review);
   }
 
   @Test
-  void givenAnUpdate_shouldFail() {
+  void givenAnUpdateWithPatroniInitialConfigChanged_shouldFail() {
     final StackGresClusterReview review = getUpdateReview();
-    review.getRequest().getObject().getSpec().getConfiguration()
+    review.getRequest().getObject().getSpec().getConfigurations()
         .getPatroni().getInitialConfig().put("test", true);
 
     ValidationUtils.assertValidationFailed(() -> validator.validate(review),
         "Cannot update cluster's patroni initial configuration");
+  }
+
+  @Test
+  void givenAnUpdateWithPatroniInitialConfigWithPgCtlTimeoutChanged_shouldPass() throws ValidationFailed {
+    final StackGresClusterReview review = getUpdateReview();
+    review.getRequest().getOldObject().getSpec().getConfigurations()
+        .getPatroni().getInitialConfig().put("postgresql", Map.of("pg_ctl_timeout", 90));
+    review.getRequest().getObject().getSpec().getConfigurations()
+        .getPatroni().getInitialConfig().put("postgresql", Map.of("pg_ctl_timeout", 120));
+
+    validator.validate(review);
+  }
+
+  @Test
+  void givenAnUpdateWithPatroniInitialConfigWithPgCtlTimeoutAdded_shouldPass() throws ValidationFailed {
+    final StackGresClusterReview review = getUpdateReview();
+    review.getRequest().getObject().getSpec().getConfigurations()
+    .getPatroni().getInitialConfig().put("postgresql", Map.of("pg_ctl_timeout", 120));
+
+    validator.validate(review);
+  }
+
+  @Test
+  void givenAnUpdateWithPatroniInitialConfigWithPgCtlTimeoutAddedFromScratch_shouldPass() throws ValidationFailed {
+    final StackGresClusterReview review = getUpdateReview();
+    review.getRequest().getOldObject().getSpec().getConfigurations().getPatroni().setInitialConfig(null);
+    review.getRequest().getObject().getSpec().getConfigurations().getPatroni()
+        .setInitialConfig(new StackGresClusterPatroniConfig());
+    review.getRequest().getObject().getSpec().getConfigurations()
+        .getPatroni().getInitialConfig().put("postgresql", Map.of("pg_ctl_timeout", 120));
+
+    validator.validate(review);
+  }
+
+  @Test
+  void givenAnUpdateWithPatroniInitialConfigWithPgCtlTimeoutRemoved_shouldPass() throws ValidationFailed {
+    final StackGresClusterReview review = getUpdateReview();
+    review.getRequest().getOldObject().getSpec().getConfigurations()
+        .getPatroni().getInitialConfig().put("postgresql", Map.of("pg_ctl_timeout", 90));
+
+    validator.validate(review);
+  }
+
+  @Test
+  void givenAnUpdateWithPatroniInitialConfigWithCallbacksChanged_shouldPass() throws ValidationFailed {
+    final StackGresClusterReview review = getUpdateReview();
+    review.getRequest().getOldObject().getSpec().getConfigurations()
+        .getPatroni().getInitialConfig().put(
+            "postgresql", Map.of("callbacks", Map.of("on_role_change", "/usr/local/bin/on_role_change")));
+    review.getRequest().getObject().getSpec().getConfigurations()
+        .getPatroni().getInitialConfig().put(
+            "postgresql", Map.of("callbacks", Map.of("on_start", "/usr/local/bin/on_start")));
+
+    validator.validate(review);
+  }
+
+  @Test
+  void givenAnUpdateWithPatroniInitialConfigWithCallbacksAdded_shouldPass() throws ValidationFailed {
+    final StackGresClusterReview review = getUpdateReview();
+    review.getRequest().getObject().getSpec().getConfigurations()
+        .getPatroni().getInitialConfig().put(
+            "postgresql", Map.of("callbacks", Map.of("on_start", "/usr/local/bin/on_start")));
+
+    validator.validate(review);
+  }
+
+  @Test
+  void givenAnUpdateWithPatroniInitialConfigWithCallbacksAddedFromScratch_shouldPass() throws ValidationFailed {
+    final StackGresClusterReview review = getUpdateReview();
+    review.getRequest().getOldObject().getSpec().getConfigurations().getPatroni().setInitialConfig(null);
+    review.getRequest().getObject().getSpec().getConfigurations().getPatroni()
+        .setInitialConfig(new StackGresClusterPatroniConfig());
+    review.getRequest().getObject().getSpec().getConfigurations()
+        .getPatroni().getInitialConfig().put(
+            "postgresql", Map.of("callbacks", Map.of("on_start", "/usr/local/bin/on_start")));
+
+    validator.validate(review);
+  }
+
+  @Test
+  void givenAnUpdateWithPatroniInitialConfigWithCallbacksRemoved_shouldPass() throws ValidationFailed {
+    final StackGresClusterReview review = getUpdateReview();
+    review.getRequest().getOldObject().getSpec().getConfigurations()
+        .getPatroni().getInitialConfig().put(
+            "postgresql", Map.of("callbacks", Map.of("on_role_change", "/usr/local/bin/on_role_change")));
+
+    validator.validate(review);
+  }
+
+  @Test
+  void givenAnUpdateWithPatroniInitialConfigWithPrePromoteChanged_shouldPass() throws ValidationFailed {
+    final StackGresClusterReview review = getUpdateReview();
+    review.getRequest().getOldObject().getSpec().getConfigurations()
+        .getPatroni().getInitialConfig().put("postgresql", Map.of("pre_promote", "/usr/local/bin/pre_promote"));
+    review.getRequest().getObject().getSpec().getConfigurations()
+        .getPatroni().getInitialConfig().put("postgresql", Map.of("pre_promote", "/usr/local/bin/pre_promote_2"));
+
+    validator.validate(review);
+  }
+
+  @Test
+  void givenAnUpdateWithPatroniInitialConfigWithPrePromoteAdded_shouldPass() throws ValidationFailed {
+    final StackGresClusterReview review = getUpdateReview();
+    review.getRequest().getObject().getSpec().getConfigurations()
+    .getPatroni().getInitialConfig().put("postgresql", Map.of("pre_promote", "/usr/local/bin/pre_promote_2"));
+
+    validator.validate(review);
+  }
+
+  @Test
+  void givenAnUpdateWithPatroniInitialConfigWithPrePromoteAddedFromScratch_shouldPass() throws ValidationFailed {
+    final StackGresClusterReview review = getUpdateReview();
+    review.getRequest().getOldObject().getSpec().getConfigurations().getPatroni().setInitialConfig(null);
+    review.getRequest().getObject().getSpec().getConfigurations().getPatroni()
+        .setInitialConfig(new StackGresClusterPatroniConfig());
+    review.getRequest().getObject().getSpec().getConfigurations()
+        .getPatroni().getInitialConfig().put("postgresql", Map.of("pre_promote", "/usr/local/bin/pre_promote_2"));
+
+    validator.validate(review);
+  }
+
+  @Test
+  void givenAnUpdateWithPatroniInitialConfigWithPrePromoteRemoved_shouldPass() throws ValidationFailed {
+    final StackGresClusterReview review = getUpdateReview();
+    review.getRequest().getOldObject().getSpec().getConfigurations()
+        .getPatroni().getInitialConfig().put("postgresql", Map.of("pre_promote", "/usr/local/bin/pre_promote"));
+
+    validator.validate(review);
+  }
+
+  @Test
+  void givenAnUpdateWithPatroniInitialConfigWithBeforeStopChanged_shouldPass() throws ValidationFailed {
+    final StackGresClusterReview review = getUpdateReview();
+    review.getRequest().getOldObject().getSpec().getConfigurations()
+        .getPatroni().getInitialConfig().put("postgresql", Map.of("before_stop", "/usr/local/bin/before_stop"));
+    review.getRequest().getObject().getSpec().getConfigurations()
+        .getPatroni().getInitialConfig().put("postgresql", Map.of("before_stop", "/usr/local/bin/before_stop_2"));
+
+    validator.validate(review);
+  }
+
+  @Test
+  void givenAnUpdateWithPatroniInitialConfigWithBeforeStopAdded_shouldPass() throws ValidationFailed {
+    final StackGresClusterReview review = getUpdateReview();
+    review.getRequest().getObject().getSpec().getConfigurations()
+    .getPatroni().getInitialConfig().put("postgresql", Map.of("before_stop", "/usr/local/bin/before_stop_2"));
+
+    validator.validate(review);
+  }
+
+  @Test
+  void givenAnUpdateWithPatroniInitialConfigWithBeforeStopAddedFromScratch_shouldPass() throws ValidationFailed {
+    final StackGresClusterReview review = getUpdateReview();
+    review.getRequest().getOldObject().getSpec().getConfigurations().getPatroni().setInitialConfig(null);
+    review.getRequest().getObject().getSpec().getConfigurations().getPatroni()
+        .setInitialConfig(new StackGresClusterPatroniConfig());
+    review.getRequest().getObject().getSpec().getConfigurations()
+        .getPatroni().getInitialConfig().put("postgresql", Map.of("before_stop", "/usr/local/bin/before_stop_2"));
+
+    validator.validate(review);
+  }
+
+  @Test
+  void givenAnUpdateWithPatroniInitialConfigWithBeforeStopRemoved_shouldPass() throws ValidationFailed {
+    final StackGresClusterReview review = getUpdateReview();
+    review.getRequest().getOldObject().getSpec().getConfigurations()
+        .getPatroni().getInitialConfig().put("postgresql", Map.of("before_stop", "/usr/local/bin/before_stop"));
+
+    validator.validate(review);
   }
 
   private StackGresClusterReview getCreationReview() {

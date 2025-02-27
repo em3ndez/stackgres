@@ -8,16 +8,11 @@ package io.stackgres.cluster.controller;
 import static io.stackgres.common.ClusterControllerProperty.CLUSTER_NAME;
 import static io.stackgres.common.ClusterControllerProperty.CLUSTER_NAMESPACE;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.context.Dependent;
-import javax.enterprise.event.Observes;
-import javax.inject.Inject;
-
-import com.google.common.collect.ImmutableList;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.quarkus.runtime.ShutdownEvent;
@@ -34,6 +29,10 @@ import io.stackgres.common.labels.LabelFactoryForCluster;
 import io.stackgres.common.resource.CustomResourceFinder;
 import io.stackgres.operatorframework.reconciliation.ReconciliationCycle;
 import io.stackgres.operatorframework.resource.ResourceGenerator;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.event.Observes;
+import jakarta.inject.Inject;
 import org.jooq.lambda.tuple.Tuple2;
 import org.slf4j.helpers.MessageFormatter;
 
@@ -44,7 +43,7 @@ public class ClusterControllerReconciliationCycle
 
   private final ClusterControllerPropertyContext propertyContext;
   private final EventController eventController;
-  private final LabelFactoryForCluster<StackGresCluster> labelFactory;
+  private final LabelFactoryForCluster labelFactory;
   private final CustomResourceFinder<StackGresCluster> clusterFinder;
 
   @Dependent
@@ -60,7 +59,7 @@ public class ClusterControllerReconciliationCycle
     @Inject
     EventController eventController;
     @Inject
-    LabelFactoryForCluster<StackGresCluster> labelFactory;
+    LabelFactoryForCluster labelFactory;
     @Inject
     CustomResourceFinder<StackGresCluster> clusterFinder;
   }
@@ -127,18 +126,18 @@ public class ClusterControllerReconciliationCycle
   }
 
   @Override
-  protected ImmutableList<HasMetadata> getRequiredResources(
+  protected List<HasMetadata> getRequiredResources(
       StackGresClusterContext context) {
     return ResourceGenerator.<StackGresClusterContext>with(context)
         .of(HasMetadata.class)
         .stream()
-        .collect(ImmutableList.toImmutableList());
+        .toList();
   }
 
   @Override
   protected StackGresClusterContext getContextWithExistingResourcesOnly(
       StackGresClusterContext context,
-      ImmutableList<Tuple2<HasMetadata, Optional<HasMetadata>>> existingResourcesOnly) {
+      List<Tuple2<HasMetadata, Optional<HasMetadata>>> existingResourcesOnly) {
     return ImmutableStackGresClusterContext.copyOf(context)
         .withExistingResources(existingResourcesOnly);
   }
@@ -146,20 +145,20 @@ public class ClusterControllerReconciliationCycle
   @Override
   protected StackGresClusterContext getContextWithExistingAndRequiredResources(
       StackGresClusterContext context,
-      ImmutableList<Tuple2<HasMetadata, Optional<HasMetadata>>> requiredResources,
-      ImmutableList<Tuple2<HasMetadata, Optional<HasMetadata>>> existingResources) {
+      List<Tuple2<HasMetadata, Optional<HasMetadata>>> requiredResources,
+      List<Tuple2<HasMetadata, Optional<HasMetadata>>> existingResources) {
     return ImmutableStackGresClusterContext.copyOf(context)
         .withRequiredResources(requiredResources)
         .withExistingResources(existingResources);
   }
 
   @Override
-  public ImmutableList<StackGresCluster> getExistingContextResources() {
+  public List<StackGresCluster> getExistingContextResources() {
     return clusterFinder.findByNameAndNamespace(
         propertyContext.getString(CLUSTER_NAME),
         propertyContext.getString(CLUSTER_NAMESPACE))
         .stream()
-        .collect(ImmutableList.toImmutableList());
+        .toList();
   }
 
   @Override
@@ -180,7 +179,7 @@ public class ClusterControllerReconciliationCycle
         .cluster(cluster)
         .extensions(Optional.ofNullable(cluster.getSpec())
             .map(StackGresClusterSpec::getToInstallPostgresExtensions)
-            .orElse(ImmutableList.of()))
+            .orElse(List.of()))
         .labels(labelFactory.genericLabels(cluster))
         .build();
   }

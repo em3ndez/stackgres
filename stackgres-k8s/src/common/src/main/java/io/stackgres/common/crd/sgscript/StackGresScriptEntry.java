@@ -6,25 +6,22 @@
 package io.stackgres.common.crd.sgscript;
 
 import static io.stackgres.common.patroni.StackGresPasswordKeys.SUPERUSER_DATABASE;
-import static io.stackgres.common.patroni.StackGresPasswordKeys.SUPERUSER_USERNAME;
 
 import java.util.Objects;
 import java.util.Optional;
 
-import javax.validation.Valid;
-import javax.validation.constraints.AssertTrue;
-import javax.validation.constraints.NotNull;
-
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.validation.FieldReference;
 import io.stackgres.common.validation.FieldReference.ReferencedField;
 import io.stackgres.common.validation.ValidEnum;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.NotNull;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -34,38 +31,28 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresScriptEntry {
 
-  @JsonProperty("name")
   private String name;
 
-  @JsonProperty("id")
   @NotNull(message = "id cannot be null")
   private Integer id;
 
-  @JsonProperty("version")
   @NotNull(message = "version cannot be null")
   private Integer version;
 
-  @JsonProperty("database")
   private String database;
 
-  @JsonProperty("wrapInTransaction")
   @ValidEnum(enumClass = StackGresScriptTransactionIsolationLevel.class, allowNulls = true,
       message = "wrapInTransaction must be read-committed, repeatable-read or serializable")
   private String wrapInTransaction;
 
-  @JsonProperty("storeStatusInDatabase")
   private Boolean storeStatusInDatabase;
 
-  @JsonProperty("retryOnError")
   private Boolean retryOnError;
 
-  @JsonProperty("user")
   private String user;
 
-  @JsonProperty("script")
   private String script;
 
-  @JsonProperty("scriptFrom")
   @Valid
   private StackGresScriptFrom scriptFrom;
 
@@ -142,11 +129,6 @@ public class StackGresScriptEntry {
 
   public String getUser() {
     return user;
-  }
-
-  @JsonIgnore
-  public String getUserOrDefault() {
-    return Optional.ofNullable(user).orElse(SUPERUSER_USERNAME);
   }
 
   public void setUser(String user) {

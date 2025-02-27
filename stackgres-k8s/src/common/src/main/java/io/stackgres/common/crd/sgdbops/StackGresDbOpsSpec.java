@@ -10,22 +10,19 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.Objects;
 
-import javax.validation.Valid;
-import javax.validation.constraints.AssertTrue;
-import javax.validation.constraints.Max;
-import javax.validation.constraints.Min;
-import javax.validation.constraints.NotEmpty;
-
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.validation.FieldReference;
 import io.stackgres.common.validation.FieldReference.ReferencedField;
 import io.stackgres.common.validation.ValidEnum;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotEmpty;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -35,55 +32,41 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresDbOpsSpec {
 
-  @JsonProperty("sgCluster")
   @NotEmpty(message = "sgCluster must be provided")
   private String sgCluster;
 
-  @JsonProperty("scheduling")
   private StackGresDbOpsSpecScheduling scheduling;
 
-  @JsonProperty("op")
   @ValidEnum(enumClass = DbOpsOperation.class, allowNulls = false,
       message = "op must be one of benchmark, vacuum, repack, restart, "
           + "majorVersionUpgrade, minorVersionUpgrade or securityUpgrade")
   private String op;
 
-  @JsonProperty("runAt")
   private String runAt;
 
-  @JsonProperty("timeout")
   private String timeout;
 
-  @JsonProperty("maxRetries")
   @Min(value = 0, message = "maxRetries must be greather or equals to 0.")
-  @Max(value = 10, message = "maxRetries must be less or equals to 10.")
   private Integer maxRetries;
 
-  @JsonProperty("benchmark")
   @Valid
   private StackGresDbOpsBenchmark benchmark;
 
-  @JsonProperty("vacuum")
   @Valid
   private StackGresDbOpsVacuum vacuum;
 
-  @JsonProperty("repack")
   @Valid
   private StackGresDbOpsRepack repack;
 
-  @JsonProperty("majorVersionUpgrade")
   @Valid
   private StackGresDbOpsMajorVersionUpgrade majorVersionUpgrade;
 
-  @JsonProperty("restart")
   @Valid
   private StackGresDbOpsRestart restart;
 
-  @JsonProperty("minorVersionUpgrade")
   @Valid
   private StackGresDbOpsMinorVersionUpgrade minorVersionUpgrade;
 
-  @JsonProperty("securityUpgrade")
   @Valid
   private StackGresDbOpsSecurityUpgrade securityUpgrade;
 
@@ -115,26 +98,44 @@ public class StackGresDbOpsSpec {
   @AssertTrue(message = "op must match corresponding section.",
       payload = Op.class)
   public boolean isOpMatchSection() {
-    if (op != null) {
-      switch (op) {
-        case "vacuum":
-          return benchmark == null && repack == null && restart == null
-              && majorVersionUpgrade == null && minorVersionUpgrade == null
-              && securityUpgrade == null;
-        case "repack":
-          return benchmark == null && vacuum == null && restart == null
-              && majorVersionUpgrade == null && minorVersionUpgrade == null
-              && securityUpgrade == null;
-        case "restart":
-          return benchmark == null && vacuum == null && repack == null
-              && majorVersionUpgrade == null && minorVersionUpgrade == null
-              && securityUpgrade == null;
-        case "securityUpgrade":
-          return benchmark == null && vacuum == null && repack == null && restart == null
-              && majorVersionUpgrade == null && minorVersionUpgrade == null;
-        default:
-          break;
-      }
+    if (op == null) {
+      return true;
+    }
+    final DbOpsOperation op;
+    try {
+      op = DbOpsOperation.fromString(this.op);
+    } catch (IllegalArgumentException ex) {
+      return true;
+    }
+    switch (op) {
+      case VACUUM:
+        return benchmark == null && repack == null && restart == null
+            && majorVersionUpgrade == null && minorVersionUpgrade == null
+            && securityUpgrade == null;
+      case REPACK:
+        return benchmark == null && vacuum == null && restart == null
+            && majorVersionUpgrade == null && minorVersionUpgrade == null
+            && securityUpgrade == null;
+      case RESTART:
+        return benchmark == null && vacuum == null && repack == null
+            && majorVersionUpgrade == null && minorVersionUpgrade == null
+            && securityUpgrade == null;
+      case SECURITY_UPGRADE:
+        return benchmark == null && vacuum == null && repack == null && restart == null
+            && majorVersionUpgrade == null && minorVersionUpgrade == null;
+      case BENCHMARK:
+        return vacuum == null && repack == null && restart == null
+            && majorVersionUpgrade == null && minorVersionUpgrade == null
+            && securityUpgrade == null;
+      case MAJOR_VERSION_UPGRADE:
+        return benchmark == null && vacuum == null && repack == null && restart == null
+            && minorVersionUpgrade == null
+            && securityUpgrade == null;
+      case MINOR_VERSION_UPGRADE:
+        return benchmark == null && vacuum == null && repack == null && restart == null
+            && majorVersionUpgrade == null && securityUpgrade == null;
+      default:
+        break;
     }
     return true;
   }

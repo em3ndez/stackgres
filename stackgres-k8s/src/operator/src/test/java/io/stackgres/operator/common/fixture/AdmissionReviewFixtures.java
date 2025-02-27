@@ -7,10 +7,6 @@ package io.stackgres.operator.common.fixture;
 
 public interface AdmissionReviewFixtures {
 
-  static BackupConfigReviewFixture backupConfig() {
-    return new BackupConfigReviewFixture();
-  }
-
   static BackupReviewFixture backup() {
     return new BackupReviewFixture();
   }
@@ -49,6 +45,22 @@ public interface AdmissionReviewFixtures {
 
   static ShardedClusterReviewFixture shardedCluster() {
     return new ShardedClusterReviewFixture();
+  }
+
+  static ShardedBackupReviewFixture shardedBackup() {
+    return new ShardedBackupReviewFixture();
+  }
+
+  static ShardedDbOpsReviewFixture shardedDbOps() {
+    return new ShardedDbOpsReviewFixture();
+  }
+
+  static StreamReviewFixture stream() {
+    return new StreamReviewFixture();
+  }
+
+  static ConfigReviewFixture config() {
+    return new ConfigReviewFixture();
   }
 
 }

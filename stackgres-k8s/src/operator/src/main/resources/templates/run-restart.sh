@@ -16,7 +16,7 @@ run_op() {
     echo "Signaling $NORMALIZED_OP_NAME started to cluster"
     echo
 
-    DB_OPS_PATCH="$(cat << EOF
+    DBOPS_PATCH="$(cat << EOF
       {
         "dbOps": {
           "$OP_NAME":{
@@ -41,7 +41,7 @@ EOF
     )"
     until (
       DBOPS="$(kubectl get "$CLUSTER_CRD_NAME.$CRD_GROUP" -n "$CLUSTER_NAMESPACE" "$CLUSTER_NAME" -o json)"
-      DBOPS="$(printf '%s' "$DBOPS" | jq '.status |= . + '"$DB_OPS_PATCH")"
+      DBOPS="$(printf '%s' "$DBOPS" | jq '.status |= . + '"$DBOPS_PATCH")"
       printf '%s' "$DBOPS" | kubectl replace --raw /apis/"$CRD_GROUP"/v1/namespaces/"$CLUSTER_NAMESPACE"/"$CLUSTER_CRD_NAME"/"$CLUSTER_NAME" -f -
       )
     do
@@ -92,8 +92,16 @@ EOF
   then
     echo "Restarting primary inscante first..."
 
-    kubectl exec -n "$CLUSTER_NAMESPACE" "$PRIMARY_INSTANCE" -c "$PATRONI_CONTAINER_NAME" -- \
-      patronictl restart "$CLUSTER_NAME" -r master --force \
+    PATRONICTL_VERSION="$(kubectl exec -n "$CLUSTER_NAMESPACE" "$PRIMARY_INSTANCE" -c "$PATRONI_CONTAINER_NAME" -- \
+      patronictl version 2>/dev/null | sed -n 's/^patronictl version //p')"
+    if [ "${PATRONICTL_VERSION%%.*}" -lt 4 ]
+    then
+      kubectl exec -n "$CLUSTER_NAMESPACE" "$PRIMARY_INSTANCE" -c "$PATRONI_CONTAINER_NAME" -- \
+        patronictl restart "$CLUSTER_NAME" -r master --force
+    else
+      kubectl exec -n "$CLUSTER_NAMESPACE" "$PRIMARY_INSTANCE" -c "$PATRONI_CONTAINER_NAME" -- \
+        patronictl restart "$CLUSTER_NAME" -r primary --force
+    fi
 
     echo "Waiting primary instance $PRIMARY_INSTANCE to be ready..."
 
@@ -175,8 +183,16 @@ EOF
     then
       echo "Performing switchover from primary $PRIMARY_INSTANCE to replica $TARGET_INSTANCE..."
 
-      kubectl exec -n "$CLUSTER_NAMESPACE" "$PRIMARY_INSTANCE" -c "$PATRONI_CONTAINER_NAME" -- \
-        patronictl switchover "$CLUSTER_NAME" --master "$PRIMARY_INSTANCE" --candidate "$TARGET_INSTANCE" --force \
+      PATRONICTL_VERSION="$(kubectl exec -n "$CLUSTER_NAMESPACE" "$PRIMARY_INSTANCE" -c "$PATRONI_CONTAINER_NAME" -- \
+        patronictl version 2>/dev/null | sed -n 's/^patronictl version //p')"
+      if [ "${PATRONICTL_VERSION%%.*}" -lt 4 ]
+      then
+        kubectl exec -n "$CLUSTER_NAMESPACE" "$PRIMARY_INSTANCE" -c "$PATRONI_CONTAINER_NAME" -- \
+          patronictl switchover "$CLUSTER_NAME" --primary "$PRIMARY_INSTANCE" --candidate "$TARGET_INSTANCE" --force
+      else
+        kubectl exec -n "$CLUSTER_NAMESPACE" "$PRIMARY_INSTANCE" -c "$PATRONI_CONTAINER_NAME" -- \
+          patronictl switchover "$CLUSTER_NAME" --master "$PRIMARY_INSTANCE" --candidate "$TARGET_INSTANCE" --force
+      fi
 
       echo "done"
       echo
@@ -326,9 +342,9 @@ update_status() {
   fi
   echo
 
-  OPERATION="$(kubectl get "$DB_OPS_CRD_NAME" -n "$CLUSTER_NAMESPACE" "$DB_OPS_NAME" \
+  OPERATION="$(kubectl get "$DBOPS_CRD_NAME" -n "$CLUSTER_NAMESPACE" "$DBOPS_NAME" \
     --template="{{ if .status.$OP_NAME }}replace{{ else }}add{{ end }}")"
-  kubectl patch "$DB_OPS_CRD_NAME" -n "$CLUSTER_NAMESPACE" "$DB_OPS_NAME" --type=json \
+  kubectl patch "$DBOPS_CRD_NAME" -n "$CLUSTER_NAMESPACE" "$DBOPS_NAME" --type=json \
     -p "$(cat << EOF
 [
   {"op":"$OPERATION","path":"/status/$OP_NAME","value":{

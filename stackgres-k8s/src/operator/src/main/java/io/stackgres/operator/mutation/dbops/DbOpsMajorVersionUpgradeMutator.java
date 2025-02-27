@@ -7,34 +7,44 @@ package io.stackgres.operator.mutation.dbops;
 
 import static io.stackgres.common.StackGresUtil.getPostgresFlavorComponent;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
 
 import com.google.common.base.Predicates;
 import io.stackgres.common.BackupStorageUtil;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
-import io.stackgres.common.crd.sgcluster.StackGresClusterConfiguration;
+import io.stackgres.common.crd.sgcluster.StackGresClusterConfigurations;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
 import io.stackgres.common.crd.sgdbops.StackGresDbOps;
 import io.stackgres.common.resource.CustomResourceFinder;
-import io.stackgres.operator.common.DbOpsReview;
+import io.stackgres.operator.common.StackGresDbOpsReview;
 import io.stackgres.operatorframework.admissionwebhook.Operation;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class DbOpsMajorVersionUpgradeMutator implements DbOpsMutator {
 
   private final CustomResourceFinder<StackGresCluster> clusterFinder;
+  private final Instant defaultTimestamp;
 
   @Inject
-  public DbOpsMajorVersionUpgradeMutator(CustomResourceFinder<StackGresCluster> clusterFinder) {
+  public DbOpsMajorVersionUpgradeMutator(
+      CustomResourceFinder<StackGresCluster> clusterFinder) {
     this.clusterFinder = clusterFinder;
+    this.defaultTimestamp = null;
+  }
+
+  DbOpsMajorVersionUpgradeMutator(
+      CustomResourceFinder<StackGresCluster> clusterFinder,
+      Instant defaultTimestamp) {
+    this.clusterFinder = clusterFinder;
+    this.defaultTimestamp = defaultTimestamp;
   }
 
   @Override
-  public StackGresDbOps mutate(DbOpsReview review, StackGresDbOps resource) {
+  public StackGresDbOps mutate(StackGresDbOpsReview review, StackGresDbOps resource) {
     if (review.getRequest().getOperation() != Operation.CREATE
         && review.getRequest().getOperation() != Operation.UPDATE) {
       return resource;
@@ -60,9 +70,8 @@ public class DbOpsMajorVersionUpgradeMutator implements DbOpsMutator {
   private boolean clusterHasBackups(StackGresCluster cluster) {
     var configurations = Optional.of(cluster)
         .map(StackGresCluster::getSpec)
-        .map(StackGresClusterSpec::getConfiguration);
-    return configurations.map(StackGresClusterConfiguration::getBackupConfig).isPresent()
-        || configurations.map(StackGresClusterConfiguration::getBackups)
+        .map(StackGresClusterSpec::getConfigurations);
+    return configurations.map(StackGresClusterConfigurations::getBackups)
         .filter(Predicates.not(List::isEmpty))
         .isPresent();
   }
@@ -75,9 +84,11 @@ public class DbOpsMajorVersionUpgradeMutator implements DbOpsMutator {
     final String postgresMajorVersion = getPostgresFlavorComponent(postgresFlavor)
         .get(cluster)
         .getMajorVersion(postgresVersion);
+    Instant timestamp = Optional.ofNullable(defaultTimestamp).orElse(Instant.now());
     return BackupStorageUtil.getPath(
         cluster.getMetadata().getNamespace(),
         cluster.getMetadata().getName(),
+        timestamp,
         postgresMajorVersion);
   }
 

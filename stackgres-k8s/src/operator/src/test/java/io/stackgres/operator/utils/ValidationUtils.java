@@ -18,11 +18,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import javax.validation.constraints.NotEmpty;
-import javax.validation.constraints.NotNull;
-import javax.validation.constraints.Pattern;
-import javax.validation.constraints.Positive;
-
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.CaseFormat;
 import io.fabric8.kubernetes.api.model.Status;
@@ -31,6 +26,10 @@ import io.fabric8.kubernetes.api.model.StatusDetails;
 import io.stackgres.common.ClassUtil;
 import io.stackgres.common.ErrorType;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import org.jooq.lambda.Seq;
 import org.jooq.lambda.tuple.Tuple;
 import org.jooq.lambda.tuple.Tuple2;
@@ -109,7 +108,7 @@ public class ValidationUtils {
     Seq.of(fields).forEach(field -> {
       StatusCause cause = details.getCauses().stream()
           .filter(statusCause -> statusCause.getField().equals(field))
-          .findFirst().orElseThrow(() -> new AssertionFailedError("Not cause with the field "
+          .findFirst().orElseThrow(() -> new AssertionFailedError("No cause with field "
               + field + " was found"));
       assertEquals(message, cause.getMessage());
       assertEquals(reason, cause.getReason());
@@ -117,27 +116,19 @@ public class ValidationUtils {
   }
 
   public static String getNotNullMessage(Class<?> from, String field) {
-
     return getConstraintMessage(from, field, NotNull.class);
-
   }
 
   public static String getPositiveMessage(Class<?> from, String field) {
-
     return getConstraintMessage(from, field, Positive.class);
-
   }
 
   public static String getPatternMessage(Class<?> from, String field) {
-
     return getConstraintMessage(from, field, Pattern.class);
-
   }
 
   public static String getNotEmptyMessage(Class<?> from, String field) {
-
     return getConstraintMessage(from, field, NotEmpty.class);
-
   }
 
   public static String getConstraintMessage(Class<?> from, String propertyOrFieldOrMethod,
@@ -185,9 +176,8 @@ public class ValidationUtils {
       Method messageMethod = annotation.getClass().getDeclaredMethod("message");
 
       return (String) messageMethod.invoke(annotation);
-    } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
-      throw new AssertionFailedError(constraint.getName() + " is not valid constraint annotation",
-          e);
+    } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException ex) {
+      throw new AssertionFailedError(constraint.getName() + " is not valid constraint annotation", ex);
     }
   }
 

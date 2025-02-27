@@ -7,39 +7,37 @@ package io.stackgres.operator.conciliation.backup;
 
 import java.util.Optional;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
+import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.stackgres.common.crd.sgbackup.BackupStatus;
 import io.stackgres.common.crd.sgbackup.StackGresBackup;
 import io.stackgres.common.crd.sgbackup.StackGresBackupProcess;
 import io.stackgres.common.crd.sgbackup.StackGresBackupStatus;
-import io.stackgres.common.labels.LabelFactoryForBackup;
 import io.stackgres.common.resource.ResourceFinder;
 import io.stackgres.common.resource.ResourceScanner;
-import io.stackgres.operator.conciliation.AbstractJobReconciliationHandler;
+import io.stackgres.operator.conciliation.FireAndForgetJobReconciliationHandler;
 import io.stackgres.operator.conciliation.ReconciliationHandler;
 import io.stackgres.operator.conciliation.ReconciliationScope;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 @ReconciliationScope(value = StackGresBackup.class, kind = "Job")
 @ApplicationScoped
 public class BackupJobReconciliationHandler
-    extends AbstractJobReconciliationHandler<StackGresBackup> {
+    extends FireAndForgetJobReconciliationHandler<StackGresBackup> {
 
   @Inject
   public BackupJobReconciliationHandler(
       @ReconciliationScope(value = StackGresBackup.class, kind = "HasMetadata")
       ReconciliationHandler<StackGresBackup> handler,
-      LabelFactoryForBackup labelFactory,
       ResourceFinder<Job> jobFinder,
       ResourceScanner<Pod> podScanner) {
-    super(handler, labelFactory, jobFinder, podScanner);
+    super(handler, jobFinder, podScanner);
   }
 
   @Override
-  protected boolean isAlreadyCompleted(StackGresBackup context) {
+  protected boolean canForget(StackGresBackup context, HasMetadata resource) {
     return Optional.of(context)
         .map(StackGresBackup::getStatus)
         .map(StackGresBackupStatus::getProcess)

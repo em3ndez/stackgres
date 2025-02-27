@@ -5,13 +5,20 @@
 
 package io.stackgres.operator.conciliation.factory.distributedlogs;
 
-import javax.inject.Singleton;
-
+import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.operator.conciliation.OperatorVersionBinder;
+import io.stackgres.operator.conciliation.cluster.StackGresClusterContext;
+import io.stackgres.operator.conciliation.factory.AbstractClusterAnnotationDecorator;
+import jakarta.inject.Singleton;
 
 @Singleton
 @OperatorVersionBinder
 public class DistributedLogsAnnotationDecorator
-    extends AbstractDistributedLogsAnnotationDecorator {
+    extends AbstractClusterAnnotationDecorator<StackGresClusterContext> {
+
+  @Override
+  protected StackGresCluster getCluster(StackGresClusterContext context) {
+    return context.getCluster();
+  }
 
 }

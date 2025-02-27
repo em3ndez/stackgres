@@ -3,6 +3,12 @@
         <!-- Vue reactivity hack -->
         <template v-if="Object.keys(config).length > 0"></template>
 
+        <template v-if="editMode && !editReady">
+            <span class="warningText">
+                Loading data...
+            </span>
+        </template>
+
         <form id="createProfile" class="form" @submit.prevent v-if="!editMode || editReady">
             <div class="header stickyHeader">
                 <h2>
@@ -51,7 +57,7 @@
                         </div>
                     </div>
 
-                    <span class="warning topLeft" v-if="nameColission && !editMode">
+                    <span class="warning topLeft" v-if="nameCollision && !editMode">
                         There's already a <strong>SGInstanceProfile</strong> with the same name on this namespace. Please specify a different name or create the profile on another namespace
                     </span>
 
@@ -523,8 +529,30 @@
             <button @click="cancel" class="btn border">Cancel</button>
 
             <button type="button" class="btn floatRight" @click="createProfile(true)">View Summary</button>
+            <button
+                data-field="dryRun"
+                type="button"
+                class="btn border floatRight"
+                title="Dry run mode helps to evaluate a request through the typical request stages without any storage persistance or resource allocation."
+                @click="
+                    dryRun = true;
+                    createProfile();
+                "
+            >
+                Dry Run
+            </button>
         </form>
-        <CRDSummary :crd="previewCRD" kind="SGInstanceProfile" v-if="showSummary" @closeSummary="showSummary = false"></CRDSummary>
+        <CRDSummary
+            v-if="showSummary"
+            :crd="previewCRD"
+            :dryRun="dryRun"
+            kind="SGInstanceProfile"
+            @closeSummary="
+                showSummary = false;
+                dryRun = false;
+                previewCRD = {};
+            "
+        ></CRDSummary>
     </div>
 </template>
 
@@ -554,6 +582,7 @@
                 errorStep: [],
                 editMode: (vm.$route.name === 'EditProfile'),
                 editReady: false,
+                dryRun: false,
                 previewCRD: {},
                 showSummary: false,
                 profileName: vm.$route.params.hasOwnProperty('name') ? vm.$route.params.name : '',
@@ -638,23 +667,27 @@
                 return store.state.tooltipsText
             },
 
-            nameColission() {
-                const vc = this;
-                var nameColission = false;
-                
-                store.state.sginstanceprofiles.forEach(function(item, index) {
-                    if( (item.name == vc.profileName) && (item.data.metadata.namespace == vc.$route.params.namespace ) )
-                        nameColission = true
-                })
+            nameCollision() {
+                if(store.state.sginstanceprofiles !== null) {
+                    const vc = this;
+                    var nameCollision = false;
+                    
+                    store.state.sginstanceprofiles.forEach(function(item, index) {
+                        if( (item.name == vc.profileName) && (item.data.metadata.namespace == vc.$route.params.namespace ) )
+                            nameCollision = true
+                    })
 
-                return nameColission
+                    return nameCollision
+                } else {
+                    return false
+                }
             },
 
             config() {
                 var vm = this;
                 var config = {};
                 
-                if( vm.editMode && !vm.editReady ) {
+                if( vm.editMode && !vm.editReady && (store.state.sginstanceprofiles !== null)) {
                     store.state.sginstanceprofiles.forEach(function( conf ){
                         if( (conf.data.metadata.name === vm.$route.params.name) && (conf.data.metadata.namespace === vm.$route.params.namespace) ) {
                             vm.profileCPU = conf.data.spec.cpu.match(/\d+/g)[0];
@@ -723,8 +756,12 @@
                 const vc = this;
 
                 if(!vc.checkRequired()) {
+                    vc.dryRun = false;
+                    vc.showSummary = false;
                     return;
                 }
+
+                store.commit('loading', true);
 
                 if (!previous && vc.editMode) {
                     sgApi
@@ -785,44 +822,60 @@
                     vc.previewCRD = {};
                     vc.previewCRD['data'] = profile;
                     vc.showSummary = true;
+                    store.commit('loading', false);
 
                 } else {
 
                     if(this.editMode) {
                         sgApi
-                        .update('sginstanceprofiles', profile)
+                        .update('sginstanceprofiles', profile, vc.dryRun)
                         .then(function (response) {
-                            vc.notify('Profile <strong>"'+profile.metadata.name+'"</strong> updated successfully', 'message','sginstanceprofiles');
+                            
+                            if(vc.dryRun) {
+                                vc.showSummary = true;
+                                vc.validateDryRun(response.data);
+                            } else {
+                                vc.notify('Profile <strong>"'+profile.metadata.name+'"</strong> updated successfully', 'message','sginstanceprofiles');
 
-                            vc.fetchAPI('sginstanceprofile');
-                            router.push('/' + profile.metadata.namespace + '/sginstanceprofile/' + profile.metadata.name);
+                                vc.fetchAPI('sginstanceprofile');
+                                router.push('/' + profile.metadata.namespace + '/sginstanceprofile/' + profile.metadata.name);
+                            }
+                            store.commit('loading', false);
 
                         })
                         .catch(function (error) {
                             console.log(error.response);
                             vc.notify(error.response.data,'error','sginstanceprofiles');
+                            store.commit('loading', false);
                         });
 
                     } else {
                         sgApi
-                        .create('sginstanceprofiles', profile)
+                        .create('sginstanceprofiles', profile, vc.dryRun)
                         .then(function (response) {
 
-                            var urlParams = new URLSearchParams(window.location.search);
-                            if(urlParams.has('newtab')) {
-                                opener.fetchParentAPI('sginstanceprofile');
-                                vc.notify('Profile <strong>"'+profile.metadata.name+'"</strong> created successfully.<br/><br/> You may now close this window and choose your profile from the list.', 'message','sginstanceprofiles');
+                            if(vc.dryRun) {
+                                vc.showSummary = true;
+                                vc.validateDryRun(response.data);
                             } else {
-                                vc.notify('Profile <strong>"'+profile.metadata.name+'"</strong> created successfully', 'message','sginstanceprofiles');
-                            }
+                                var urlParams = new URLSearchParams(window.location.search);
+                                if(urlParams.has('newtab')) {
+                                    opener.fetchParentAPI('sginstanceprofile');
+                                    vc.notify('Profile <strong>"'+profile.metadata.name+'"</strong> created successfully.<br/><br/> You may now close this window and choose your profile from the list.', 'message','sginstanceprofiles');
+                                } else {
+                                    vc.notify('Profile <strong>"'+profile.metadata.name+'"</strong> created successfully', 'message','sginstanceprofiles');
+                                }
 
-                            vc.fetchAPI('sginstanceprofiles');
-                            router.push('/' + profile.metadata.namespace + '/sginstanceprofiles');
+                                vc.fetchAPI('sginstanceprofiles');
+                                router.push('/' + profile.metadata.namespace + '/sginstanceprofiles');
+                            }
+                            store.commit('loading', false);
             
                         })
                         .catch(function (error) {
                             console.log(error.response);
                             vc.notify(error.response.data,'error','sginstanceprofiles');
+                            store.commit('loading', false);
                         });
 
                     }

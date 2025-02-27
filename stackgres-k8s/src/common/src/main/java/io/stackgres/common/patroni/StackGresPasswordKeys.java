@@ -30,6 +30,7 @@ public interface StackGresPasswordKeys {
   String PGBOUNCER_STATS_USERNAME = "pgbouncer_stats";
   String PGBOUNCER_STATS_USERNAME_ENV = "PGBOUNCER_STATS_USERNAME";
   String PGBOUNCER_STATS_PASSWORD_KEY = "pgbouncer-stats-password";
+  String PGBOUNCER_USERS_KEY = "pgbouncer-users";
   String BABELFISH_USERNAME = "babelfish";
   String BABELFISH_PASSWORD_KEY = "babelfish-password";
   String BABELFISH_CREATE_USER_SQL_KEY = "babelfish-create-user-sql";
@@ -38,5 +39,6 @@ public interface StackGresPasswordKeys {
   String RESTAPI_PASSWORD_ENV = "PATRONI_RESTAPI_PASSWORD";
   String RESTAPI_USERNAME_KEY = "restapi-username";
   String RESTAPI_PASSWORD_KEY = "restapi-password";
+  String ROLES_UPDATE_SQL_KEY = "roles-update-sql";
 
 }

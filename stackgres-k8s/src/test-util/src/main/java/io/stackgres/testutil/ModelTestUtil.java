@@ -6,11 +6,14 @@
 package io.stackgres.testutil;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -18,9 +21,11 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Random;
 import java.util.function.Predicate;
@@ -29,22 +34,163 @@ import java.util.stream.Stream;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.type.TypeFactory;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import io.fabric8.kubernetes.api.model.AnyType;
 import io.fabric8.kubernetes.api.model.Quantity;
 
 public class ModelTestUtil {
 
   private static final Random RANDOM = new Random(7);
 
-  public static <T> void assertEqualsAndHashCode(T target) {
-    var targetCopy1 = JsonUtil.fromJson(JsonUtil.toJson(target), target.getClass());
-    var targetCopy2 = JsonUtil.fromJson(JsonUtil.toJson(target), target.getClass());
+  public static <T> void assertEqualsAndHashCode(Class<T> targetClazz) {
+    visit(new CheckEqualsAndHashCodeVisitor(), targetClazz);
+  }
 
-    assertEquals(targetCopy1, targetCopy2, "Type "
-        + target.getClass() + " has not correctly implemented equals method.");
+  public static class CheckEqualsAndHashCodeVisitor implements ResourceVisitor<Void> {
+    @Override
+    public Void onObject(Class<?> clazz, List<Field> fields) {
+      for (Field field : fields) {
+        visit(this, field.getType(), field.getGenericType());
+      }
 
-    assertEquals(targetCopy1.hashCode(), targetCopy2.hashCode(), "Type "
-        + target.getClass() + " has not correctly implemented hash method.");
+      if (clazz.getPackage().getName().startsWith("io.stackgres.")) {
+        var target = createWithRandomData(clazz);
+        JsonNode targetJsonCopy = JsonUtil.toJson(target);
+        var targetCopy1 = JsonUtil.fromJson(targetJsonCopy, target.getClass());
+        var targetCopy2 = JsonUtil.fromJson(targetJsonCopy, target.getClass());
+  
+        assertEquals(targetCopy1, targetCopy2, "Type "
+            + target.getClass() + " has not correctly implemented equals method.");
+  
+        assertEquals(targetCopy1.hashCode(), targetCopy2.hashCode(), "Type "
+            + target.getClass() + " has not correctly implemented hash method.");
+  
+        var resource = ModelTestUtil.createWithRandomData(clazz);
+        var anotherResource = ModelTestUtil.createWithRandomData(clazz);
+        JsonNode resourceJsonCopy = JsonUtil.toJson(resource);
+        JsonNode anotherResourceJsonCopy = JsonUtil.toJson(anotherResource);
+
+        if (!Objects.equals(resourceJsonCopy, anotherResourceJsonCopy)) {
+          assertNotEquals(anotherResource, resource, "Type "
+              + target.getClass() + " has not correctly implemented equals method"
+              + " since different objects are see as equals:\n" + resourceJsonCopy
+              + "\n is seen equals as \n" + anotherResourceJsonCopy);
+        }
+      }
+
+      return null;
+    }
+
+    @Override
+    public Void onList(Class<?> clazz, Class<?> elementClazz) {
+      return visit(this, elementClazz);
+    }
+
+    @Override
+    public Void onMap(Class<?> clazz, Class<?> keyClazz, Class<?> valueClazz, Type genericType) {
+      return visit(this, valueClazz, genericType);
+    }
+
+    @Override
+    public Void onValue(Class<?> clazz) {
+      return null;
+    }
+  }
+
+  public static <T> void assertSettersAndGetters(Class<T> targetClazz) {
+    visit(new CheckSettersAndGettersVisitor(), targetClazz);
+  }
+
+  public static class CheckSettersAndGettersVisitor implements ResourceVisitor<Void> {
+    @Override
+    public Void onObject(Class<?> clazz, List<Field> fields) {
+      if (clazz.getPackage().getName().startsWith("io.stackgres.")) {
+        for (Field field : fields) {
+          String fieldName = field.getName();
+          String pascalCaseFieldName =
+              fieldName.substring(0, 1).toUpperCase(Locale.US)
+              + fieldName.substring(1);
+  
+          final String setMethodName = "set" + pascalCaseFieldName;
+          Method setMethod = findMethod(
+              clazz,
+              setMethodName,
+              field.getType());
+          final String getMethodName = "get" + pascalCaseFieldName;
+          final String isMethodName = "is" + pascalCaseFieldName;
+          Method getMethod = findMethod(
+              clazz,
+              getMethodName);
+          Method isMethod = findMethod(
+              clazz,
+              isMethodName);
+          assertNotNull(setMethod, "Set method " + setMethodName + " with parameter type "
+              + field.getType() + " was not found in class "
+              + clazz.getName() + " and field " + fieldName);
+          if (isBoolean(field.getType())) {
+            assertTrue(getMethod != null || isMethod != null, "Get method " + getMethodName + " or "
+                + isMethodName + " not found in class "
+                + clazz.getName() + " and field " + fieldName);
+            @SuppressWarnings("null")
+            Class<?> getMethodReturnType =
+                getMethod != null ? getMethod.getReturnType() : isMethod.getReturnType();
+            assertSame(field.getType(), getMethodReturnType, "Get method " + getMethodName
+                + " return type " + getMethodReturnType.getName() + " should be of type "
+                + field.getType().getName() + " in class "
+                + clazz.getName() + " and field " + fieldName);
+          } else {
+            assertNotNull(getMethod, "Get method " + getMethodName + " not found in class "
+                + clazz.getName() + " and field " + fieldName);
+            assertSame(field.getType(), getMethod.getReturnType(), "Get method " + getMethodName
+                + " return type " + getMethod.getReturnType().getName() + " should be of type "
+                + field.getType().getName() + " in class "
+                + clazz.getName() + " and field " + fieldName);
+          }
+        }
+      }
+
+      for (Field field : fields) {
+        visit(this, field.getType(), field.getGenericType());
+      }
+
+      return null;
+    }
+
+    private boolean isBoolean(Class<?> valueClass) {
+      if (valueClass.isPrimitive()
+          && valueClass.getName().equals("boolean")) {
+        return true;
+      } else if (valueClass == Boolean.class) {
+        return true;
+      }
+      return false;
+    }
+
+    private Method findMethod(Class<?> targetClazz, String name, Class<?>... parameterTypes)
+        throws SecurityException {
+      try {
+        return targetClazz.getMethod(name, parameterTypes);
+      } catch (NoSuchMethodException e) {
+        return null;
+      }
+    }
+
+    @Override
+    public Void onList(Class<?> clazz, Class<?> elementClazz) {
+      return visit(this, elementClazz);
+    }
+
+    @Override
+    public Void onMap(Class<?> clazz, Class<?> keyClazz, Class<?> valueClazz, Type genericType) {
+      return visit(this, valueClazz, genericType);
+    }
+
+    @Override
+    public Void onValue(Class<?> clazz) {
+      return null;
+    }
   }
 
   public static void assertJsonInoreUnknownProperties(Class<?> targetClazz) {
@@ -53,7 +199,7 @@ public class ModelTestUtil {
 
   public static class CheckJsonInoreUnknownPropertiesVisitor implements ResourceVisitor<Void> {
     @Override
-    public Void onObject(Class<?> clazz, Field[] fields) {
+    public Void onObject(Class<?> clazz, List<Field> fields) {
       if (clazz.getPackage().getName().startsWith("io.stackgres.")) {
         JsonIgnoreProperties jsonIgnoreProperties = clazz.getAnnotation(JsonIgnoreProperties.class);
         for (var currentClazz = clazz; jsonIgnoreProperties == null;) {
@@ -93,13 +239,23 @@ public class ModelTestUtil {
   }
 
   public static <T> T createWithRandomData(Class<T> targetClazz) {
-    return visit(new RandomDataVisitor<>(), targetClazz);
+    return visit(new RandomDataVisitor<>(Optional.empty()), targetClazz);
+  }
+
+  public static <T> T createWithRandomData(Class<T> targetClazz, int expectedListAndMapSize) {
+    return visit(new RandomDataVisitor<>(Optional.of(expectedListAndMapSize)), targetClazz);
   }
 
   public static class RandomDataVisitor<T> implements ResourceVisitor<T> {
+    final Optional<Integer> expectedListAndMapSize;
+
+    RandomDataVisitor(Optional<Integer> expectedListAndMapSize) {
+      this.expectedListAndMapSize = expectedListAndMapSize;
+    }
+
     @Override
     @SuppressWarnings("unchecked")
-    public T onObject(Class<?> clazz, Field[] fields) {
+    public T onObject(Class<?> clazz, List<Field> fields) {
       T targetInstance;
       try {
         targetInstance = (T) clazz.getDeclaredConstructor().newInstance();
@@ -117,7 +273,7 @@ public class ModelTestUtil {
       try {
         field.setAccessible(true);
         field.set(target,
-            visit(new RandomDataVisitor<>(), field.getType(), field.getGenericType()));
+            visit(new RandomDataVisitor<>(expectedListAndMapSize), field.getType(), field.getGenericType()));
         field.setAccessible(false);
       } catch (ReflectiveOperationException ex) {
         throw new RuntimeException(ex);
@@ -127,7 +283,8 @@ public class ModelTestUtil {
     @Override
     @SuppressWarnings("unchecked")
     public T onList(Class<?> clazz, Class<?> elementClazz) {
-      int desiredListSize = RANDOM.nextInt(10) + 1; //More than this could be counter-productive
+      int desiredListSize = expectedListAndMapSize
+          .orElse(RANDOM.nextInt(3) + 1); //More than this could be counter-productive
 
       List<Object> targetList = new ArrayList<>(desiredListSize);
       if (clazz != List.class) {
@@ -145,7 +302,7 @@ public class ModelTestUtil {
       }
 
       for (int i = 0; i < desiredListSize; i++) {
-        Object item = visit(new RandomDataVisitor<>(), elementClazz);
+        Object item = visit(new RandomDataVisitor<>(expectedListAndMapSize), elementClazz);
         targetList.add(item);
       }
 
@@ -155,9 +312,10 @@ public class ModelTestUtil {
     @Override
     @SuppressWarnings("unchecked")
     public T onMap(Class<?> clazz, Class<?> keyClazz, Class<?> valueClazz, Type valueType) {
-      int desiredMapSize = RANDOM.nextInt(10) + 1; //More than this could be counter-productive
+      int desiredMapSize = expectedListAndMapSize
+          .orElse(RANDOM.nextInt(3) + 1); //More than this could be counter-productive
 
-      Map<Object, Object> targetMap = new HashMap<>(desiredMapSize);
+      Map<Object, Object> targetMap = new LinkedHashMap<>(desiredMapSize);
       if (clazz != Map.class) {
         try {
           var constructor = Arrays.stream(clazz.getConstructors())
@@ -173,8 +331,8 @@ public class ModelTestUtil {
       }
 
       for (int i = 0; i < desiredMapSize; i++) {
-        Object key = visit(new RandomDataVisitor<>(), keyClazz);
-        Object value = visit(new RandomDataVisitor<>(), valueClazz, valueType);
+        Object key = visit(new RandomDataVisitor<>(expectedListAndMapSize), keyClazz);
+        Object value = visit(new RandomDataVisitor<>(expectedListAndMapSize), valueClazz, valueType);
         targetMap.put(key, value);
       }
 
@@ -186,54 +344,10 @@ public class ModelTestUtil {
     public T onValue(Class<?> clazz) {
       return (T) generateRandomValue(clazz);
     }
-
-    static final String[] QUANTITY_UNITS = new String[] {
-        "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "n",
-        "u", "m", "k", "M", "G", "T", "P", "E", "" };
-
-    private Object generateRandomValue(Class<?> valueClass) {
-      if (valueClass.isPrimitive()) {
-        switch (valueClass.getName()) {
-          case "long":
-            return RANDOM.nextLong();
-          case "int":
-            return RANDOM.nextInt();
-          case "boolean":
-            return RANDOM.nextBoolean();
-          case "char":
-            return (char) RANDOM.nextInt();
-          case "float":
-            return RANDOM.nextFloat();
-          case "double":
-            return RANDOM.nextDouble();
-          default:
-            throw new RuntimeException("Unsupported primitive type " + valueClass.getName());
-        }
-      } else if (Quantity.class.isAssignableFrom(valueClass)) {
-        return new Quantity(String.valueOf(RANDOM.nextInt()),
-            QUANTITY_UNITS[RANDOM.nextInt(QUANTITY_UNITS.length)]);
-      } else if (valueClass == String.class || valueClass == Object.class) {
-        return StringUtils.getRandomString(10);
-      } else if (valueClass == Boolean.class) {
-        return RANDOM.nextBoolean();
-      } else if (Number.class.isAssignableFrom(valueClass)) {
-        int value = RANDOM.nextInt(10) + 1;
-        if (Integer.class.isAssignableFrom(valueClass)) {
-          return value;
-        } else if (Long.class.isAssignableFrom(valueClass)) {
-          return Integer.toUnsignedLong(value);
-        } else if (BigDecimal.class.isAssignableFrom(valueClass)) {
-          return BigDecimal.valueOf(value);
-        } else if (BigInteger.class.isAssignableFrom(valueClass)) {
-          return BigInteger.valueOf(value);
-        }
-      }
-      throw new IllegalArgumentException("Value class " + valueClass.getName() + " not supported");
-    }
   }
 
   public interface ResourceVisitor<T> {
-    T onObject(Class<?> clazz, Field[] fields);
+    T onObject(Class<?> clazz, List<Field> fields);
 
     T onList(Class<?> clazz, Class<?> elementClazz);
 
@@ -246,6 +360,8 @@ public class ModelTestUtil {
     return visit(visitor, clazz, null);
   }
 
+  @SuppressFBWarnings(value = "SA_LOCAL_SELF_COMPARISON",
+      justification = "False positive")
   public static <T> T visit(ResourceVisitor<T> visitor, Class<?> clazz,
       Type genericType) {
     if (isValueType(clazz)) {
@@ -265,7 +381,7 @@ public class ModelTestUtil {
       }
     }
 
-    Field[] targetFields = getRepresentativeFields(clazz);
+    List<Field> targetFields = getRepresentativeFields(clazz);
 
     return visitor.onObject(clazz, targetFields);
   }
@@ -275,55 +391,140 @@ public class ModelTestUtil {
     return TypeFactory.rawClass(listType.getActualTypeArguments()[index]);
   }
 
+  @SuppressFBWarnings(value = "SA_LOCAL_SELF_COMPARISON",
+      justification = "False positive")
   private static ParameterizedType getParameterizedType(Class<?> clazz, Type genericType) {
-    final ParameterizedType parameterizedType;
     if (genericType instanceof ParameterizedType currentGenericType) {
-      parameterizedType = currentGenericType;
+      return currentGenericType;
     } else {
       Class<?> currentClazz = clazz;
-      while (!(currentClazz.getGenericSuperclass() instanceof ParameterizedType)) {
+      while (true) {
+        if (currentClazz.getGenericSuperclass() instanceof ParameterizedType) {
+          return (ParameterizedType) currentClazz.getGenericSuperclass();
+        }
+        var currentInterfaces = Arrays.asList(currentClazz.getGenericInterfaces());
+        if (currentInterfaces.stream()
+            .anyMatch(ParameterizedType.class::isInstance)) {
+          return currentInterfaces.stream()
+              .filter(ParameterizedType.class::isInstance)
+              .map(ParameterizedType.class::cast)
+              .findFirst()
+              .orElseThrow();
+        }
         currentClazz = currentClazz.getSuperclass();
         if (currentClazz == Object.class) {
-          throw new RuntimeException(
-              "Class " + clazz.getName() + " do not have any generics!");
+          break;
         }
       }
-      parameterizedType = (ParameterizedType) currentClazz.getGenericSuperclass();
+      throw new RuntimeException(
+          "Class " + clazz.getName() + " do not have any generics!");
     }
-    return parameterizedType;
   }
 
-  private static boolean isValueType(Class<?> type) {
+  public static boolean isValueType(Class<?> type) {
     return Quantity.class.isAssignableFrom(type)
+        || AnyType.class.isAssignableFrom(type)
         || String.class == type
         || Number.class.isAssignableFrom(type)
         || Boolean.class == type
         || type.isPrimitive()
-        || Object.class == type;
+        || Object.class == type
+        || Void.class == type;
   }
 
-  private static Field[] getRepresentativeFields(Class<?> clazz) {
+  public static List<Field> getRepresentativeFields(Class<?> clazz) {
     if (clazz != null) {
       Field[] declaredFields = clazz.getDeclaredFields();
-      Field[] parentFields = getRepresentativeFields(clazz.getSuperclass());
+      List<Field> parentFields = getRepresentativeFields(clazz.getSuperclass());
       List<String> ignoredFields = Optional
           .ofNullable(clazz.getAnnotation(JsonIgnoreProperties.class))
           .map(JsonIgnoreProperties::value)
           .map(Arrays::asList)
           .orElse(List.of());
-      return Stream.concat(Arrays.stream(declaredFields), Arrays.stream(parentFields))
+      return Stream
+          .concat(
+              Arrays.stream(declaredFields),
+              parentFields.stream()
+              .filter(parentField -> getOverriddenJsonFieldName(parentField)
+                  .or(() -> Optional.of(parentField.getName()))
+                  .stream()
+                  .noneMatch(parentFieldName -> Arrays.stream(declaredFields)
+                      .filter(field -> !Modifier.isStatic(field.getModifiers()))
+                      .filter(field -> !Modifier.isFinal(field.getModifiers()))
+                      .map(field -> getJsonFieldName(field))
+                      .anyMatch(parentFieldName::equals))))
           .filter(field -> !Modifier.isStatic(field.getModifiers()))
           .filter(field -> !Modifier.isFinal(field.getModifiers()))
           .filter(field -> !field.isAnnotationPresent(JsonIgnore.class))
-          .filter(field -> !ignoredFields.contains(
-              Optional.ofNullable(field.getAnnotation(JsonProperty.class))
-              .map(JsonProperty::value)
-              .filter(Predicate.not(JsonProperty.USE_DEFAULT_NAME::equals))
-              .orElse(field.getName())))
-          .toArray(Field[]::new);
+          .filter(field -> !ignoredFields.contains(getJsonFieldName(field)))
+          .toList();
     } else {
-      return new Field[0];
+      return List.of();
     }
+  }
+
+  public static String getJsonFieldName(Field field) {
+    return getOverriddenJsonFieldName(field)
+    .orElse(field.getName());
+  }
+
+  public static Optional<String> getOverriddenJsonFieldName(Field field) {
+    return Optional.ofNullable(field.getAnnotation(JsonProperty.class))
+    .map(JsonProperty::value)
+    .filter(Predicate.not(JsonProperty.USE_DEFAULT_NAME::equals));
+  }
+
+  static final String[] QUANTITY_UNITS = new String[] {
+      "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "n",
+      "u", "m", "k", "M", "G", "T", "P", "E", "" };
+
+  @SuppressWarnings("unchecked")
+  public static <T> T generateRandom(Class<?> valueClass) {
+    return (T) generateRandomValue(valueClass);
+  }
+
+  public static Object generateRandomValue(Class<?> valueClass) {
+    if (valueClass.isPrimitive()) {
+      switch (valueClass.getName()) {
+        case "long":
+          return RANDOM.nextLong();
+        case "int":
+          return RANDOM.nextInt();
+        case "boolean":
+          return RANDOM.nextBoolean();
+        case "char":
+          return (char) RANDOM.nextInt();
+        case "float":
+          return RANDOM.nextFloat();
+        case "double":
+          return RANDOM.nextDouble();
+        default:
+          throw new RuntimeException("Unsupported primitive type " + valueClass.getName());
+      }
+    } else if (Quantity.class.isAssignableFrom(valueClass)) {
+      return new Quantity(String.valueOf(RANDOM.nextInt()),
+          QUANTITY_UNITS[RANDOM.nextInt(QUANTITY_UNITS.length)]);
+    } else if (valueClass == String.class) {
+      return "rnd-" + StringUtils.getRandomString(10).toLowerCase(Locale.US);
+    } else if (valueClass == Boolean.class) {
+      return RANDOM.nextBoolean();
+    } else if (Number.class.isAssignableFrom(valueClass)) {
+      int value = RANDOM.nextInt(10) + 1;
+      if (Integer.class.isAssignableFrom(valueClass)) {
+        return value;
+      } else if (Long.class.isAssignableFrom(valueClass)) {
+        return Integer.toUnsignedLong(value);
+      } else if (BigDecimal.class.isAssignableFrom(valueClass)) {
+        return BigDecimal.valueOf(value);
+      } else if (BigInteger.class.isAssignableFrom(valueClass)) {
+        return BigInteger.valueOf(value);
+      }
+    } else if (Void.class.isAssignableFrom(valueClass)
+        || Object.class.isAssignableFrom(valueClass)
+        || AnyType.class.isAssignableFrom(valueClass)) {
+      return null;
+    }
+    throw new IllegalArgumentException("Value class " + valueClass.getName() + " not supported");
   }
 
 }

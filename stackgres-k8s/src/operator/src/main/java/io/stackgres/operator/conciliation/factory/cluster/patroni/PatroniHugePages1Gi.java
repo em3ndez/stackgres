@@ -8,14 +8,10 @@ package io.stackgres.operator.conciliation.factory.cluster.patroni;
 import java.util.Optional;
 import java.util.stream.Stream;
 
-import javax.inject.Singleton;
-
 import io.fabric8.kubernetes.api.model.EmptyDirVolumeSourceBuilder;
 import io.fabric8.kubernetes.api.model.Volume;
 import io.fabric8.kubernetes.api.model.VolumeBuilder;
 import io.stackgres.common.StackGresVolume;
-import io.stackgres.common.crd.sgcluster.StackGresClusterNonProduction;
-import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
 import io.stackgres.common.crd.sgprofile.StackGresProfileHugePages;
 import io.stackgres.common.crd.sgprofile.StackGresProfileSpec;
 import io.stackgres.operator.conciliation.OperatorVersionBinder;
@@ -23,6 +19,7 @@ import io.stackgres.operator.conciliation.cluster.StackGresClusterContext;
 import io.stackgres.operator.conciliation.factory.ImmutableVolumePair;
 import io.stackgres.operator.conciliation.factory.VolumeFactory;
 import io.stackgres.operator.conciliation.factory.VolumePair;
+import jakarta.inject.Singleton;
 import org.jetbrains.annotations.NotNull;
 
 @Singleton
@@ -31,10 +28,7 @@ public class PatroniHugePages1Gi implements VolumeFactory<StackGresClusterContex
 
   @Override
   public @NotNull Stream<VolumePair> buildVolumes(StackGresClusterContext context) {
-    if (Optional.of(context.getSource().getSpec())
-        .map(StackGresClusterSpec::getNonProductionOptions)
-        .map(StackGresClusterNonProduction::getDisablePatroniResourceRequirements)
-        .orElse(false)) {
+    if (context.calculateDisablePatroniResourceRequirements()) {
       return Stream.of();
     }
 
@@ -46,7 +40,7 @@ public class PatroniHugePages1Gi implements VolumeFactory<StackGresClusterContex
             .build())
         .filter(volumePair -> Optional.of(profile.getSpec())
             .map(StackGresProfileSpec::getHugePages)
-            .map(StackGresProfileHugePages::getHugepages2Mi)
+            .map(StackGresProfileHugePages::getHugepages1Gi)
             .isPresent());
   }
 

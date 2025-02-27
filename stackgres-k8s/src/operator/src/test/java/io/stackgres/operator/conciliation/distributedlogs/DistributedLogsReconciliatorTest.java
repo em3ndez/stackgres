@@ -20,8 +20,10 @@ import io.stackgres.common.event.EventEmitter;
 import io.stackgres.common.fixture.Fixtures;
 import io.stackgres.common.resource.CustomResourceFinder;
 import io.stackgres.common.resource.CustomResourceScheduler;
-import io.stackgres.operator.conciliation.Conciliator;
+import io.stackgres.operator.conciliation.AbstractConciliator;
+import io.stackgres.operator.conciliation.DeployedResourcesCache;
 import io.stackgres.operator.conciliation.HandlerDelegator;
+import io.stackgres.operator.conciliation.Metrics;
 import io.stackgres.operator.conciliation.ReconciliationResult;
 import io.stackgres.operator.conciliation.StatusManager;
 import io.stackgres.operator.conciliation.factory.cluster.KubernetessMockResourceGenerationUtil;
@@ -41,7 +43,9 @@ class DistributedLogsReconciliatorTest {
   @Mock
   CustomResourceFinder<StackGresDistributedLogs> finder;
   @Mock
-  Conciliator<StackGresDistributedLogs> conciliator;
+  AbstractConciliator<StackGresDistributedLogs> conciliator;
+  @Mock
+  DeployedResourcesCache deployedResourcesCache;
   @Mock
   HandlerDelegator<StackGresDistributedLogs> handlerDelegator;
   @Mock
@@ -52,6 +56,8 @@ class DistributedLogsReconciliatorTest {
   CustomResourceScheduler<StackGresDistributedLogs> distributedlogsScheduler;
   @Mock
   ConnectedClustersScanner connectedClustersScanner;
+  @Mock
+  Metrics metrics;
 
   private DistributedLogsReconciliator reconciliator;
 
@@ -61,11 +67,13 @@ class DistributedLogsReconciliatorTest {
         new DistributedLogsReconciliator.Parameters();
     parameters.finder = finder;
     parameters.conciliator = conciliator;
+    parameters.deployedResourcesCache = deployedResourcesCache;
     parameters.handlerDelegator = handlerDelegator;
     parameters.eventController = eventController;
     parameters.statusManager = statusManager;
     parameters.distributedLogsScheduler = distributedlogsScheduler;
     parameters.connectedClustersScanner = connectedClustersScanner;
+    parameters.metrics = metrics;
     reconciliator = new DistributedLogsReconciliator(parameters);
   }
 
@@ -83,7 +91,7 @@ class DistributedLogsReconciliatorTest {
             Collections.emptyList(),
             Collections.emptyList()));
 
-    reconciliator.reconciliationCycle(distributedlogs, false);
+    reconciliator.reconciliationCycle(distributedlogs, 0, false);
 
     verify(conciliator).evalReconciliationState(distributedlogs);
     creations.forEach(resource -> verify(handlerDelegator).create(distributedlogs, resource));
@@ -106,7 +114,7 @@ class DistributedLogsReconciliatorTest {
             patches,
             Collections.emptyList()));
 
-    reconciliator.reconciliationCycle(distributedlogs, false);
+    reconciliator.reconciliationCycle(distributedlogs, 0, false);
 
     verify(conciliator).evalReconciliationState(distributedlogs);
     patches.forEach(resource -> verify(handlerDelegator)
@@ -127,7 +135,7 @@ class DistributedLogsReconciliatorTest {
             Collections.emptyList(),
             deletions));
 
-    reconciliator.reconciliationCycle(distributedlogs, false);
+    reconciliator.reconciliationCycle(distributedlogs, 0, false);
 
     verify(conciliator).evalReconciliationState(distributedlogs);
     deletions.forEach(resource -> verify(handlerDelegator)

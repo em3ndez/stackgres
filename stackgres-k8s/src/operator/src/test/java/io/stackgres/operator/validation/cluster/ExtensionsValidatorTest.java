@@ -16,11 +16,11 @@ import java.util.stream.Collectors;
 import io.stackgres.common.ErrorType;
 import io.stackgres.common.OperatorProperty;
 import io.stackgres.common.StackGresComponent;
+import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgcluster.StackGresClusterExtension;
 import io.stackgres.common.crd.sgcluster.StackGresClusterInstalledExtension;
-import io.stackgres.common.extension.ExtensionRequest;
+import io.stackgres.common.extension.ExtensionMetadataManager;
 import io.stackgres.common.extension.StackGresExtensionMetadata;
-import io.stackgres.operator.common.OperatorExtensionMetadataManager;
 import io.stackgres.operator.common.StackGresClusterReview;
 import io.stackgres.operator.common.fixture.AdmissionReviewFixtures;
 import io.stackgres.operator.utils.ValidationUtils;
@@ -52,7 +52,7 @@ class ExtensionsValidatorTest {
   private List<StackGresClusterInstalledExtension> installedExtensions;
 
   @Mock
-  private OperatorExtensionMetadataManager extensionMetadataManager;
+  private ExtensionMetadataManager extensionMetadataManager;
 
   @BeforeEach
   void setUp() {
@@ -78,10 +78,10 @@ class ExtensionsValidatorTest {
       InvocationOnMock invocation) {
     return installedExtensions.stream()
         .filter(defaultExtension -> defaultExtension.getName()
-            .equals(((ExtensionRequest) invocation.getArgument(0))
-                .getExtension().getName()))
+            .equals(((StackGresClusterExtension) invocation.getArgument(1))
+                .getName()))
         .map(StackGresExtensionMetadata::new)
-        .collect(Collectors.toUnmodifiableList());
+        .toList();
   }
 
   @Test
@@ -108,8 +108,9 @@ class ExtensionsValidatorTest {
   void givenACreationWithMissingExtensions_shouldFail() {
     final StackGresClusterReview review = getCreationReview();
     review.getRequest().getObject().getSpec().getPostgres().setExtensions(extensions);
-    when(extensionMetadataManager.requestExtensionsAnyVersion(
-        any(ExtensionRequest.class),
+    when(extensionMetadataManager.getExtensionsAnyVersion(
+        any(StackGresCluster.class),
+        any(StackGresClusterExtension.class),
         anyBoolean())
     ).then(this::getDefaultExtensionsMetadata);
 

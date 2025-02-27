@@ -9,18 +9,16 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.Objects;
 
-import javax.validation.constraints.AssertTrue;
-import javax.validation.constraints.NotNull;
-
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.base.MoreObjects;
 import io.quarkus.runtime.annotations.RegisterForReflection;
+import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.validation.FieldReference;
 import io.stackgres.common.validation.FieldReference.ReferencedField;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.NotNull;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -30,7 +28,6 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresClusterRestorePitr {
 
-  @JsonProperty("restoreToTimestamp")
   @NotNull
   private String restoreToTimestamp;
 
@@ -61,14 +58,6 @@ public class StackGresClusterRestorePitr {
   }
 
   @Override
-  public String toString() {
-    return MoreObjects.toStringHelper(this)
-        .omitNullValues()
-        .add("restoreToTimestamp", restoreToTimestamp)
-        .toString();
-  }
-
-  @Override
   public boolean equals(Object o) {
     if (this == o) {
       return true;
@@ -83,5 +72,10 @@ public class StackGresClusterRestorePitr {
   @Override
   public int hashCode() {
     return Objects.hash(restoreToTimestamp);
+  }
+
+  @Override
+  public String toString() {
+    return StackGresUtil.toPrettyYaml(this);
   }
 }

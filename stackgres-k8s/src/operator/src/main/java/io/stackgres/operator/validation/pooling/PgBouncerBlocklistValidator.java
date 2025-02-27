@@ -9,14 +9,13 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import javax.inject.Singleton;
-
 import io.stackgres.common.ErrorType;
-import io.stackgres.operator.common.PoolingReview;
+import io.stackgres.operator.common.StackGresPoolingConfigReview;
 import io.stackgres.operator.conciliation.factory.cluster.sidecars.pooling.parameters.PgBouncerBlocklist;
 import io.stackgres.operator.validation.ValidationType;
 import io.stackgres.operatorframework.admissionwebhook.Operation;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.inject.Singleton;
 
 @Singleton
 @ValidationType(ErrorType.POOL_CONFIG_BLOCKLIST)
@@ -25,11 +24,10 @@ public class PgBouncerBlocklistValidator implements PoolingValidator {
   private static final Set<String> BLOCKLIST = PgBouncerBlocklist.getBlocklistParameters();
 
   @Override
-  public void validate(PoolingReview review) throws ValidationFailed {
+  public void validate(StackGresPoolingConfigReview review) throws ValidationFailed {
 
     Operation operation = review.getRequest().getOperation();
     if (operation == Operation.CREATE || operation == Operation.UPDATE) {
-
       var databases = review.getRequest()
           .getObject().getSpec().getPgBouncer().getPgbouncerIni().getDatabases();
 

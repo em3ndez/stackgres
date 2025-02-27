@@ -1,0 +1,47 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: operator
+  namespace: system
+rules:
+##
+## Base operator rules
+##
+$(
+  helm template -n system stackgres-operator \
+    --set disableCrdsAndWebhooksUpdate=true \
+    --set-string allowedNamespaces='{system}' \
+    --show-only templates/operator-cluster-role.yaml \
+    "$PROJECT_PATH"/stackgres-k8s/install/helm/stackgres-operator/ \
+    | yq -y 'select(.kind == "Role")|.rules'
+)
+
+- apiGroups:
+  - operators.coreos.com
+  resources:
+  - operators
+  verbs:
+  - list
+  - get
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: restapi
+  namespace: system
+rules:
+##
+## Base restapi rules
+##
+$(
+  helm template -n system stackgres-operator \
+    --set disableCrdsAndWebhooksUpdate=true \
+    --set-string allowedNamespaces='{system}' \
+    --show-only templates/webapi-cluster-role.yaml \
+    "$PROJECT_PATH"/stackgres-k8s/install/helm/stackgres-operator/ \
+    | yq -y 'select(.kind == "Role")|.rules'
+)
+
+#+kubebuilder:scaffold:rules

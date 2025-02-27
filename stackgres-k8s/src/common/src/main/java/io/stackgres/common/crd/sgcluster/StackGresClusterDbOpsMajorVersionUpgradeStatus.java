@@ -5,16 +5,19 @@
 
 package io.stackgres.common.crd.sgcluster;
 
+import java.util.List;
 import java.util.Objects;
 
-import javax.validation.constraints.NotNull;
-
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
+import io.stackgres.common.validation.FieldReference;
+import io.stackgres.common.validation.FieldReference.ReferencedField;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.NotNull;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -24,47 +27,63 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresClusterDbOpsMajorVersionUpgradeStatus extends ClusterDbOpsRestartStatus {
 
-  @JsonProperty("sourcePostgresVersion")
   @NotNull
   private String sourcePostgresVersion;
 
-  @JsonProperty("sourceSgPostgresConfig")
+  private List<StackGresClusterExtension> sourcePostgresExtensions;
+
   @NotNull
   private String sourceSgPostgresConfig;
 
-  @JsonProperty("sourceBackupPath")
   private String sourceBackupPath;
 
-  @JsonProperty("targetPostgresVersion")
+  @NotNull
+  private String sourceReplicationMode;
+
   @NotNull
   private String targetPostgresVersion;
 
-  @JsonProperty("locale")
   @NotNull
   private String locale;
 
-  @JsonProperty("encoding")
   @NotNull
   private String encoding;
 
-  @JsonProperty("dataChecksum")
   @NotNull
   private Boolean dataChecksum;
 
-  @JsonProperty("link")
   @NotNull
   private Boolean link;
 
-  @JsonProperty("clone")
   @NotNull
   private Boolean clone;
 
-  @JsonProperty("check")
   @NotNull
   private Boolean check;
 
-  @JsonProperty("rollback")
   private Boolean rollback;
+
+  @ReferencedField("primaryInstance")
+  interface PrimaryInstance extends FieldReference {
+  }
+
+  @ReferencedField("initialInstances")
+  interface InitialInstances extends FieldReference {
+  }
+
+  @JsonIgnore
+  @AssertTrue(message = "primaryInstance is required",
+      payload = { PrimaryInstance.class })
+  public boolean isPrimaryInstanceSectionPresent() {
+    return getPrimaryInstance() != null;
+  }
+
+  @JsonIgnore
+  @AssertTrue(message = "initialInstances is required",
+      payload = { InitialInstances.class })
+  public boolean isInitialInstancesSectionPresent() {
+    return getInitialInstances() != null;
+  }
 
   public String getSourcePostgresVersion() {
     return sourcePostgresVersion;
@@ -72,6 +91,15 @@ public class StackGresClusterDbOpsMajorVersionUpgradeStatus extends ClusterDbOps
 
   public void setSourcePostgresVersion(String sourcePostgresVersion) {
     this.sourcePostgresVersion = sourcePostgresVersion;
+  }
+
+  public List<StackGresClusterExtension> getSourcePostgresExtensions() {
+    return sourcePostgresExtensions;
+  }
+
+  public void setSourcePostgresExtensions(
+      List<StackGresClusterExtension> sourcePostgresExtensions) {
+    this.sourcePostgresExtensions = sourcePostgresExtensions;
   }
 
   public String getSourceSgPostgresConfig() {
@@ -88,6 +116,14 @@ public class StackGresClusterDbOpsMajorVersionUpgradeStatus extends ClusterDbOps
 
   public void setSourceBackupPath(String sourceBackupPath) {
     this.sourceBackupPath = sourceBackupPath;
+  }
+
+  public String getSourceReplicationMode() {
+    return sourceReplicationMode;
+  }
+
+  public void setSourceReplicationMode(String sourceReplicationMode) {
+    this.sourceReplicationMode = sourceReplicationMode;
   }
 
   public String getTargetPostgresVersion() {
@@ -158,9 +194,9 @@ public class StackGresClusterDbOpsMajorVersionUpgradeStatus extends ClusterDbOps
   public int hashCode() {
     final int prime = 31;
     int result = super.hashCode();
-    result =
-        prime * result + Objects.hash(check, clone, dataChecksum, encoding, link, locale, rollback,
-            sourceBackupPath, sourcePostgresVersion, sourceSgPostgresConfig, targetPostgresVersion);
+    result = prime * result + Objects.hash(check, clone, dataChecksum, encoding, link, locale,
+        rollback, sourceBackupPath, sourcePostgresExtensions, sourcePostgresVersion,
+        sourceReplicationMode, sourceSgPostgresConfig, targetPostgresVersion);
     return result;
   }
 
@@ -175,14 +211,15 @@ public class StackGresClusterDbOpsMajorVersionUpgradeStatus extends ClusterDbOps
     if (!(obj instanceof StackGresClusterDbOpsMajorVersionUpgradeStatus)) {
       return false;
     }
-    StackGresClusterDbOpsMajorVersionUpgradeStatus other =
-        (StackGresClusterDbOpsMajorVersionUpgradeStatus) obj;
+    StackGresClusterDbOpsMajorVersionUpgradeStatus other = (StackGresClusterDbOpsMajorVersionUpgradeStatus) obj;
     return Objects.equals(check, other.check) && Objects.equals(clone, other.clone)
         && Objects.equals(dataChecksum, other.dataChecksum)
         && Objects.equals(encoding, other.encoding) && Objects.equals(link, other.link)
         && Objects.equals(locale, other.locale) && Objects.equals(rollback, other.rollback)
         && Objects.equals(sourceBackupPath, other.sourceBackupPath)
+        && Objects.equals(sourcePostgresExtensions, other.sourcePostgresExtensions)
         && Objects.equals(sourcePostgresVersion, other.sourcePostgresVersion)
+        && Objects.equals(sourceReplicationMode, other.sourceReplicationMode)
         && Objects.equals(sourceSgPostgresConfig, other.sourceSgPostgresConfig)
         && Objects.equals(targetPostgresVersion, other.targetPostgresVersion);
   }

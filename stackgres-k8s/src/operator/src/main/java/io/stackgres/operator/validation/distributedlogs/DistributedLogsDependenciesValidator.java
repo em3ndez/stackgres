@@ -7,14 +7,14 @@ package io.stackgres.operator.validation.distributedlogs;
 
 import java.util.Optional;
 
-import javax.inject.Singleton;
-
 import io.stackgres.common.ErrorType;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
+import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
 import io.stackgres.operator.common.StackGresDistributedLogsReview;
 import io.stackgres.operator.validation.DependenciesValidator;
 import io.stackgres.operator.validation.ValidationType;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.inject.Singleton;
 
 @Singleton
 @ValidationType(ErrorType.FORBIDDEN_CR_DELETION)
@@ -25,9 +25,11 @@ public class DistributedLogsDependenciesValidator
   @Override
   public void validate(StackGresDistributedLogsReview review, StackGresCluster resource)
       throws ValidationFailed {
-    if (Optional.ofNullable(resource.getSpec().getDistributedLogs())
+    if (Optional.ofNullable(resource)
+        .map(StackGresCluster::getSpec)
+        .map(StackGresClusterSpec::getDistributedLogs)
         .map(distributedLogs -> review.getRequest().getName().equals(
-            distributedLogs.getDistributedLogs()))
+            distributedLogs.getSgDistributedLogs()))
         .orElse(false)) {
       fail(review, resource);
     }

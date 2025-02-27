@@ -87,6 +87,8 @@ describe('Create SGCluster', () => {
     after( () => {
         cy.login()
 
+        cy.deleteCluster(namespace, 'minimal-' + resourceName);
+        
         cy.deleteCluster(namespace, 'basic-' + resourceName);
 
         cy.deleteCluster(namespace, 'babelfish-' + resourceName);
@@ -101,17 +103,85 @@ describe('Create SGCluster', () => {
                 namespace: namespace
             }
         });
+
+        cy.deleteCRD('sgscripts', {
+            metadata: {
+                name: 'script-' + resourceName,
+                namespace: namespace
+            }
+        });
     });
 
     it('Create SGCluster form should be visible', () => {
         cy.get('form#createCluster')
             .should('be.visible')
-    });  
+    });
+
+    it('Creating a minimal SGCluster should be possible', () => {
+        // Choose minimal wizard
+        cy.get('[data-field="formTemplate.minimal"]')
+            .click()
+
+        // Test Cluster Name
+        cy.get('[data-field="metadata.name"]')
+            .type('minimal-' + resourceName)
+
+        // Setup get and put mock to check resource is not found and all fields are correctly set
+        cy.intercept('GET', '/stackgres/namespaces/' + namespace + '/sgclusters/minimal-' + resourceName)
+            .as('getCluster')
+        cy.intercept('POST', '/stackgres/sgclusters')
+            .as('postCluster')
+
+        // Test Submit form
+        cy.get('form#createCluster button[type="submit"]')
+            .click()
+        
+        cy.get('#notifications .message.show .title')
+            .should(($notification) => {
+                expect($notification).contain('Cluster "minimal-' + resourceName + '" created successfully')
+            })
+
+        cy.location('pathname').should('eq', '/admin/' + namespace + '/sgclusters')
+
+        // Test data sent to API
+        cy.wait('@getCluster')
+            .its('response.statusCode')
+            .should('eq', 404)
+        cy.wait('@postCluster')
+            .its('response.statusCode')
+            .should('eq', 200)
+        cy.get('@postCluster')
+            .its('request.body.spec.instances')
+            .should('eq', 1)
+        cy.get('@postCluster')
+            .its('request.body.spec.profile')
+            .should('eq', "development")
+        cy.get('@postCluster')
+            .its('request.body.spec.pods.persistentVolume.size')
+            .should('eq', "1Gi")
+        cy.get('@postCluster')
+            .its('request.body.spec.postgres')
+            .should('nested.include', {"flavor": "vanilla"})
+            .and('nested.include', {"version": "latest"})
+        cy.get('@postCluster')
+            .its('request.body.spec.pods.disableConnectionPooling')
+            .should('eq', true)
+    });
 
     it('Creating a basic SGCluster should be possible', () => {
+        // Choose basic wizard
+        cy.get('[data-field="formTemplate.basic"]')
+            .click()
+
         // Test Cluster Name
         cy.get('[data-field="metadata.name"]')
             .type('basic-' + resourceName)
+
+        // Setup get and put mock to check resource is not found and all fields are correctly set
+        cy.intercept('GET', '/stackgres/namespaces/' + namespace + '/sgclusters/basic-' + resourceName)
+            .as('getCluster')
+        cy.intercept('POST', '/stackgres/sgclusters')
+            .as('postCluster')
 
         // Test Submit form
         cy.get('form#createCluster button[type="submit"]')
@@ -123,9 +193,116 @@ describe('Create SGCluster', () => {
             })
 
         cy.location('pathname').should('eq', '/admin/' + namespace + '/sgclusters')
-    }); 
+
+        // Test data sent to API
+        cy.wait('@getCluster')
+            .its('response.statusCode')
+            .should('eq', 404)
+        cy.wait('@postCluster')
+            .its('response.statusCode')
+            .should('eq', 200)
+        cy.get('@postCluster')
+            .its('request.body.spec.instances')
+            .should('eq', 1)
+        cy.get('@postCluster')
+            .its('request.body.spec.profile')
+            .should('eq', "testing")
+        cy.get('@postCluster')
+            .its('request.body.spec.pods.persistentVolume.size')
+            .should('eq', "1Gi")
+        cy.get('@postCluster')
+            .its('request.body.spec.postgres')
+            .should('nested.include', {"flavor": "vanilla"})
+            .and('nested.include', {"version": "latest"})
+        cy.get('@postCluster')
+            .its('request.body.spec.prometheusAutobind')
+            .should('eq', true)
+        cy.get('@postCluster')
+            .its('request.body.spec.distributedLogs')
+            .should('have.nested.property','sgDistributedLogs')
+    });
+
+    it('Creating a full SGCluster should be possible', () => {
+        // Choose basic wizard
+        cy.get('[data-field="formTemplate.full"]')
+            .click()
+
+        // Test Cluster Name
+        cy.get('[data-field="metadata.name"]')
+            .type('full-' + resourceName)
+
+        // Test Configurations
+        cy.get('form#createCluster li[data-step="configurations"]')
+            .click()
+        
+        // Test SGPostgresConfig file selection
+        cy.get('select[data-field="spec.configurations.sgPostgresConfig"]')
+            .select('createNewResource')
+
+        cy.get('input#uploadSgPostgresConfig').selectFile('cypress/fixtures/forms/sgcluster/postgresql.conf')
+
+        // Test SGPoolingConfig file selection
+        cy.get('select[data-field="spec.configurations.sgPoolingConfig"]')
+            .select('createNewResource')
+
+        cy.get('input#uploadSgPoolingConfig').selectFile('cypress/fixtures/forms/sgcluster/pgbouncer.ini')
+
+        // Setup get and put mock to check resource is not found and all fields are correctly set
+        cy.intercept('GET', '/stackgres/namespaces/' + namespace + '/sgclusters/full-' + resourceName)
+            .as('getCluster')
+        cy.intercept('POST', '/stackgres/sgclusters')
+            .as('postCluster')
+
+        // Test Submit form
+        cy.get('form#createCluster button[type="submit"]')
+            .click()
+        
+        cy.get('#notifications .message.show .title')
+            .should(($notification) => {
+                expect($notification).contain('Cluster "full-' + resourceName + '" created successfully')
+            })
+
+        cy.location('pathname').should('eq', '/admin/' + namespace + '/sgclusters')
+
+        // Test data sent to API
+        cy.wait('@getCluster')
+            .its('response.statusCode')
+            .should('eq', 404)
+        cy.wait('@postCluster')
+            .its('response.statusCode')
+            .should('eq', 200)
+        cy.get('@postCluster')
+            .its('request.body.spec.instances')
+            .should('eq', 1)
+        cy.get('@postCluster')
+            .its('request.body.spec.profile')
+            .should('eq', "production")
+        cy.get('@postCluster')
+            .its('request.body.spec.pods.persistentVolume.size')
+            .should('eq', "1Gi")
+        cy.get('@postCluster')
+            .its('request.body.spec.postgres')
+            .should('nested.include', {"flavor": "vanilla"})
+            .and('nested.include', {"version": "latest"})
+        cy.get('@postCluster')
+            .its('request.body.spec.prometheusAutobind')
+            .should('eq', true)
+        cy.get('@postCluster')
+            .its('request.body.spec.distributedLogs')
+            .should('have.nested.property','sgDistributedLogs')
+        cy.get('@postCluster')
+            .its('request.body.spec.configurations')
+            .should('have.nested.property','sgPostgresConfig')
+        cy.get('@postCluster')
+            .its('request.body.spec.configurations')
+            .should('have.nested.property','sgPoolingConfig')
+    });
 
     it('Creating a SGCluster with Babelfish should be possible', () => {
+        // Choose custom wizard
+        cy.get('[data-field="formTemplate.custom"]')
+            .click()
+
         // Test Cluster Name
         cy.get('input[data-field="metadata.name"]')
             .type('babelfish-' + resourceName)
@@ -135,6 +312,12 @@ describe('Create SGCluster', () => {
             .click()
         cy.get('input[data-field="spec.nonProductionOptions.enabledFeatureGates.babelfish"]')
             .click()
+
+        // Setup get and put mock to check resource is not found and all fields are correctly set
+        cy.intercept('GET', '/stackgres/namespaces/' + namespace + '/sgclusters/babelfish-' + resourceName)
+            .as('getCluster')
+        cy.intercept('POST', '/stackgres/sgclusters')
+            .as('postCluster')
 
         // Test Submit form
         cy.get('form#createCluster button[type="submit"]')
@@ -146,9 +329,82 @@ describe('Create SGCluster', () => {
             })
 
         cy.location('pathname').should('eq', '/admin/' + namespace + '/sgclusters')
+
+        // Test data sent to API
+        cy.wait('@getCluster')
+            .its('response.statusCode')
+            .should('eq', 404)
+        cy.wait('@postCluster')
+            .its('response.statusCode')
+            .should('eq', 200)
+        cy.get('@postCluster')
+            .its('request.body.spec.instances')
+            .should('eq', 1)
+        cy.get('@postCluster')
+            .its('request.body.spec.profile')
+            .should('eq', "production")
+        cy.get('@postCluster')
+            .its('request.body.spec.pods.persistentVolume.size')
+            .should('eq', "1Gi")
+        cy.get('@postCluster')
+            .its('request.body.spec.postgres')
+            .should('nested.include', {"flavor": "babelfish"})
+            .and('nested.include', {"version": "latest"})
+        cy.get('@postCluster')
+            .its('request.body.spec.nonProductionOptions')
+            .should('nested.include',{'enabledFeatureGates[0]': "babelfish-flavor"})
+    });
+
+    it('Restore cluster from an SGBackup', () => {
+        cy.visit(namespace + '/sgclusters/new?restoreFromBackup=ui-0&postgresVersion=' + Cypress.env('postgres_version'))
+
+        // Advanced mode should be enabled
+        cy.get('input#advancedMode')
+            .should('be.checked')
+
+        // Form should start at Initialization step
+        cy.get('li[data-step="initialization"]')
+            .should('have.class', 'active')
+
+        // Backup selection graph should be visible
+        cy.get('#pitr-graph .apexcharts-canvas')
+            .should('be.visible')
+
+        // Backup "ui-0" should be selected in the graph
+        cy.get('.apexcharts-series-markers circle[selected="true"]')
+            .should('be.visible')
+
+        // Initialization should be "ui-0"
+        cy.get('input[data-field="spec.initialData.restore.fromBackup"]')
+            .should('be.visible')
+            .should('have.value', 'ui-0')
+            .should('be.disabled')
+
+        // PITR input should be available
+        cy.get('input[data-field="spec.initialData.restore.fromBackup.pointInTimeRecovery.restoreToTimestamp"]')
+            .should('be.visible')
+            .should('be.enabled')
+            .should('have.value', '')
+            .should('have.class', 'ready')
+        
+        // Cluster name should have a default value
+        cy.get('li[data-step="cluster"]')
+            .click()
+
+        cy.get('input[data-field="metadata.name"]')
+            .invoke('val').should('contain', 'restore-from-ui-0-')
+
+        // Postgres version should match that of backup's
+        cy.get('ul#postgresVersion li.selected')
+            .invoke('text').should('contain', 'Postgres ' + Cypress.env('postgres_version'))
+
     });
 
     it('Creating an advanced SGCluster should be possible', () => {
+        // Choose custom wizard
+        cy.get('[data-field="formTemplate.custom"]')
+            .click()
+
         // Enable advanced options
         cy.get('form#createCluster input#advancedMode')
             .click()
@@ -157,6 +413,10 @@ describe('Create SGCluster', () => {
         cy.get('input[data-field="metadata.name"]')
             .type('advanced-' + resourceName)
         
+        // Test Profile
+        cy.get('select[data-field="spec.profile"]')
+            .select('testing')
+
         // Test postgres version
         cy.get('ul[data-field="spec.postgres.version"] li').first()
             .click()
@@ -166,7 +426,6 @@ describe('Create SGCluster', () => {
         // Enable SSL Connections
         cy.get('input[data-field="spec.postgres.ssl.enabled"]')
             .click()
-        
         cy.get('input[data-field="spec.postgres.ssl.certificateSecretKeySelector.name"]')
             .type('cert-cluster')
         cy.get('input[data-field="spec.postgres.ssl.certificateSecretKeySelector.key"]')
@@ -255,19 +514,27 @@ describe('Create SGCluster', () => {
         cy.get('[data-field="spec.configurations.backups.performance.uploadDiskConcurrency"]')
             .clear()    
             .type('2')
+        
+        // Volume Snapshot details
+        cy.get('label[data-field="spec.configurations.backups.useVolumeSnapshot"]')
+            .click()
+
+        cy.get('[data-field="spec.configurations.backups.volumeSnapshotClass"]')
+            .clear()    
+            .type('snapshot')
+
+        cy.get('label[data-field="spec.configurations.backups.fastVolumeSnapshot"]')
+            .click()
 
         // Test data initialization
         cy.get('form#createCluster li[data-step="initialization"]')
             .click()
         
         // Choose Backup (We're always assuming there's a backup with name "ui-0" on the specified namespace)
-        cy.get('select[data-field="spec.initialData.restore.fromBackup"]') 
-            .select('ui-0')
+        cy.get('#pitr-graph .apexcharts-series-markers > circle[rel="0"]')
+            .click()
          
         // Set PITR
-        cy.get('input[data-field="spec.initialData.restore.fromBackup.pointInTimeRecovery"]')
-            .click()
-
         cy.get('input[data-field="spec.initialData.restore.fromBackup.pointInTimeRecovery.restoreToTimestamp"]')
             .clear()
             .type('9999-01-01 00:00:00')
@@ -346,8 +613,8 @@ describe('Create SGCluster', () => {
             .click()
         
         // Test create new script
-        cy.get('label[for="spec.managedSql.scripts.scriptSource"] + select')
-            .select('createNewScript')
+        cy.get('.scriptFieldset > div.fieldsetFooter > a.addRow')
+            .click()
 
         // Test Entry script textarea
         cy.get('[data-field="spec.managedSql.scripts[0].scriptSpec.scripts[0].script"]')
@@ -369,10 +636,10 @@ describe('Create SGCluster', () => {
             .click()
 
         // Test User-Supplied Pods Sidecars
-        cy.get('form#createCluster li[data-step="pods"]')
+        // Test Custom volumes
+        cy.get('div.repeater.customVolumes .fieldsetFooter .addRow')
             .click()
 
-        // Test Custom volumes
         cy.get('input[data-field="spec.pods.customVolumes[0].name"]')
             .type('vol1')
 
@@ -479,6 +746,9 @@ describe('Create SGCluster', () => {
         */
 
         // Test Custom Init Containers
+        cy.get('div.repeater.customInitContainers .fieldsetFooter .addRow')
+            .click()
+
         cy.get('input[data-field="spec.pods.customInitContainers[0].name"]')
             .type('container1')
 
@@ -609,6 +879,9 @@ describe('Create SGCluster', () => {
             .click()
 
         // Test Custom Containers
+        cy.get('div.repeater.customContainers .fieldsetFooter .addRow')
+            .click()
+
         cy.get('input[data-field="spec.pods.customContainers[0].name"]')
             .type('container1')
 
@@ -752,6 +1025,9 @@ describe('Create SGCluster', () => {
             .clear()
             .type('2')
 
+        cy.get('[data-add="spec.replication.groups"]')
+            .click()
+
         cy.get('[data-group="replication-group-0"] input[data-field="spec.replication.groups[0].name"]')
             .clear()
             .type('group-0')
@@ -787,6 +1063,9 @@ describe('Create SGCluster', () => {
         cy.get('input[data-field="spec.postgresServices.primary.loadBalancerIP"]')
             .clear()
             .type('1.2.3.4')
+
+        cy.get('div.repeater.sidecars.primary div.fieldsetFooter > a.addRow')
+            .click()
 
         cy.get('input[data-field="spec.postgresServices.primary.customPorts[0].appProtocol"]')
             .clear()
@@ -844,6 +1123,9 @@ describe('Create SGCluster', () => {
             .clear()
             .type('1.2.3.4')
 
+        cy.get('div.repeater.sidecars.replica div.fieldsetFooter > a.addRow')
+            .click()
+
         cy.get('input[data-field="spec.postgresServices.replicas.customPorts[0].appProtocol"]')
             .clear()
             .type('protocol')
@@ -859,7 +1141,7 @@ describe('Create SGCluster', () => {
         cy.get('input[data-field="spec.postgresServices.replicas.customPorts[0].port"]')
             .clear()
             .type('1234')
-
+    
         cy.get('select[data-field="spec.postgresServices.replicas.customPorts[0].protocol"]')
             .select('UDP')
         
@@ -897,31 +1179,43 @@ describe('Create SGCluster', () => {
         cy.get('form#createCluster li[data-step="metadata"]')
             .click()
 
+        cy.get('fieldset[data-field="spec.metadata.labels.clusterPods"] + div.fieldsetFooter > a.addRow')
+            .click()
         cy.get('input[data-field="spec.metadata.labels.clusterPods[0].label"]')
             .type('label')
         cy.get('input[data-field="spec.metadata.labels.clusterPods[0].value"]')
             .type('value')
         
+        cy.get('fieldset[data-field="spec.metadata.annotations.allResources"] + div.fieldsetFooter > a.addRow')
+            .click()
         cy.get('input[data-field="spec.metadata.annotations.allResources[0].annotation"]')
             .type('annotation')
         cy.get('input[data-field="spec.metadata.annotations.allResources[0].value"]')
             .type('value')
 
+        cy.get('fieldset[data-field="spec.metadata.annotations.clusterPods"] + div.fieldsetFooter > a.addRow')
+            .click()
         cy.get('input[data-field="spec.metadata.annotations.clusterPods[0].annotation"]')
             .type('annotation')
         cy.get('input[data-field="spec.metadata.annotations.clusterPods[0].value"]')
             .type('value')
 
+        cy.get('fieldset[data-field="spec.metadata.annotations.services"] + div.fieldsetFooter > a.addRow')
+            .click()
         cy.get('input[data-field="spec.metadata.annotations.services[0].annotation"]')
             .type('annotation')        
         cy.get('input[data-field="spec.metadata.annotations.services[0].value"]')
             .type('value')
         
+        cy.get('fieldset[data-field="spec.metadata.annotations.primaryService"] + div.fieldsetFooter > a.addRow')
+            .click()
         cy.get('input[data-field="spec.metadata.annotations.primaryService[0].annotation"]')
             .type('annotation')        
         cy.get('input[data-field="spec.metadata.annotations.primaryService[0].value"]')
             .type('value')
         
+        cy.get('fieldset[data-field="spec.metadata.annotations.replicasService"] + div.fieldsetFooter > a.addRow')
+            .click()
         cy.get('input[data-field="spec.metadata.annotations.replicasService[0].annotation"]')
             .type('annotation')        
         cy.get('input[data-field="spec.metadata.annotations.replicasService[0].value"]')
@@ -932,12 +1226,16 @@ describe('Create SGCluster', () => {
             .click()
 
         // Tests Node Selectors
+        cy.get('div.repeater.nodeSelector div.fieldsetFooter > a.addRow')
+            .click()
         cy.get('input[data-field="spec.pods.scheduling.nodeSelector[0].label"]')
             .type('key')
         cy.get('input[data-field="spec.pods.scheduling.nodeSelector[0].value"]')
             .type('value')
 
         // Tests Node Tolerations
+        cy.get('div.scheduling.repeater.tolerations div.fieldsetFooter > a.addRow')
+            .click()
         cy.get('input[data-field="spec.pods.scheduling.tolerations[0].key"]')
             .type('key')
         cy.get('input[data-field="spec.pods.scheduling.tolerations[0].value"]')
@@ -946,6 +1244,8 @@ describe('Create SGCluster', () => {
             .select('NoSchedule')
         
         // Tests Node Affinity (Required)
+        cy.get('div.scheduling.repeater.requiredAffinity div.fieldsetFooter > a.addRow')
+            .click()
         cy.get('input[data-field="spec.pods.scheduling.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms.items.properties.matchExpressions.items.properties.key"]')
             .type('key')
         cy.get('select[data-field="spec.pods.scheduling.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms.items.properties.matchExpressions.items.properties.operator"]')
@@ -961,6 +1261,8 @@ describe('Create SGCluster', () => {
             .type('value')
         
         // Tests Node Affinity (Preferred)
+        cy.get('div.scheduling.repeater.preferredAffinity div.fieldsetFooter > a.addRow')
+            .click()
         cy.get('input[data-field="spec.pods.scheduling.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution.items.properties.preference.properties.matchExpressions.items.properties.key"]')
             .type('key')
         cy.get('select[data-field="spec.pods.scheduling.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution.items.properties.preference.properties.matchExpressions.items.properties.operator"]')
@@ -983,8 +1285,27 @@ describe('Create SGCluster', () => {
         cy.get('form#createCluster li[data-step="non-production"]')
             .click()
 
-        cy.get('input[data-field="spec.nonProductionOptions.disableClusterPodAntiAffinity"]')
+        cy.get('select[data-field="spec.nonProductionOptions.disableClusterPodAntiAffinity"]')
+            .select('Disable')
+        
+        cy.get('select[data-field="spec.nonProductionOptions.disablePatroniResourceRequirements"]')
+            .select('Disable')
+        
+        cy.get('select[data-field="spec.nonProductionOptions.disableClusterResourceRequirements"]')
+            .select('Disable')
+
+        // Test Dry Run
+        cy.get('form#createCluster button[data-field="dryRun"]')
             .click()
+
+        cy.get('#clusterSummary')
+            .should('be.visible')
+
+        cy.get('#clusterSummary span.close')
+            .click()
+
+        cy.get('#clusterSummary')
+            .should('not.exist')
 
         // Setup get and put mock to check resource is not found and all fields are correctly set
         cy.intercept('GET', '/stackgres/namespaces/' + namespace + '/sgclusters/advanced-' + resourceName)
@@ -1010,7 +1331,7 @@ describe('Create SGCluster', () => {
             .should('eq', 404)
         cy.wait('@postCluster')
             .its('response.statusCode')
-            .should('eq', 204)
+            .should('eq', 200)
         cy.get('@postCluster')
             .its('request.body.spec.instances')
             .should('eq', "4")
@@ -1044,6 +1365,9 @@ describe('Create SGCluster', () => {
             .and('nested.include', {"performance.maxNetworkBandwidth": "1024"})
             .and('nested.include', {"performance.maxDiskBandwidth": "1024"})
             .and('nested.include', {"performance.uploadDiskConcurrency": "2"})
+            .and('nested.include', {"useVolumeSnapshot": true})
+            .and('nested.include', {"volumeSnapshotClass": "snapshot"})
+            .and('nested.include', {"fastVolumeSnapshot": true})
         cy.get('@postCluster')
             .its('request.body.spec.initialData.restore')
             .should('nested.include', {"fromBackup.name": "ui-0"})
@@ -1230,9 +1554,14 @@ describe('Create SGCluster', () => {
         cy.get('@postCluster')
             .its('request.body.spec.nonProductionOptions.disableClusterPodAntiAffinity')
             .should('eq', true)
+        cy.get('@postCluster')
+            .its('request.body.spec.nonProductionOptions.disablePatroniResourceRequirements')
+            .should('eq', true)
+        cy.get('@postCluster')
+            .its('request.body.spec.nonProductionOptions.disableClusterResourceRequirements')
+            .should('eq', true)
     });
 
-    
     it('Updating an advanced SGCluster should be possible', () => {
         // Edit advanced cluster
         cy.visit(namespace + '/sgcluster/advanced-' + resourceName + '/edit')
@@ -1244,6 +1573,11 @@ describe('Create SGCluster', () => {
         // Test Cluster Name
         cy.get('input[data-field="metadata.name"]')
             .should('be.disabled')
+
+        // Test Profile
+        cy.get('select[data-field="spec.profile"]')
+            .should('have.value', 'testing')    
+            .select('development')
 
         // Test instances
         cy.get('input[data-field="spec.instances"]')
@@ -1344,27 +1678,39 @@ describe('Create SGCluster', () => {
             .clear()
             .type('1')
 
+        // Test Volume Snapshot
+        cy.get('label[data-field="spec.configurations.backups.useVolumeSnapshot"] > input')
+            .should('be.enabled')
+        
+        cy.get('[data-field="spec.configurations.backups.volumeSnapshotClass"]')
+            .should('have.value', 'snapshot')
+            .clear()
+            .type('class')
+
+        cy.get('label[data-field="spec.configurations.backups.fastVolumeSnapshot"] > input')
+            .should('be.enabled')
+            .click()
+
         // Test data initialization
         cy.get('form#createCluster li[data-step="initialization"]')
             .click()
         
         // Choose Backup (We're always assuming there's a backup with name "ui-0" on the specified namespace)
-        cy.get('label[for="spec.initialData.restore.fromBackup"] + input') 
+        cy.get('input[data-field="spec.initialData.restore.fromBackup"]')
+            .should('have.value', 'ui-0')
             .should('be.disabled')
-        
-        // Set PITR
-        cy.get('input[data-field="spec.initialData.restore.fromBackup.pointInTimeRecovery"]') 
-            .should('be.disabled')
-        
+
+        // Check PITR
         cy.get('input[data-field="spec.initialData.restore.fromBackup.pointInTimeRecovery.restoreToTimestamp"]') 
             .should('be.disabled')
         
         // Performance details
-        cy.get('input[data-field="spec.initialData.restore.downloadDiskConcurrency"]') 
+        cy.get('input[data-field="spec.initialData.restore.downloadDiskConcurrency"]')
+            .should('have.value', '2') 
             .should('be.disabled')
 
         // Test User-Supplied Pods Sidecars
-        cy.get('form#createCluster li[data-step="pods"]')
+        cy.get('form#createCluster li[data-step="sidecars"]')
             .click()
 
         // Test Custom volumes
@@ -1425,6 +1771,274 @@ describe('Create SGCluster', () => {
             .should('have.value', 'path')
             .clear()
             .type('edit-path')
+
+        // Test Custom Init Containers
+        cy.get('input[data-field="spec.pods.customInitContainers[0].name"]')
+            .should('have.value', 'container1')
+            .clear()
+            .type('edit-container1')
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].image"]')
+            .should('have.value', 'image1')
+            .clear()
+            .type('edit-image1')
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].imagePullPolicy"]')
+            .should('have.value', 'imagePullPolicy1')
+            .clear()
+            .type('edit-imagePullPolicy1')
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].workingDir"]')
+            .should('have.value', 'workingDir1')
+            .clear()
+            .type('edit-workingDir1')
+        
+        cy.get('input[data-field="spec.pods.customInitContainers[0].args[0]"]')
+            .should('have.value', 'arg1')
+            .clear()
+            .type('edit-arg1')
+
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].args[1]"]')
+            .should('have.value', 'arg2')
+            .clear()
+            .type('edit-arg2')
+        
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].command[0]"]')
+            .should('have.value', 'command1')
+            .clear()
+            .type('edit-command1')
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].command[1]"]')
+            .should('have.value', 'command2')
+            .clear()
+            .type('edit-command2')
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].env[0].name"]')
+            .should('have.value', 'var1')
+            .clear()
+            .type('edit-var1')
+        
+        cy.get('input[data-field="spec.pods.customInitContainers[0].env[0].value"]')
+            .should('have.value', 'val1')
+            .clear()
+            .type('edit-val1')
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].env[1].name"]')
+            .should('have.value', 'var2')
+            .clear() 
+            .type('edit-var2')
+        
+        cy.get('input[data-field="spec.pods.customInitContainers[0].env[1].value"]')
+            .should('have.value', 'val2')
+            .clear()
+            .type('edit-val2')
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].ports[0].name"]')
+            .should('have.value', 'port1')
+            .clear()
+            .type('edit-port1')
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].ports[0].hostIP"]')
+            .should('have.value', 'ip1')
+            .clear()
+            .type('edit-ip1')
+        
+        cy.get('input[data-field="spec.pods.customInitContainers[0].ports[0].hostPort"]')
+            .should('have.value', '1')
+            .clear()
+            .type('11')
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].ports[0].containerPort"]')
+            .should('have.value', '1')
+            .clear()
+            .type('11')
+        
+        cy.get('select[data-field="spec.pods.customInitContainers[0].ports[0].protocol"]')
+            .should('have.value', 'TCP')
+            .select('SCTP')
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].ports[1].name"]')
+            .should('have.value', 'port2')
+            .clear()
+            .type('edit-port2')
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].ports[1].hostIP"]')
+            .should('have.value', 'ip2')
+            .clear()
+            .type('edit-ip2')
+        
+        cy.get('input[data-field="spec.pods.customInitContainers[0].ports[1].hostPort"]')
+            .should('have.value', '2')
+            .clear()
+            .type('22')
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].ports[1].containerPort"]')
+            .should('have.value', '2')
+            .clear()
+            .type('22')
+        
+        cy.get('select[data-field="spec.pods.customInitContainers[0].ports[1].protocol"]')
+            .should('have.value', 'UDP')
+            .select('SCTP')
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].volumeMounts[0].name"]')
+            .should('have.value', 'vol1')
+            .clear()
+            .type('edit-vol1')
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].volumeMounts[0].readOnly"]')
+            .should('be.enabled')    
+            .click()
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].volumeMounts[0].mountPath"]')
+            .should('have.value', 'mountPath')
+            .clear()
+            .type('edit-mountPath')
+
+        cy.get('input[data-field="spec.pods.customInitContainers[0].volumeMounts[0].mountPropagation"]')
+            .should('have.value', 'mountPropagation')
+            .clear()
+            .type('edit-mountPropagation')
+        
+        cy.get('input[data-field="spec.pods.customInitContainers[0].volumeMounts[0].subPath"]')
+            .should('have.value', 'subPath')
+            .clear()
+            .type('edit-subPath')
+
+        // Test Custom Containers
+        cy.get('input[data-field="spec.pods.customContainers[0].name"]')
+            .should('have.value', 'container1')
+            .clear()
+            .type('edit-container1')
+
+        cy.get('input[data-field="spec.pods.customContainers[0].image"]')
+            .should('have.value', 'image1')
+            .clear()
+            .type('edit-image1')
+
+        cy.get('input[data-field="spec.pods.customContainers[0].imagePullPolicy"]')
+            .should('have.value', 'imagePullPolicy1')
+            .clear()
+            .type('edit-imagePullPolicy1')
+
+        cy.get('input[data-field="spec.pods.customContainers[0].workingDir"]')
+            .should('have.value', 'workingDir1')
+            .clear()
+            .type('edit-workingDir1')
+        
+        cy.get('input[data-field="spec.pods.customContainers[0].args[0]"]')
+            .should('have.value', 'arg1')
+            .clear()
+            .type('edit-arg1')
+
+        cy.get('input[data-field="spec.pods.customContainers[0].args[1]"]')
+            .should('have.value', 'arg2')
+            .clear()
+            .type('edit-arg2')
+
+        cy.get('input[data-field="spec.pods.customContainers[0].command[0]"]')
+            .should('have.value', 'command1')
+            .clear()
+            .type('edit-command1')
+
+        cy.get('input[data-field="spec.pods.customContainers[0].command[1]"]')
+            .should('have.value', 'command2')
+            .clear()
+            .type('edit-command2')
+
+        cy.get('input[data-field="spec.pods.customContainers[0].env[0].name"]')
+            .should('have.value', 'var1')
+            .clear()
+            .type('edit-var1')
+        
+        cy.get('input[data-field="spec.pods.customContainers[0].env[0].value"]')
+            .should('have.value', 'val1')
+            .clear()
+            .type('edit-val1')
+
+        cy.get('input[data-field="spec.pods.customContainers[0].env[1].name"]')
+            .should('have.value', 'var2')
+            .clear()
+            .type('edit-var2')
+        
+        cy.get('input[data-field="spec.pods.customContainers[0].env[1].value"]')
+            .should('have.value', 'val2')
+            .clear()
+            .type('edit-val2')
+
+        cy.get('input[data-field="spec.pods.customContainers[0].ports[0].name"]')
+            .should('have.value', 'port1')
+            .clear()
+            .type('edit-port1')
+
+        cy.get('input[data-field="spec.pods.customContainers[0].ports[0].hostIP"]')
+            .should('have.value', 'ip1')
+            .clear()
+            .type('edit-ip1')
+        
+        cy.get('input[data-field="spec.pods.customContainers[0].ports[0].hostPort"]')
+            .should('have.value', '1')
+            .clear()
+            .type('11')
+
+        cy.get('input[data-field="spec.pods.customContainers[0].ports[0].containerPort"]')
+            .should('have.value', '1')
+            .clear()
+            .type('11')
+        
+        cy.get('select[data-field="spec.pods.customContainers[0].ports[0].protocol"]')
+            .should('have.value', 'TCP')
+            .select('SCTP')
+
+        cy.get('input[data-field="spec.pods.customContainers[0].ports[1].name"]')
+            .should('have.value', 'port2')
+            .clear()
+            .type('edit-port2')
+
+        cy.get('input[data-field="spec.pods.customContainers[0].ports[1].hostIP"]')
+            .should('have.value', 'ip2')
+            .clear()
+            .type('edit-ip2')
+        
+        cy.get('input[data-field="spec.pods.customContainers[0].ports[1].hostPort"]')
+            .should('have.value', '2')
+            .clear()
+            .type('22')
+
+        cy.get('input[data-field="spec.pods.customContainers[0].ports[1].containerPort"]')
+            .should('have.value', '2')
+            .clear()
+            .type('22')
+        
+        cy.get('select[data-field="spec.pods.customContainers[0].ports[1].protocol"]')
+            .should('have.value', 'UDP')
+            .select('SCTP')
+
+        cy.get('input[data-field="spec.pods.customContainers[0].volumeMounts[0].name"]')
+            .should('have.value', 'vol1')
+            .clear()
+            .type('edit-vol1')
+
+        cy.get('input[data-field="spec.pods.customContainers[0].volumeMounts[0].readOnly"]')
+            .should('be.enabled')    
+            .click()
+
+        cy.get('input[data-field="spec.pods.customContainers[0].volumeMounts[0].mountPath"]')
+            .should('have.value', 'mountPath')
+            .clear()
+            .type('edit-mountPath')
+
+        cy.get('input[data-field="spec.pods.customContainers[0].volumeMounts[0].mountPropagation"]')
+            .should('have.value', 'mountPropagation')
+            .clear()
+            .type('edit-mountPropagation')
+        
+        cy.get('input[data-field="spec.pods.customContainers[0].volumeMounts[0].subPath"]')
+            .should('have.value', 'subPath')
+            .clear()
+            .type('edit-subPath')
 
         // Test replicate from external instance
         cy.get('form#createCluster li[data-step="replicate-from"]')
@@ -1741,9 +2355,17 @@ describe('Create SGCluster', () => {
         cy.get('form#createCluster li[data-step="non-production"]')
             .click()
 
-        cy.get('input[data-field="spec.nonProductionOptions.disableClusterPodAntiAffinity"]')
-            .should('be.enabled')
-            .click()
+        cy.get('select[data-field="spec.nonProductionOptions.disableClusterPodAntiAffinity"]')
+            .should('have.value', 'true')    
+            .select('Enable')
+
+        cy.get('select[data-field="spec.nonProductionOptions.disablePatroniResourceRequirements"]')
+            .should('have.value', 'true')    
+            .select('Enable')
+
+        cy.get('select[data-field="spec.nonProductionOptions.disableClusterResourceRequirements"]')
+            .should('have.value', 'true')    
+            .select('Enable')
 
         // Setup get and put mock to check resource is not found and all fields are correctly set
         cy.intercept('GET', '/stackgres/namespaces/' + namespace + '/sgclusters/advanced-' + resourceName,
@@ -1830,7 +2452,7 @@ describe('Create SGCluster', () => {
             .should('eq', 200)
         cy.wait('@putCluster')
             .its('response.statusCode')
-            .should('eq', 204)
+            .should('eq', 200)
         cy.get('@putCluster')
             .its('request.body.spec.instances')
             .should('eq', "5")
@@ -1859,6 +2481,9 @@ describe('Create SGCluster', () => {
             .and('nested.include', {"performance.maxNetworkBandwidth": "2048"})
             .and('nested.include', {"performance.maxDiskBandwidth": "2048"})
             .and('nested.include', {"performance.uploadDiskConcurrency": "1"})
+            .and('nested.include', {"useVolumeSnapshot": true})
+            .and('nested.include', {"volumeSnapshotClass": "class"})
+            .and('nested.include', {"fastVolumeSnapshot": false})
         cy.get('@putCluster')
             .its('request.body.spec.initialData.restore')
             .should('nested.include', {"fromBackup.name": "ui-0"})
@@ -1878,6 +2503,60 @@ describe('Create SGCluster', () => {
             .and('nested.include', {'customVolumes[2].secret.items[0].key': 'edit-1'})
             .and('nested.include', {'customVolumes[2].secret.items[0].mode': '1'})
             .and('nested.include', {'customVolumes[2].secret.items[0].path': 'edit-path'})
+            .and('nested.include', {"customInitContainers[0].name": 'edit-container1'})
+            .and('nested.include', {"customInitContainers[0].image": 'edit-image1'})
+            .and('nested.include', {"customInitContainers[0].imagePullPolicy": 'edit-imagePullPolicy1'})
+            .and('nested.include', {"customInitContainers[0].workingDir": 'edit-workingDir1'})
+            .and('nested.include', {"customInitContainers[0].args[0]": 'edit-arg1'})
+            .and('nested.include', {"customInitContainers[0].args[1]": 'edit-arg2'})
+            .and('nested.include', {"customInitContainers[0].command[0]": 'edit-command1'})
+            .and('nested.include', {"customInitContainers[0].command[1]": 'edit-command2'})
+            .and('nested.include', {"customInitContainers[0].env[0].name": 'edit-var1'})
+            .and('nested.include', {"customInitContainers[0].env[0].value": 'edit-val1'})
+            .and('nested.include', {"customInitContainers[0].env[1].name": 'edit-var2'})
+            .and('nested.include', {"customInitContainers[0].env[1].value": 'edit-val2'})
+            .and('nested.include', {"customInitContainers[0].ports[0].name": 'edit-port1'})
+            .and('nested.include', {"customInitContainers[0].ports[0].hostIP": 'edit-ip1'})
+            .and('nested.include', {"customInitContainers[0].ports[0].hostPort": '11'})
+            .and('nested.include', {"customInitContainers[0].ports[0].containerPort": '11'})
+            .and('nested.include', {"customInitContainers[0].ports[0].protocol": 'SCTP'})
+            .and('nested.include', {"customInitContainers[0].ports[1].name": 'edit-port2'})
+            .and('nested.include', {"customInitContainers[0].ports[1].hostIP": 'edit-ip2'})
+            .and('nested.include', {"customInitContainers[0].ports[1].hostPort": '22'})
+            .and('nested.include', {"customInitContainers[0].ports[1].containerPort": '22'})
+            .and('nested.include', {"customInitContainers[0].ports[1].protocol": 'SCTP'})
+            .and('nested.include', {"customInitContainers[0].volumeMounts[0].name": 'edit-vol1'})
+            .and('nested.include', {"customInitContainers[0].volumeMounts[0].readOnly": false})
+            .and('nested.include', {"customInitContainers[0].volumeMounts[0].mountPath": 'edit-mountPath'})
+            .and('nested.include', {"customInitContainers[0].volumeMounts[0].mountPropagation": 'edit-mountPropagation'})
+            .and('nested.include', {"customInitContainers[0].volumeMounts[0].subPath": 'edit-subPath'})
+            .and('nested.include', {"customContainers[0].name": 'edit-container1'})
+            .and('nested.include', {"customContainers[0].image": 'edit-image1'})
+            .and('nested.include', {"customContainers[0].imagePullPolicy": 'edit-imagePullPolicy1'})
+            .and('nested.include', {"customContainers[0].workingDir": 'edit-workingDir1'})
+            .and('nested.include', {"customContainers[0].args[0]": 'edit-arg1'})
+            .and('nested.include', {"customContainers[0].args[1]": 'edit-arg2'})
+            .and('nested.include', {"customContainers[0].command[0]": 'edit-command1'})
+            .and('nested.include', {"customContainers[0].command[1]": 'edit-command2'})
+            .and('nested.include', {"customContainers[0].env[0].name": 'edit-var1'})
+            .and('nested.include', {"customContainers[0].env[0].value": 'edit-val1'})
+            .and('nested.include', {"customContainers[0].env[1].name": 'edit-var2'})
+            .and('nested.include', {"customContainers[0].env[1].value": 'edit-val2'})
+            .and('nested.include', {"customContainers[0].ports[0].name": 'edit-port1'})
+            .and('nested.include', {"customContainers[0].ports[0].hostIP": 'edit-ip1'})
+            .and('nested.include', {"customContainers[0].ports[0].hostPort": '11'})
+            .and('nested.include', {"customContainers[0].ports[0].containerPort": '11'})
+            .and('nested.include', {"customContainers[0].ports[0].protocol": 'SCTP'})
+            .and('nested.include', {"customContainers[0].ports[1].name": 'edit-port2'})
+            .and('nested.include', {"customContainers[0].ports[1].hostIP": 'edit-ip2'})
+            .and('nested.include', {"customContainers[0].ports[1].hostPort": '22'})
+            .and('nested.include', {"customContainers[0].ports[1].containerPort": '22'})
+            .and('nested.include', {"customContainers[0].ports[1].protocol": 'SCTP'})
+            .and('nested.include', {"customContainers[0].volumeMounts[0].name": 'edit-vol1'})
+            .and('nested.include', {"customContainers[0].volumeMounts[0].readOnly": false})
+            .and('nested.include', {"customContainers[0].volumeMounts[0].mountPath": 'edit-mountPath'})
+            .and('nested.include', {"customContainers[0].volumeMounts[0].mountPropagation": 'edit-mountPropagation'})
+            .and('nested.include', {"customContainers[0].volumeMounts[0].subPath": 'edit-subPath'})
         cy.get('@putCluster')
             .its('request.body.spec.replicateFrom')
             .should('nested.include', {"instance.sgCluster": 'rep-sgcluster-' + resourceName})
@@ -1889,7 +2568,7 @@ describe('Create SGCluster', () => {
             .and('nested.include', {"scripts[3].scriptSpec.scripts[0].script": 'test3-' + resourceName})
         cy.get('@putCluster')
             .its('request.body.spec.prometheusAutobind')
-            .should('eq', true)
+            .should('eq', false)
         cy.get('@putCluster')
             .its('request.body.spec.replication')
             .should('nested.include', {"role": 'ha-read'})
@@ -1949,10 +2628,20 @@ describe('Create SGCluster', () => {
             .and('nested.include', {"nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].weight": '20'})
         cy.get('@putCluster')
             .its('request.body.spec.nonProductionOptions.disableClusterPodAntiAffinity')
-            .should('be.null')
+            .should('eq', false)
+        cy.get('@putCluster')
+            .its('request.body.spec.nonProductionOptions.disablePatroniResourceRequirements')
+            .should('eq', false)
+        cy.get('@putCluster')
+            .its('request.body.spec.nonProductionOptions.disableClusterResourceRequirements')
+            .should('eq', false)
     }); 
 
     it('Repeater fields should match error responses coming from the API', () => {
+        // Choose custom wizard
+        cy.get('[data-field="formTemplate.custom"]')
+            .click()
+
         // Enable advanced options
         cy.get('form#createCluster input#advancedMode')
             .click()
@@ -1965,6 +2654,9 @@ describe('Create SGCluster', () => {
         cy.get('form#createCluster li[data-step="scheduling"]')
             .click()
             
+        cy.get('div.scheduling.repeater.tolerations div.fieldsetFooter > a.addRow')
+            .click()
+
         cy.get('input[data-field="spec.pods.scheduling.tolerations[0].value"]')
             .type('value')
 
@@ -1977,6 +2669,10 @@ describe('Create SGCluster', () => {
     });
 
     it('Enable Monitoring to enable Metrics Exporter and Prometheus Autobind ', () => {
+        // Choose custom wizard
+        cy.get('[data-field="formTemplate.custom"]')
+            .click()
+
         // Enable advanced options
         cy.get('input#advancedMode')
             .click()
@@ -2018,35 +2714,6 @@ describe('Create SGCluster', () => {
         cy.get('input#prometheusAutobind')
             .should('not.be.checked')
 
-    }); 
-
-    it('Make sure script source always matches its parent script', () => {
-        // Enable advanced options
-        cy.get('form#createCluster input#advancedMode')
-            .click()
-        
-        // Tests script source on script repeaters
-        cy.get('form#createCluster li[data-step="scripts"]')
-            .click()
-            
-        cy.get('select[data-field="spec.managedSql.scripts.scriptSource[0]"]')
-            .select('script-' + resourceName)
-
-        // Add new Script
-        cy.get('.scriptFieldset > div.fieldsetFooter > a.addRow')
-            .click()
-
-        cy.get('select[data-field="spec.managedSql.scripts.scriptSource[1]"]')
-            .select('createNewScript')
-
-        // Remove first script
-        cy.get('.scriptFieldset > fieldset[data-field="spec.managedSql.scripts[0]"] a.delete')
-            .click()
-
-        // Validate script source has the right value
-        cy.get('select[data-field="spec.managedSql.scripts.scriptSource[0]"]')
-            .should('have.value', 'createNewScript')
     });
-   
 
-  })
+})

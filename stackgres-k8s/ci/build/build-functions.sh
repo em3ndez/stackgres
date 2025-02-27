@@ -63,8 +63,10 @@ EOF
   MODULE_HASH="$(md5sum "stackgres-k8s/ci/build/target/$MODULE-hash" | cut -d ' ' -f 1)"
   if "$MODULE_PLATFORM_DEPENDENT"
   then
+    MODULE_PLATFORM="${MODULE_PLATFORM:-$(get_platform)}"
+    TAG_MODULE_PLATFORM="$(printf %s "$MODULE_PLATFORM" | tr '/' '-')"
     printf 'registry.gitlab.com/ongresinc/stackgres/build/%s:hash-%s-%s\n' \
-      "$MODULE" "$MODULE_HASH" "${MODULE_PLATFORM:-$(get_platform)}"
+      "$MODULE" "$MODULE_HASH" "$TAG_MODULE_PLATFORM"
   else
     printf 'registry.gitlab.com/ongresinc/stackgres/build/%s:hash-%s\n' \
       "$MODULE" "$MODULE_HASH"
@@ -155,7 +157,8 @@ EOF
    "  > "stackgres-k8s/ci/build/target/$MODULE-build-env"
   # shellcheck disable=SC2046
   docker_run -i $(! test -t 1 || printf %s '-t') --rm \
-    --pull always \
+    --platform "${BUILD_PLATFORM:-$(get_platform)}" \
+    $([ "$SKIP_REMOTE_MANIFEST" = true ] || printf %s '--pull always') \
     --volume "/var/run/docker.sock:/var/run/docker.sock" \
     --volume "${PROJECT_PATH:-$(pwd)}:/project" \
     --workdir /project \
@@ -193,8 +196,23 @@ build_module_image() {
   if [ "$BUILD_IMAGE_NAME" != null ]
   then
     pre_build_in_container "$MODULE" "$BUILD_IMAGE_NAME"
+    if [ "$?" != 0 ]
+    then
+      >&2 echo "Pre build step failed for $MODULE"
+      return 1
+    fi
     build_in_container "$MODULE" "$BUILD_IMAGE_NAME"
+    if [ "$?" != 0 ]
+    then
+      >&2 echo "Build failed for $MODULE"
+      return 1
+    fi
     post_build_in_container "$MODULE" "$BUILD_IMAGE_NAME"
+    if [ "$?" != 0 ]
+    then
+      >&2 echo "Post build step failed for $MODULE"
+      return 1
+    fi
   fi
   MODULE_PATH="$(jq -r ".modules[\"$MODULE\"].path" stackgres-k8s/ci/build/target/config.json)"
   MODULE_DOCKERFILE="$(jq -r ".modules[\"$MODULE\"].dockerfile | if . != null then .path else null end" stackgres-k8s/ci/build/target/config.json)"
@@ -247,7 +265,8 @@ EOF
   # shellcheck disable=SC2086
   # shellcheck disable=SC2046
   docker_build $DOCKER_BUILD_OPTS -t "$IMAGE_NAME" \
-    --pull \
+    $([ "$SKIP_REMOTE_MANIFEST" = true ] || printf %s '--pull') \
+    --platform "${BUILD_PLATFORM:-$(get_platform)}" \
     --build-arg "BUILD_UID=${BUILD_UID%:*}" \
     --build-arg "TARGET_IMAGE_NAME=$TARGET_IMAGE_NAME" \
     $(jq -r ".modules[\"$MODULE\"].dockerfile.args
@@ -272,30 +291,40 @@ module_list() {
 }
 
 init_hash() {
-  if [ -d stackgres-k8s/ci/build/target/.git ] \
-    && git --git-dir stackgres-k8s/ci/build/target/.git status --porcelain 2>&1 | grep -q .
+  (
+  set +e
+  (
+  set -e
+  if [ -d stackgres-k8s/ci/build/target/.git ]
   then
-    rm -rf stackgres-k8s/ci/build/target/.git
-  fi
-  if ! [ -d stackgres-k8s/ci/build/target/.git ]
-  then
-    (
-    set +e
-    (
-    set -e
-    git --git-dir stackgres-k8s/ci/build/target/.git init -q
-    git --git-dir stackgres-k8s/ci/build/target/.git add .
-    git --git-dir stackgres-k8s/ci/build/target/.git \
-      -c user.name=ci -c user.email= commit -q -m "build hash" --no-gpg-sign
-    )
-    EXIT_CODE="$?"
-    if [ "$EXIT_CODE" != 0 ]
+    if ! git --git-dir stackgres-k8s/ci/build/target/.git reset > /dev/null
     then
       rm -rf stackgres-k8s/ci/build/target/.git
     fi
-    exit "$EXIT_CODE"
-    )
   fi
+  if ! [ -d stackgres-k8s/ci/build/target/.git ]
+  then
+    if [ -d "$PROJECT_PATH"/.git ]
+    then
+      tar cf - -C "$PROJECT_PATH" .git | tar xf - -C stackgres-k8s/ci/build/target
+    else
+      git --git-dir stackgres-k8s/ci/build/target/.git init > /dev/null
+    fi
+  fi
+  if git --git-dir stackgres-k8s/ci/build/target/.git status --porcelain 2>&1 | grep -q .
+  then
+    git --git-dir stackgres-k8s/ci/build/target/.git add . > /dev/null
+    git --git-dir stackgres-k8s/ci/build/target/.git \
+      -c user.name=ci -c user.email= commit -q -m "build hash" --no-gpg-sign > /dev/null
+  fi
+  )
+  EXIT_CODE="$?"
+  if [ "$EXIT_CODE" != 0 ]
+  then
+    rm -rf stackgres-k8s/ci/build/target/.git
+    exit "$EXIT_CODE"
+  fi
+  )
 }
 
 module_type() {
@@ -326,10 +355,12 @@ source_image_name() {
 
 image_name() {
   [ "$#" -ge 1 ] || false
+  local BUILD_HASH
   local MODULE="$1"
   local MODULE_PLATFORM="$2"
   local IMAGE_NAME
   local MODULE_PLATFORM_DEPENDENT
+  BUILD_HASH="$(cat stackgres-k8s/ci/build/target/build_hash)"
   MODULE_PLATFORM_DEPENDENT="$(jq -r ".modules[\"$MODULE\"].platform_dependent | . != null and ." stackgres-k8s/ci/build/target/config.json)"
   if [ "$MODULE_PLATFORM_DEPENDENT" = true ]
   then
@@ -337,36 +368,49 @@ image_name() {
   else
     MODULE_PLATFORM=
   fi
-  IMAGE_NAME="$(grep "^$MODULE=.*$MODULE_PLATFORM$" stackgres-k8s/ci/build/target/image-hashes)" \
-    || die "Unable to retrieve hash for module $MODULE in stackgres-k8s/ci/build/target/image-hashes" 1
+  TAG_MODULE_PLATFORM="$(printf %s "$MODULE_PLATFORM" | tr '/' '-')"
+  IMAGE_NAME="$(grep "^$MODULE=.*$TAG_MODULE_PLATFORM$" "stackgres-k8s/ci/build/target/image-hashes.$BUILD_HASH")" \
+    || die "Unable to retrieve hash for module $MODULE in stackgres-k8s/ci/build/target/image-hashes.$BUILD_HASH" 1
   IMAGE_NAME="$(printf %s "$IMAGE_NAME"| cut -d = -f 2-)"
   [ -n "$IMAGE_NAME" ] \
-    || die "Unable to retrieve hash for module $MODULE in stackgres-k8s/ci/build/target/image-hashes" 1
+    || die "Unable to retrieve hash for module $MODULE in stackgres-k8s/ci/build/target/image-hashes.$BUILD_HASH" 1
   printf '%s\n' "$IMAGE_NAME"
 }
 
 build_image() {
   [ "$#" -ge 1 ] || false
+  local BUILD_HASH
   local MODULE="$1"
   local MODULE_TYPE
   local IMAGE_NAME
   local SOURCE_IMAGE_NAME
+  BUILD_HASH="$(cat stackgres-k8s/ci/build/target/build_hash)"
   MODULE_TYPE="$(module_type "$MODULE")"
-  SOURCE_IMAGE_NAME="$(source_image_name "$MODULE")"
-  IMAGE_NAME="$(image_name "$MODULE")"
+  SOURCE_IMAGE_NAME="$(source_image_name "$MODULE" "$BUILD_PLATFORM")"
+  IMAGE_NAME="$(image_name "$MODULE" "$BUILD_PLATFORM")"
   echo
   echo "--------------------------------------------------------------------------------------------------------------------------------"
   echo
   echo "Image $IMAGE_NAME"
   echo "Source image $SOURCE_IMAGE_NAME"
   echo
-  if [ "$DO_BUILD" != true ] && grep -q "^$IMAGE_NAME=" stackgres-k8s/ci/build/target/image-digests
+  if {
+      [ "$DO_BUILD" != true ] \
+        && ! printf " $DO_BUILD_MODULES " | grep -qF " $MODULE " \
+        && grep -q "^$IMAGE_NAME=" "stackgres-k8s/ci/build/target/image-digests.$BUILD_HASH"
+    }
   then
-    echo "Already exists. Skipping ..."
+    echo "Already exists on remote repository. Just extracting..."
+    copy_from_image "$SOURCE_IMAGE_NAME"
   else
-    if [ "$DO_BUILD" != true ] && docker_inspect "$IMAGE_NAME" >/dev/null 2>&1
+    if {
+        [ "$DO_BUILD" != true ] \
+          && ! printf " $DO_BUILD_MODULES " | grep -qF " $MODULE " \
+          && docker_inspect "$IMAGE_NAME" >/dev/null 2>&1
+      }
     then
-      echo "Already exists locally. Skipping build ..."
+      echo "Already exists locally. Just extracting ..."
+      copy_from_image "$SOURCE_IMAGE_NAME"
     else
       echo "Building $MODULE ..."
       build_module_image "$MODULE" "$SOURCE_IMAGE_NAME" "$IMAGE_NAME"
@@ -381,11 +425,20 @@ build_image() {
   echo
 }
 
+extract_all() {
+  while [ "$#" -ge 1 ]
+  do
+    local MODULE="$1"
+    shift
+    IMAGE_NAME="$(image_name "$MODULE")"
+    copy_from_image "$IMAGE_NAME"
+  done
+}
+
 extract() {
   [ "$#" -ge 2 ] || false
   local MODULE="$1"
   shift
-  MODULE_TYPE="$(module_type "$MODULE")"
   IMAGE_NAME="$(image_name "$MODULE")"
   extract_from_image "$IMAGE_NAME" "$@"
 }
@@ -397,7 +450,7 @@ extract_from_image() {
   local IMAGE_PLATFORM
   IMAGE_PLATFORM="$(get_image_platform "$IMAGE_NAME")"
   docker_run --rm --entrypoint /bin/sh --platform "$IMAGE_PLATFORM" \
-    --pull always \
+    $([ "$SKIP_REMOTE_MANIFEST" = true ] || printf %s '--pull always') \
     --user "$(id -u):$(id -g)" \
     --env HOME=/tmp \
     -v "${PROJECT_PATH:-$(pwd)}:/out" \
@@ -426,79 +479,143 @@ generate_image_hashes() {
   local MODULE_PLATFORM
   local SOURCE_IMAGE_NAME
   local IMAGE_NAME
+  local MODULES
+  local PROJECT_HASH_PATH
+  local BUILD_HASH
 
   mkdir -p stackgres-k8s/ci/build/target
 
-  yq . stackgres-k8s/ci/build/config.yml > stackgres-k8s/ci/build/target/config.json
+  init_config
 
   init_hash
 
-  if ! test -f stackgres-k8s/ci/build/target/project_hash \
-    || [ "$(cat stackgres-k8s/ci/build/target/project_hash)" != "$(project_hash)" ]
+  BUILD_HASH="$(echo "$*" | md5sum | cut -d ' ' -f 1)"
+  printf %s "$BUILD_HASH" > stackgres-k8s/ci/build/target/build_hash
+  PROJECT_HASH_PATH="stackgres-k8s/ci/build/target/project_hash.$BUILD_HASH"
+  if ! test -f "$PROJECT_HASH_PATH" \
+    || [ "$(cat "$PROJECT_HASH_PATH")" != "$(project_hash)" ]
   then
-    cat << EOF > stackgres-k8s/ci/build/target/junit-build.hashes.xml
+    cat << EOF > "stackgres-k8s/ci/build/target/junit-build.hashes.xml.$BUILD_HASH"
 <?xml version="1.0" encoding="UTF-8"?>
 <testsuites>
   <testsuite name="build hashes">
 EOF
 
-    rm -f stackgres-k8s/ci/build/target/all-images
-    rm -f stackgres-k8s/ci/build/target/image-hashes
-    rm -f stackgres-k8s/ci/build/target/*-image-hashes
-    for MODULE in $(jq -r '.modules | to_entries[] | .key' stackgres-k8s/ci/build/target/config.json)
+    rm -f "stackgres-k8s/ci/build/target/all-images.$BUILD_HASH"
+    rm -f "stackgres-k8s/ci/build/target/image-hashes.$BUILD_HASH"
+    rm -f "stackgres-k8s/ci/build/target/"*"-image-hashes.$BUILD_HASH"
+    if [ "$#" -gt 0 ]
+    then
+      local MODULES_FILTER=" $* "
+      MODULES="$(jq -r '.modules | to_entries[] | .key' stackgres-k8s/ci/build/target/config.json \
+        | while read MODULE
+          do
+            if printf "$MODULES_FILTER" | grep -q " $MODULE "
+            then
+              echo "$MODULE"
+            fi
+          done)"
+    else
+      MODULES="$(jq -r '.modules | to_entries[] | .key' stackgres-k8s/ci/build/target/config.json)"
+    fi
+    for MODULE in $MODULES
     do
-      MODULE_TYPE="$(module_type "$MODULE")"
-      MODULE_PLATFORMS="$(jq -r "
-          (.modules[\"$MODULE\"].platform_dependent | . != null and .) as \$module_platform_dependent
-          | .platforms | if . != null and \$module_platform_dependent then . else [\"$(get_platform)\"] end
-          | join(\" \")" \
-        stackgres-k8s/ci/build/target/config.json)"
-      for MODULE_PLATFORM in $MODULE_PLATFORMS
-      do
-        SOURCE_IMAGE_NAME="$(source_image_name "$MODULE" "$MODULE_PLATFORM")"
-        IMAGE_NAME="$(module_image_name "$MODULE" "$SOURCE_IMAGE_NAME" "$MODULE_PLATFORM")"
-        cat << EOF >> stackgres-k8s/ci/build/target/junit-build.hashes.xml
-    <testcase classname="module $MODULE" name="${IMAGE_NAME##*:hash-}" />
-EOF
-        printf '%s\n' "$IMAGE_NAME" >> "stackgres-k8s/ci/build/target/$MODULE_TYPE-image-hashes"
-        printf '%s=%s\n' "$MODULE" "$IMAGE_NAME" >> stackgres-k8s/ci/build/target/image-hashes
-        if [ "$SOURCE_IMAGE_NAME" != null ]
-        then
-          printf '%s\n' "$SOURCE_IMAGE_NAME" >> stackgres-k8s/ci/build/target/all-images
-        fi
-        printf '%s\n' "$IMAGE_NAME" >> stackgres-k8s/ci/build/target/all-images
-      done
+      generate_image_hash "$MODULE"
     done
 
-    rm -rf stackgres-k8s/ci/build/target/image-type-hashes
-    for MODULE_TYPE_IMAGE_HASHES in stackgres-k8s/ci/build/target/*-image-hashes
+    rm -rf "stackgres-k8s/ci/build/target/image-type-hashes.$BUILD_HASH"
+    for MODULE_TYPE_IMAGE_HASHES in "stackgres-k8s/ci/build/target/"*"-image-hashes.$BUILD_HASH"
     do
       local MODULE_TYPE="${MODULE_TYPE_IMAGE_HASHES##*/}"
-      MODULE_TYPE="${MODULE_TYPE%-image-hashes}"
+      MODULE_TYPE="${MODULE_TYPE%-image-hashes.*}"
       local MODULE_TYPE_HASH
       MODULE_TYPE_HASH="$(md5sum "$MODULE_TYPE_IMAGE_HASHES" | cut -d ' ' -f 1 | tr -d '\n')"
-      printf '%s=%s\n' "$MODULE_TYPE" "$MODULE_TYPE_HASH" >> stackgres-k8s/ci/build/target/image-type-hashes
-      cat << EOF >> stackgres-k8s/ci/build/target/junit-build.hashes.xml
+      printf '%s=%s\n' "$MODULE_TYPE" "$MODULE_TYPE_HASH" >> "stackgres-k8s/ci/build/target/image-type-hashes.$BUILD_HASH"
+      cat << EOF >> "stackgres-k8s/ci/build/target/junit-build.hashes.xml.$BUILD_HASH"
     <testcase classname="module type $MODULE_TYPE" name="$MODULE_TYPE_HASH" />
 EOF
     done
 
-    cat << EOF >> stackgres-k8s/ci/build/target/junit-build.hashes.xml
+    cat << EOF >> "stackgres-k8s/ci/build/target/junit-build.hashes.xml.$BUILD_HASH"
   </testsuite>
 </testsuites>
 EOF
 
-    project_hash > stackgres-k8s/ci/build/target/project_hash
+    project_hash > "$PROJECT_HASH_PATH"
   fi
 }
 
+init_config() {
+  local CONFIG_HASH
+
+  mkdir -p stackgres-k8s/ci/build/target
+
+  CONFIG_HASH="$(md5sum stackgres-k8s/ci/build/config.yml | cut -d ' ' -f 1)"
+  if ! test -f stackgres-k8s/ci/build/target/config.json \
+    || ! test -f stackgres-k8s/ci/build/target/config.yml.md5 \
+    || [ "$(printf %s "$CONFIG_HASH")" != "$(cat stackgres-k8s/ci/build/target/config.yml.md5)" ]
+  then
+    yq . stackgres-k8s/ci/build/config.yml > stackgres-k8s/ci/build/target/config.json
+    printf %s "$CONFIG_HASH" > stackgres-k8s/ci/build/target/config.yml.md5
+  fi
+}
+
+init_config() {
+  local CONFIG_HASH
+
+  mkdir -p stackgres-k8s/ci/build/target
+
+  CONFIG_HASH="$(md5sum stackgres-k8s/ci/build/config.yml | cut -d ' ' -f 1)"
+  if ! test -f stackgres-k8s/ci/build/target/config.json \
+    || ! test -f stackgres-k8s/ci/build/target/config.yml.md5 \
+    || [ "$(printf %s "$CONFIG_HASH")" != "$(cat stackgres-k8s/ci/build/target/config.yml.md5)" ]
+  then
+    yq . stackgres-k8s/ci/build/config.yml > stackgres-k8s/ci/build/target/config.json
+    printf %s "$CONFIG_HASH" > stackgres-k8s/ci/build/target/config.yml.md5
+  fi
+}
+
+generate_image_hash() {
+  local BUILD_HASH
+  local MODULE="$1"
+  BUILD_HASH="$(cat stackgres-k8s/ci/build/target/build_hash)"
+  MODULE_TYPE="$(module_type "$MODULE")"
+  MODULE_PLATFORMS="$(jq -r "
+      (.modules[\"$MODULE\"].platform_dependent | . != null and .) as \$module_platform_dependent
+      | .platforms | if . != null and \$module_platform_dependent then . else [\"$(get_platform)\"] end
+      | join(\" \")" \
+    stackgres-k8s/ci/build/target/config.json)"
+  for MODULE_PLATFORM in $MODULE_PLATFORMS
+  do
+    SOURCE_IMAGE_NAME="$(source_image_name "$MODULE" "$MODULE_PLATFORM")"
+    IMAGE_NAME="$(module_image_name "$MODULE" "$SOURCE_IMAGE_NAME" "$MODULE_PLATFORM")"
+    flock "stackgres-k8s/ci/build/target/junit-build.hashes.xml.$BUILD_HASH" \
+      cat << EOF >> "stackgres-k8s/ci/build/target/junit-build.hashes.xml.$BUILD_HASH"
+    <testcase classname="module $MODULE" name="${IMAGE_NAME##*:hash-}" />
+EOF
+    flock "stackgres-k8s/ci/build/target/$MODULE_TYPE-image-hashes.$BUILD_HASH" \
+      printf '%s\n' "$IMAGE_NAME" >> "stackgres-k8s/ci/build/target/$MODULE_TYPE-image-hashes.$BUILD_HASH"
+    flock "stackgres-k8s/ci/build/target/image-hashes.$BUILD_HASH" \
+      printf '%s=%s\n' "$MODULE" "$IMAGE_NAME" >> "stackgres-k8s/ci/build/target/image-hashes.$BUILD_HASH"
+    if [ "$SOURCE_IMAGE_NAME" != null ]
+    then
+      flock "stackgres-k8s/ci/build/target/all-images.$BUILD_HASH" \
+        printf '%s\n' "$SOURCE_IMAGE_NAME" >> "stackgres-k8s/ci/build/target/all-images.$BUILD_HASH"
+    fi
+    flock "stackgres-k8s/ci/build/target/all-images.$BUILD_HASH" \
+      printf '%s\n' "$IMAGE_NAME" >> "stackgres-k8s/ci/build/target/all-images.$BUILD_HASH"
+  done
+}
+
 show_image_hashes() {
+  local BUILD_HASH
+  BUILD_HASH="$(cat stackgres-k8s/ci/build/target/build_hash)"
   echo "Calculated image hashes:"
 
   while IFS='=' read -r MODULE IMAGE_NAME
   do
     printf ' - %s => %s\n' "$MODULE" "$IMAGE_NAME"
-  done < stackgres-k8s/ci/build/target/image-hashes
+  done < "stackgres-k8s/ci/build/target/image-hashes.$BUILD_HASH"
 
   echo "done"
 
@@ -509,7 +626,7 @@ show_image_hashes() {
   while IFS='=' read -r MODULE_TYPE MODULE_TYPE_HASH
   do
     printf ' - %s => %s\n' "$MODULE_TYPE" "$MODULE_TYPE_HASH"
-  done < stackgres-k8s/ci/build/target/image-type-hashes
+  done < "stackgres-k8s/ci/build/target/image-type-hashes.$BUILD_HASH"
 
   echo "done"
 
@@ -525,15 +642,16 @@ find_image_digests() {
 }
 
 find_image_digest() {
-  local IMAGE_NAME="$1" IMAGE_DIGEST
+  local IMAGE_NAME="$1"
+  local IMAGE_DIGEST
   if retrieve_image_manifest "$IMAGE_NAME" >/dev/null 2>&1
   then
     if ! IMAGE_DIGEST="$(jq -r \
-      '. as $manifest | if length == 0 then halt_error else . end | $manifest[0].RepoDigests | map(split(":")[1]) | join("-")' \
+      '. as $manifest | if length == 0 then halt_error else . end | $manifest[0].RepoDigests | map(split(":")|last) | if length == 0 then halt_error else . end | sort | first' \
       "stackgres-k8s/ci/build/target/manifest.local.${IMAGE_NAME##*/}" \
       2>/dev/null)"
     then
-      IMAGE_DIGEST="$(jq -r 'if (.|type) == "array" then . else [.] end | map(.Descriptor.digest) | join("-")' \
+      IMAGE_DIGEST="$(jq -r 'if (.|type) == "array" then . else [.] end | map(.Descriptor.digest) | sort | first' \
         "stackgres-k8s/ci/build/target/manifest.${IMAGE_NAME##*/}")"
     fi
     printf '%s=%s\n' "$IMAGE_NAME" "$IMAGE_DIGEST" \
@@ -545,7 +663,7 @@ get_image_platform() {
   local IMAGE_NAME="$1"
   local IMAGE_MEDIA_TYPE
   local IMAGE_PLATFORM
-  retrieve_image_manifest "$IMAGE_NAME"
+  retrieve_image_manifest "$IMAGE_NAME" > /dev/null
   if IMAGE_PLATFORM="$(jq -r \
     '. as $manifest | if length == 0 then halt_error else . end | $manifest[0].Architecture' \
     "stackgres-k8s/ci/build/target/manifest.local.${IMAGE_NAME##*/}" \
@@ -576,7 +694,8 @@ get_image_platform() {
 
 retrieve_image_manifest() {
   local IMAGE_NAME="$1"
-  if ! jq 'if length == 0 then halt_error else halt end' \
+  if ! jq -r \
+    '. as $manifest | if length == 0 then halt_error else . end | $manifest[0].RepoDigests | map(split(":")|last) | if length == 0 then halt_error else . end | sort | first' \
     "stackgres-k8s/ci/build/target/manifest.local.${IMAGE_NAME##*/}" \
     >/dev/null 2>&1
   then
@@ -584,11 +703,36 @@ retrieve_image_manifest() {
     then
       docker_inspect "$IMAGE_NAME" \
         > "stackgres-k8s/ci/build/target/manifest.local.${IMAGE_NAME##*/}"
+      local EXIT_CODE="$?"
+      if [ "$EXIT_CODE" != 0 ]
+      then
+        return "$EXIT_CODE"
+      fi
+      if ! jq -r \
+        '. as $manifest | if length == 0 then halt_error else . end | $manifest[0].RepoDigests | map(split(":")|last) | if length == 0 then halt_error else . end | sort | first' \
+        "stackgres-k8s/ci/build/target/manifest.local.${IMAGE_NAME##*/}" \
+        >/dev/null 2>&1
+      then
+        echo "Using a local image registry to calculate digest for $IMAGE_NAME" >&2
+        REGISTRY_CONTAINER_ID="$(docker_run -d -p 5000 --stop-timeout 300 registry:2)"
+        REGISTRY_PORT="$(docker_inspect "$REGISTRY_CONTAINER_ID" | jq '.[0].NetworkSettings.Ports["5000/tcp"][0].HostPort' -r)"
+        REGISTRY_IMAGE_NAME="localhost:$REGISTRY_PORT/$(printf %s "${IMAGE_NAME%:*}" | tr '/:' '_'):${IMAGE_NAME##*:}"
+        docker_tag "$IMAGE_NAME" "$REGISTRY_IMAGE_NAME"
+        docker_push "$REGISTRY_IMAGE_NAME"
+        docker_inspect "$REGISTRY_IMAGE_NAME" \
+          > "stackgres-k8s/ci/build/target/manifest.local.${IMAGE_NAME##*/}"
+        docker_rm -fv "$REGISTRY_CONTAINER_ID"
+        docker_rmi "$REGISTRY_IMAGE_NAME"
+        jq -r \
+          '. as $manifest | if length == 0 then halt_error else . end | $manifest[0].RepoDigests | map(split(":")|last) | if length == 0 then halt_error else . end | sort | first' \
+          "stackgres-k8s/ci/build/target/manifest.local.${IMAGE_NAME##*/}" \
+          >/dev/null 2>&1
+      fi
     elif ! docker_inspect "$IMAGE_NAME" \
       > "stackgres-k8s/ci/build/target/manifest.local.${IMAGE_NAME##*/}" \
       2>/dev/null \
       || ! jq -r \
-      '. as $manifest | if length == 0 then halt_error else . end | $manifest[0].RepoDigests | map(split(":")[1]) | if length == 0 then halt_error else . end | join("-")' \
+      '. as $manifest | if length == 0 then halt_error else . end | $manifest[0].RepoDigests | map(split(":")|last) | if length == 0 then halt_error else . end | sort | first' \
       "stackgres-k8s/ci/build/target/manifest.local.${IMAGE_NAME##*/}" \
       >/dev/null 2>&1
     then
@@ -602,7 +746,11 @@ retrieve_image_manifest() {
 }
 
 get_platform() {
-  printf '%s-%s' "$(uname | tr '[:upper:]' '[:lower:]')" "$(uname -m)"
+  printf '%s/%s' "$(uname | tr '[:upper:]' '[:lower:]')" "$(uname -m)"
+}
+
+get_platform_tag_suffix() {
+  get_platform | tr '/' '-'
 }
 
 project_hash() {
@@ -637,6 +785,14 @@ docker_build() {
 
 docker_push() {
   docker push "$@"
+}
+
+docker_tag() {
+  docker tag "$@"
+}
+
+docker_rm() {
+  docker rm "$@"
 }
 
 docker_manifest_inspect() {

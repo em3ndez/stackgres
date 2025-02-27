@@ -33,7 +33,7 @@ describe('Create SGDistributedLog', () => {
                 namespace: namespace
             },
             spec: {
-                postgresVersion: "12",
+                postgresVersion: "17",
                 'postgresql.conf':""
             }
         })
@@ -119,6 +119,10 @@ describe('Create SGDistributedLog', () => {
         // Test SGDistributedLog Name
         cy.get('input[data-field="metadata.name"]')
             .type('advanced-' + resourceName)
+
+        // Test Profile
+        cy.get('select[data-field="spec.profile"]')
+            .select('testing')
         
         // Test Volume Size
         cy.get('input[data-field="spec.persistentVolume.size"]')
@@ -183,8 +187,27 @@ describe('Create SGDistributedLog', () => {
         cy.get('form#createLogsServer li[data-step="non-production"]')
             .click()
 
-        cy.get('input[data-field="spec.nonProductionOptions.disableClusterPodAntiAffinity"]')
+        cy.get('select[data-field="spec.nonProductionOptions.disableClusterPodAntiAffinity"]')
+            .select('Disable')
+        
+        cy.get('select[data-field="spec.nonProductionOptions.disablePatroniResourceRequirements"]')
+            .select('Disable')
+        
+        cy.get('select[data-field="spec.nonProductionOptions.disableClusterResourceRequirements"]')
+            .select('Disable')
+
+        // Test Dry Run
+        cy.get('form#createLogsServer button[data-field="dryRun"]')
             .click()
+
+        cy.get('#crdSummary')
+            .should('be.visible')
+
+        cy.get('#crdSummary span.close')
+            .click()
+        
+        cy.get('#crdSummary')
+            .should('not.exist')
 
         // Test Submit form
         cy.get('form#createLogsServer button[type="submit"]')

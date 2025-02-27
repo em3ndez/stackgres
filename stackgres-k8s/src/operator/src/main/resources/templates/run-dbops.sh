@@ -3,6 +3,9 @@
 LOCK_RESOURCE="$CLUSTER_CRD_NAME"
 LOCK_RESOURCE_NAME="$CLUSTER_NAME"
 
+RESOURCE_CRD_NAME="$DBOPS_CRD_NAME"
+RESOURCE_NAME="$DBOPS_NAME"
+
 . "$LOCAL_BIN_SHELL_UTILS_PATH"
 
 run() {
@@ -51,6 +54,7 @@ run() {
       else
         kill_with_childs "$TIMEOUT_PID"
         echo "Can not acquire lock"
+        cat "$SHARED_PATH/try-lock"
         echo "LOCK_LOST=true" >> "$SHARED_PATH/$KEBAB_OP_NAME.out"
         echo "TIMED_OUT=false" >> "$SHARED_PATH/$KEBAB_OP_NAME.out"
         echo "EXIT_CODE=1" >> "$SHARED_PATH/$KEBAB_OP_NAME.out"

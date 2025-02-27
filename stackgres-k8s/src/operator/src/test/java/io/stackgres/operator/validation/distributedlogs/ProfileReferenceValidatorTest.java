@@ -45,7 +45,7 @@ class ProfileReferenceValidatorTest {
   void setUp() throws Exception {
     validator = new ProfileReferenceValidator(profileFinder);
 
-    profileSizeXs = Fixtures.instanceProfile().loadSizeXs().get();
+    profileSizeXs = Fixtures.instanceProfile().loadSizeS().get();
 
   }
 
@@ -55,7 +55,7 @@ class ProfileReferenceValidatorTest {
     final StackGresDistributedLogsReview review =
         AdmissionReviewFixtures.distributedLogs().loadCreate().get();
 
-    String resourceProfile = review.getRequest().getObject().getSpec().getResourceProfile();
+    String resourceProfile = review.getRequest().getObject().getSpec().getSgInstanceProfile();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(profileFinder.findByNameAndNamespace(resourceProfile, namespace))
@@ -73,7 +73,7 @@ class ProfileReferenceValidatorTest {
     final StackGresDistributedLogsReview review =
         AdmissionReviewFixtures.distributedLogs().loadCreate().get();
 
-    String resourceProfile = review.getRequest().getObject().getSpec().getResourceProfile();
+    String resourceProfile = review.getRequest().getObject().getSpec().getSgInstanceProfile();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(profileFinder.findByNameAndNamespace(resourceProfile, namespace))
@@ -85,7 +85,7 @@ class ProfileReferenceValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Invalid profile " + resourceProfile, resultMessage);
+    assertEquals("SGInstanceProfile " + resourceProfile + " not found", resultMessage);
 
     verify(profileFinder).findByNameAndNamespace(anyString(), anyString());
   }
@@ -96,7 +96,7 @@ class ProfileReferenceValidatorTest {
     final StackGresDistributedLogsReview review =
         AdmissionReviewFixtures.distributedLogs().loadProfileConfigUpdate().get();
 
-    String resourceProfile = review.getRequest().getObject().getSpec().getResourceProfile();
+    String resourceProfile = review.getRequest().getObject().getSpec().getSgInstanceProfile();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(profileFinder.findByNameAndNamespace(resourceProfile, namespace))
@@ -108,7 +108,7 @@ class ProfileReferenceValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Cannot update to profile " + resourceProfile
+    assertEquals("Cannot update to SGInstanceProfile " + resourceProfile
         + " because it doesn't exists", resultMessage);
 
     verify(profileFinder).findByNameAndNamespace(anyString(), anyString());
@@ -121,10 +121,10 @@ class ProfileReferenceValidatorTest {
     final StackGresDistributedLogsReview review =
         AdmissionReviewFixtures.distributedLogs().loadProfileConfigUpdate().get();
 
-    String resourceProfile = review.getRequest().getObject().getSpec().getResourceProfile();
+    String resourceProfile = review.getRequest().getObject().getSpec().getSgInstanceProfile();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
-    StackGresProfile profileSizeS = Fixtures.instanceProfile().loadSizeS().get();
+    StackGresProfile profileSizeS = Fixtures.instanceProfile().loadSizeM().get();
 
     when(profileFinder.findByNameAndNamespace(resourceProfile, namespace))
         .thenReturn(Optional.of(profileSizeS));

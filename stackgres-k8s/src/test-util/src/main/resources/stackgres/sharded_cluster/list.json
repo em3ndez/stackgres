@@ -17,7 +17,7 @@
         "type": "citus",
         "database": "citus",
         "postgres": {
-          "version": "13.4",
+          "version": "13.5",
           "flavor": "vanilla"
         },
         "postgresServices": {
@@ -43,7 +43,7 @@
         },
         "coordinator": {
           "instances": 1,
-          "sgInstanceProfile": "size-xs",
+          "sgInstanceProfile": "size-s",
           "configurations": {
             "sgPostgresConfig": "postgresconf",
             "sgPoolingConfig": "pgbouncerconf"
@@ -58,7 +58,7 @@
         "shards": {
           "clusters": 2,
           "instancesPerCluster": 1,
-          "sgInstanceProfile": "size-xs",
+          "sgInstanceProfile": "size-s",
           "configurations": {
             "sgPostgresConfig": "postgresconf",
             "sgPoolingConfig": "pgbouncerconf"
@@ -88,7 +88,7 @@
         "type": "citus",
         "database": "citus",
         "postgres": {
-          "version": "13.4",
+          "version": "13.5",
           "flavor": "vanilla"
         },
         "postgresServices": {
@@ -111,7 +111,7 @@
         },
         "coordinator": {
           "instances": 1,
-          "sgInstanceProfile": "size-xs",
+          "sgInstanceProfile": "size-s",
           "configurations": {
             "sgPostgresConfig": "postgresconf",
             "sgPoolingConfig": "pgbouncerconf"
@@ -126,7 +126,7 @@
         "shards": {
           "clusters": 2,
           "instancesPerCluster": 1,
-          "sgInstanceProfile": "size-xs",
+          "sgInstanceProfile": "size-s",
           "configurations": {
             "sgPostgresConfig": "postgresconf",
             "sgPoolingConfig": "pgbouncerconf"

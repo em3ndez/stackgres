@@ -11,6 +11,7 @@ export default new Vuex.Store({
     authType: 'JWT',
     showLogs: false,
     notFound: false,
+    isLoading: false,
     currentPath: {
       namespace: '',
       name: '',
@@ -23,20 +24,26 @@ export default new Vuex.Store({
     currentPods: [],
     namespaces: [],
     allNamespaces: [],
-    sgclusters: [],
-    sgshardedclusters: [],
-    sgbackups: [],
-    sgpgconfigs: [],
-    sgpoolconfigs: [],
-    sginstanceprofiles: [],
-    sgobjectstorages: [],
-    sgscripts: [],
+    roles: [],
+    clusterroles: [],
+    users: [],
+    sgclusters: null,
+    sgshardedclusters: null,
+    sgstreams: null,
+    sgbackups: null,
+    sgpgconfigs: null,
+    sgpoolconfigs: null,
+    sginstanceprofiles: null,
+    sgobjectstorages: null,
+    sgscripts: null,
     storageClasses: [],
     logs: [],
-    sgdistributedlogs: [],
-    sgdbops: [],
+    sgdistributedlogs: null,
+    sgdbops: null,
     postgresVersions: {},
     applications: [],
+    dashboardsList: [],
+    sgconfigs: null,
     cloneCRD: {},
     timezone: 'local',
     view: 'normal',
@@ -69,9 +76,23 @@ export default new Vuex.Store({
     notFound (state, notFound) {
       state.notFound = notFound;
     },
+
+    loading (state, isLoading) {
+      state.isLoading = isLoading;
+    },
     
     setPermissions (state, permissions) {
       state.permissions.allowed = permissions;
+    },
+
+    flushPermissions (state) {
+      state.permissions = {
+        allowed: {
+          namespaced: [],
+          unnamespaced: {}
+        },
+        forbidden: []
+      };
     },
 
     setNoPermissions (state, kind) {
@@ -95,9 +116,10 @@ export default new Vuex.Store({
       state.authType = authType;
     },
 
-    setTheme (state, theme) {
-      state.theme = theme;
-      document.cookie = "sgTheme="+theme+"; Path=/; expires=Fri, 31 Dec 9999 23:59:59 GMT; SameSite=Strict;";
+    setTheme (state, theme = '') {
+      state.theme = theme.length ? theme : ( (state.theme === 'light') ? 'dark' : 'light');
+      document.cookie = "sgTheme=" + state.theme + "; Path=/; expires=Fri, 31 Dec 9999 23:59:59 GMT; SameSite=Strict;";
+      $("body").toggleClass("darkmode");
     },
 
     setCurrentPath (state, path) {
@@ -116,6 +138,24 @@ export default new Vuex.Store({
       state.allNamespaces = [...namespacesList];
     },
 
+    setRoles (state, roles) {
+      state.roles = [...roles];
+    },
+
+    setClusterRoles (state, roles) {
+      state.clusterroles = [...roles];
+    },
+
+    setUsers (state, users) {
+      state.users = [...users];
+    },
+
+    initKind(state, kind) {
+      if(state[kind] === null) {
+        state[kind] = [];
+      }
+    },
+
     addLogsClusters (state, logsClusters) {
       state.sgdistributedlogs = [...logsClusters];
     },
@@ -124,8 +164,12 @@ export default new Vuex.Store({
       state.sgdbops = [...dbOps];
     },
 
+    addSgStreams (state, sgStreams) {
+      state.sgstreams = [...sgStreams];
+    },
+
     addStorageClasses (state, storageClassesList) {
-      state.storageClasses = [...storageClassesList];
+      state.storageClasses = (storageClassesList === null) ? null : [...storageClassesList];
     },
 
     setCurrentCluster (state, cluster) {
@@ -265,7 +309,11 @@ export default new Vuex.Store({
       
       if(!item.kind.length) { // Item has been deleted succesfuly, remove from store
         let kind = state.deleteItem.kind;
-        state[kind].splice(state[kind].findIndex( el => (el.name == state.deleteItem.name) && (el.data.metadata.namespace == state.deleteItem.namespace) ), 1);
+        state[kind] = state[kind].filter( el => !(
+            (el.hasOwnProperty('name') ? el.name : el.metadata.name) == state.deleteItem.name && 
+            (el.hasOwnProperty('data') ? el.data.metadata.namespace : el.metadata.namespace) == state.deleteItem.namespace
+          )
+        );
       }
 
       state.deleteItem = item;
@@ -319,6 +367,14 @@ export default new Vuex.Store({
 
     setApplications (state, applications) {
       state.applications = applications;
+    },
+
+    setDashboardsList (state, dashboardsList) {
+      state.dashboardsList = dashboardsList;
+    },
+    
+    setSGConfigs (state, configs) {
+      state.sgconfigs = configs;
     },
 
     toggleTimezone (state) {

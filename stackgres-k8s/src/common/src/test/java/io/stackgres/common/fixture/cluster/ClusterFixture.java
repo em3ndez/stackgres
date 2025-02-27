@@ -5,12 +5,15 @@
 
 package io.stackgres.common.fixture.cluster;
 
+import java.util.HashMap;
+
 import io.stackgres.common.StackGresComponent;
+import io.stackgres.common.StackGresContext;
 import io.stackgres.common.crd.NodeAffinity;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgcluster.StackGresClusterBuilder;
-import io.stackgres.common.crd.sgcluster.StackGresClusterPod;
-import io.stackgres.common.crd.sgcluster.StackGresClusterPodScheduling;
+import io.stackgres.common.crd.sgcluster.StackGresClusterPods;
+import io.stackgres.common.crd.sgcluster.StackGresClusterPodsScheduling;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
 import io.stackgres.common.fixture.VersionedFixture;
 
@@ -66,28 +69,36 @@ public class ClusterFixture extends VersionedFixture<StackGresCluster> {
 
   public ClusterFixture withPods() {
     withSpec();
-    if (fixture.getSpec().getPod() == null) {
-      fixture.getSpec().setPod(new StackGresClusterPod());
+    if (fixture.getSpec().getPods() == null) {
+      fixture.getSpec().setPods(new StackGresClusterPods());
     }
     return this;
   }
 
   public ClusterFixture withScheduling() {
     withPods();
-    if (fixture.getSpec().getPod().getScheduling() == null) {
-      fixture.getSpec().getPod().setScheduling(new StackGresClusterPodScheduling());
+    if (fixture.getSpec().getPods().getScheduling() == null) {
+      fixture.getSpec().getPods().setScheduling(new StackGresClusterPodsScheduling());
     }
     return this;
   }
 
   public ClusterFixture withNodeAffinity(NodeAffinity nodeAffinity) {
     withScheduling();
-    fixture.getSpec().getPod().getScheduling().setNodeAffinity(nodeAffinity);
+    fixture.getSpec().getPods().getScheduling().setNodeAffinity(nodeAffinity);
     return this;
   }
 
   public ClusterFixture withLatestPostgresVersion() {
     fixture.getSpec().getPostgres().setVersion(POSTGRES_LATEST_VERSION);
+    return this;
+  }
+
+  public ClusterFixture withOperatorVersion(String version) {
+    if (fixture.getMetadata().getAnnotations() == null) {
+      fixture.getMetadata().setAnnotations(new HashMap<>());
+    }
+    fixture.getMetadata().getAnnotations().put(StackGresContext.VERSION_KEY, version);
     return this;
   }
 

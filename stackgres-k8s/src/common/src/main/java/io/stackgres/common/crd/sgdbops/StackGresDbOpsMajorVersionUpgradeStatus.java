@@ -10,7 +10,6 @@ import java.util.Objects;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
 import io.sundr.builder.annotations.Buildable;
@@ -23,25 +22,20 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresDbOpsMajorVersionUpgradeStatus {
 
-  @JsonProperty("sourcePostgresVersion")
   private String sourcePostgresVersion;
 
-  @JsonProperty("targetPostgresVersion")
   private String targetPostgresVersion;
 
-  @JsonProperty("primaryInstance")
   private String primaryInstance;
 
-  @JsonProperty("initialInstances")
   private List<String> initialInstances;
 
-  @JsonProperty("pendingToRestartInstances")
   private List<String> pendingToRestartInstances;
 
-  @JsonProperty("restartedInstances")
   private List<String> restartedInstances;
 
-  @JsonProperty("failure")
+  private String phase;
+
   private String failure;
 
   public String getSourcePostgresVersion() {
@@ -92,6 +86,14 @@ public class StackGresDbOpsMajorVersionUpgradeStatus {
     this.restartedInstances = restartedInstances;
   }
 
+  public String getPhase() {
+    return phase;
+  }
+
+  public void setPhase(String phase) {
+    this.phase = phase;
+  }
+
   public String getFailure() {
     return failure;
   }
@@ -102,8 +104,8 @@ public class StackGresDbOpsMajorVersionUpgradeStatus {
 
   @Override
   public int hashCode() {
-    return Objects.hash(failure, initialInstances, pendingToRestartInstances, primaryInstance,
-        restartedInstances, sourcePostgresVersion, targetPostgresVersion);
+    return Objects.hash(failure, initialInstances, pendingToRestartInstances, phase,
+        primaryInstance, restartedInstances, sourcePostgresVersion, targetPostgresVersion);
   }
 
   @Override
@@ -118,6 +120,7 @@ public class StackGresDbOpsMajorVersionUpgradeStatus {
     return Objects.equals(failure, other.failure)
         && Objects.equals(initialInstances, other.initialInstances)
         && Objects.equals(pendingToRestartInstances, other.pendingToRestartInstances)
+        && Objects.equals(phase, other.phase)
         && Objects.equals(primaryInstance, other.primaryInstance)
         && Objects.equals(restartedInstances, other.restartedInstances)
         && Objects.equals(sourcePostgresVersion, other.sourcePostgresVersion)

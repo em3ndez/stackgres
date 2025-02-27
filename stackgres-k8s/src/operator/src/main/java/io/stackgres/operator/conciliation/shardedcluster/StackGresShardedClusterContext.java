@@ -5,24 +5,29 @@
 
 package io.stackgres.operator.conciliation.shardedcluster;
 
+import static io.stackgres.operator.common.CryptoUtil.generatePassword;
+
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import io.fabric8.kubernetes.api.model.Endpoints;
 import io.fabric8.kubernetes.api.model.Secret;
-import io.fabric8.kubernetes.client.VersionInfo;
+import io.stackgres.common.ShardedClusterContext;
 import io.stackgres.common.StackGresVersion;
+import io.stackgres.common.crd.sgcluster.StackGresCluster;
+import io.stackgres.common.crd.sgconfig.StackGresConfig;
 import io.stackgres.common.crd.sgpgconfig.StackGresPostgresConfig;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedCluster;
 import io.stackgres.operator.conciliation.GenerationContext;
-import io.stackgres.operator.conciliation.cluster.StackGresClusterContext;
 import org.immutables.value.Value;
+import org.jooq.lambda.tuple.Tuple2;
 
 @Value.Immutable
 public interface StackGresShardedClusterContext
-    extends GenerationContext<StackGresShardedCluster> {
+    extends GenerationContext<StackGresShardedCluster>, ShardedClusterContext {
 
-  Optional<VersionInfo> getKubernetesVersion();
+  StackGresConfig getConfig();
 
   @Override
   @Value.Derived
@@ -30,11 +35,16 @@ public interface StackGresShardedClusterContext
     return StackGresVersion.getStackGresVersion(getSource());
   }
 
-  StackGresClusterContext getCoordinator();
+  @Override
+  default StackGresShardedCluster getShardedCluster() {
+    return getSource();
+  }
+
+  StackGresCluster getCoordinator();
 
   StackGresPostgresConfig getCoordinatorConfig();
 
-  List<StackGresClusterContext> getShards();
+  List<StackGresCluster> getShards();
 
   Optional<Endpoints> getCoordinatorPrimaryEndpoints();
 
@@ -42,22 +52,63 @@ public interface StackGresShardedClusterContext
 
   Optional<Secret> getDatabaseSecret();
 
+  Set<String> getClusterBackupNamespaces();
+
   Optional<String> getSuperuserUsername();
 
   Optional<String> getSuperuserPassword();
+
+  @Value.Derived
+  default String getGeneratedSuperuserPassword() {
+    return generatePassword();
+  }
 
   Optional<String> getReplicationUsername();
 
   Optional<String> getReplicationPassword();
 
+  @Value.Derived
+  default String getGeneratedReplicationPassword() {
+    return generatePassword();
+  }
+
   Optional<String> getAuthenticatorUsername();
 
   Optional<String> getAuthenticatorPassword();
 
+  Optional<String> getUserPasswordForBinding();
+
+  @Value.Derived
+  default String getGeneratedAuthenticatorPassword() {
+    return generatePassword();
+  }
+
   Optional<String> getPatroniRestApiPassword();
+
+  @Value.Derived
+  default String getGeneratedPatroniRestApiPassword() {
+    return generatePassword();
+  }
+
+  @Value.Derived
+  default String getGeneratedBabelfishPassword() {
+    return generatePassword();
+  }
+
+  @Value.Derived
+  default String getGeneratedPgBouncerAdminPassword() {
+    return generatePassword();
+  }
+
+  @Value.Derived
+  default String getGeneratedPgBouncerStatsPassword() {
+    return generatePassword();
+  }
 
   Optional<String> getPostgresSslCertificate();
 
   Optional<String> getPostgresSslPrivateKey();
+
+  List<Tuple2<String, String>> getShardingSphereAuthorityUsers();
 
 }

@@ -8,14 +8,12 @@ package io.stackgres.common.crd.sgcluster;
 import java.util.List;
 import java.util.Objects;
 
-import javax.validation.constraints.NotNull;
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.constraints.NotNull;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -25,30 +23,23 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresClusterInstalledExtension {
 
-  @JsonProperty("name")
   @NotNull(message = "name cannot be null")
   private String name;
 
-  @JsonProperty("publisher")
   @NotNull(message = "publisher cannot be null")
   private String publisher;
 
-  @JsonProperty("version")
   @NotNull(message = "version cannot be null")
   private String version;
 
-  @JsonProperty("repository")
   @NotNull(message = "repository cannot be null")
   private String repository;
 
-  @JsonProperty("postgresVersion")
   @NotNull(message = "postgresVersion cannot be null")
   private String postgresVersion;
 
-  @JsonProperty("build")
   private String build;
 
-  @JsonProperty("extraMounts")
   private List<String> extraMounts;
 
   public String getName() {

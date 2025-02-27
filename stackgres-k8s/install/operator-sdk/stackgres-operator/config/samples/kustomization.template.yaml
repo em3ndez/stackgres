@@ -1,0 +1,6 @@
+## Append samples you want in your CSV to this file as resources ##
+resources:
+$(
+  sed 's#^#- #' config/crd/bases/index.txt
+)
+#+kubebuilder:scaffold:manifestskustomizesamples

@@ -5,27 +5,24 @@
 
 package io.stackgres.common.labels;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.inject.Produces;
-
 import io.quarkus.arc.DefaultBean;
 import io.stackgres.common.crd.sgbackup.StackGresBackup;
-import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgdbops.StackGresDbOps;
-import io.stackgres.common.crd.sgdistributedlogs.StackGresDistributedLogs;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Produces;
 
 @ApplicationScoped
 public class LabelFactoryProducers {
 
   @Produces
   @DefaultBean
-  LabelFactoryForCluster<StackGresCluster> labelForCluster(ClusterLabelFactory factory) {
+  LabelFactoryForCluster labelForCluster(ClusterLabelFactory factory) {
     return factory;
   }
 
   @Produces
   @DefaultBean
-  LabelFactoryForCluster<StackGresDistributedLogs>
+  LabelFactoryForDistributedLogs
       labelForDistributedLogs(DistributedLogsLabelFactory factory) {
     return factory;
   }

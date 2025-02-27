@@ -15,4 +15,8 @@ fi
 exec /app/stackgres-operator \
   -Dquarkus.http.host=0.0.0.0 \
   -Djava.util.logging.manager=org.jboss.logmanager.LogManager \
+  $(
+    [ -z "$OPERATOR_CERT_FILE" ] || printf ' %s' "-Dquarkus.http.ssl.certificate.files=$OPERATOR_CERT_FILE"
+    [ -z "$OPERATOR_KEY_FILE" ] || printf ' %s' "-Dquarkus.http.ssl.certificate.key-files=$OPERATOR_KEY_FILE"
+  ) \
   $APP_OPTS

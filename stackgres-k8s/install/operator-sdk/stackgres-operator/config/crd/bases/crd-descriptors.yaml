@@ -48,6 +48,21 @@
   version: v1alpha1
   displayName: StackGres Sharded Cluster
   description: Manages Postgres sharded clusters (two or more SGClusters)
+- kind: SGShardedBackup
+  name: sgshardedbackups.stackgres.io
+  version: v1
+  displayName: StackGres Sharded Backup
+  description: Handle to a performed (or to be performed, if run manually) backup for sharded clusters
+- kind: SGShardedDbOps
+  name: sgshardeddbops.stackgres.io
+  version: v1
+  displayName: StackGres Sharded DbOps
+  description: Day 2 Operations for sharded clusters, including restarts, resharding, etc
+- kind: SGStream
+  name: sgstreams.stackgres.io
+  version: v1alpha1
+  displayName: StackGres Stream
+  description: Stream Change Data Captured (CDC) events
 - kind: SGConfig
   name: sgconfigs.stackgres.io
   version: v1

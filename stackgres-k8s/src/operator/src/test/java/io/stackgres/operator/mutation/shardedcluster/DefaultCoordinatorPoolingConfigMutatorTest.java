@@ -48,9 +48,9 @@ class DefaultCoordinatorPoolingConfigMutatorTest
   @Override
   protected void checkConfigurationIsSet(StackGresShardedCluster newResource) {
     assertNotNull(newResource.getSpec().getCoordinator());
-    assertNotNull(newResource.getSpec().getCoordinator().getConfiguration());
-    assertNotNull(newResource.getSpec().getCoordinator().getConfiguration()
-        .getConnectionPoolingConfig());
+    assertNotNull(newResource.getSpec().getCoordinator().getConfigurationsForCoordinator());
+    assertNotNull(newResource.getSpec().getCoordinator().getConfigurationsForCoordinator()
+        .getSgPoolingConfig());
   }
 
   @Override
@@ -61,8 +61,8 @@ class DefaultCoordinatorPoolingConfigMutatorTest
   @Override
   protected void setUpMissingConfiguration() {
     review.getRequest().getObject().getSpec().getPostgres().setVersion(POSTGRES_VERSION);
-    review.getRequest().getObject().getSpec().getCoordinator().getConfiguration()
-        .setConnectionPoolingConfig(null);
+    review.getRequest().getObject().getSpec().getCoordinator().getConfigurationsForCoordinator()
+        .setSgPoolingConfig(null);
   }
 
   @Override

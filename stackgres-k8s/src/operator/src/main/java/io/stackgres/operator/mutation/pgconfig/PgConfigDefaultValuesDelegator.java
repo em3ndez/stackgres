@@ -10,15 +10,14 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.stackgres.common.crd.sgpgconfig.StackGresPostgresConfig;
 import io.stackgres.common.crd.sgpgconfig.StackGresPostgresConfigSpec;
-import io.stackgres.operator.common.PgConfigReview;
+import io.stackgres.operator.common.StackGresPostgresConfigReview;
 import io.stackgres.operator.initialization.PostgresConfigurationFactory;
 import io.stackgres.operator.initialization.PostgresDefaultFactoriesProvider;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class PgConfigDefaultValuesDelegator implements PgConfigMutator {
@@ -35,7 +34,7 @@ public class PgConfigDefaultValuesDelegator implements PgConfigMutator {
   }
 
   @Override
-  public StackGresPostgresConfig mutate(PgConfigReview review, StackGresPostgresConfig resource) {
+  public StackGresPostgresConfig mutate(StackGresPostgresConfigReview review, StackGresPostgresConfig resource) {
     Map<String, PostgresConfigurationFactory> factoriesMap = defaultFactoriesProducer
         .getPostgresFactories()
         .stream()

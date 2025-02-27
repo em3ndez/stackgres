@@ -15,7 +15,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +24,6 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.stackgres.common.StackGresComponent;
 import io.stackgres.common.StackGresUtil;
@@ -37,7 +35,6 @@ import io.stackgres.common.fixture.Fixtures;
 import io.stackgres.common.resource.AbstractCustomResourceFinder;
 import io.stackgres.operator.common.StackGresShardedClusterReview;
 import io.stackgres.operator.common.fixture.AdmissionReviewFixtures;
-import io.stackgres.operator.configuration.OperatorPropertyContext;
 import io.stackgres.operatorframework.admissionwebhook.Operation;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
 import org.jooq.lambda.Seq;
@@ -64,7 +61,7 @@ class PostgresVersionValidatorTest {
               Seq.of(StackGresComponent.LATEST)
               .append(StackGresComponent.POSTGRESQL.getLatest().streamOrderedMajorVersions())
               .append(SUPPORTED_POSTGRES_VERSIONS)
-              .collect(ImmutableList.toImmutableList())));
+              .toList()));
   private static final String FIRST_PG_MAJOR_VERSION =
       StackGresComponent.POSTGRESQL.getLatest().streamOrderedMajorVersions()
           .get(0).get();
@@ -136,8 +133,7 @@ class PostgresVersionValidatorTest {
 
   @BeforeEach
   void setUp() {
-    validator = new PostgresConfigValidator(configFinder, ALL_SUPPORTED_POSTGRES_VERSIONS,
-        new OperatorPropertyContext());
+    validator = new PostgresConfigValidator(configFinder, ALL_SUPPORTED_POSTGRES_VERSIONS);
     postgresConfig = Fixtures.postgresConfig().loadDefault().get();
     postgresConfig.getSpec().setPostgresVersion(FIRST_PG_MAJOR_VERSION);
     otherPostgresConfig = Fixtures.postgresConfig().loadDefault().get();
@@ -151,7 +147,7 @@ class PostgresVersionValidatorTest {
 
     StackGresShardedClusterSpec spec = review.getRequest().getObject().getSpec();
     String coordinatorPostgresProfile =
-        spec.getCoordinator().getConfiguration().getPostgresConfig();
+        spec.getCoordinator().getConfigurationsForCoordinator().getSgPostgresConfig();
 
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
@@ -164,7 +160,7 @@ class PostgresVersionValidatorTest {
 
     validator.validate(review);
 
-    verify(configFinder, times(2)).findByNameAndNamespace(any(), any());
+    verify(configFinder, times(4)).findByNameAndNamespace(any(), any());
   }
 
   @Test
@@ -175,7 +171,7 @@ class PostgresVersionValidatorTest {
     StackGresShardedClusterSpec spec = review.getRequest().getObject().getSpec();
     spec.getPostgres().setVersion(getMajorPostgresVersion(getRandomPostgresVersion()));
     String coordinatorPostgresProfile =
-        spec.getCoordinator().getConfiguration().getPostgresConfig();
+        spec.getCoordinator().getConfigurationsForCoordinator().getSgPostgresConfig();
 
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
@@ -188,7 +184,7 @@ class PostgresVersionValidatorTest {
 
     validator.validate(review);
 
-    verify(configFinder, times(2)).findByNameAndNamespace(any(), any());
+    verify(configFinder, times(4)).findByNameAndNamespace(any(), any());
   }
 
   @Test
@@ -199,7 +195,7 @@ class PostgresVersionValidatorTest {
     StackGresShardedClusterSpec spec = review.getRequest().getObject().getSpec();
     spec.getPostgres().setVersion(StackGresComponent.LATEST);
     String postgresProfile = spec.getCoordinator()
-        .getConfiguration().getPostgresConfig();
+        .getConfigurationsForCoordinator().getSgPostgresConfig();
 
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
@@ -212,24 +208,7 @@ class PostgresVersionValidatorTest {
 
     validator.validate(review);
 
-    verify(configFinder, times(2)).findByNameAndNamespace(any(), any());
-  }
-
-  @Test
-  void givenNoPostgresVersion_shouldFail() throws ValidationFailed {
-    final StackGresShardedClusterReview review = AdmissionReviewFixtures.shardedCluster()
-        .loadInvalidCreationNoPgVersion().get();
-
-    ValidationFailed exception = assertThrows(ValidationFailed.class, () -> {
-      validator.validate(review);
-    });
-
-    String resultMessage = exception.getResult().getMessage();
-
-    assertEquals("postgres version must be provided",
-        resultMessage);
-
-    verify(configFinder, never()).findByNameAndNamespace(any(), any());
+    verify(configFinder, times(4)).findByNameAndNamespace(any(), any());
   }
 
   @Test
@@ -240,7 +219,8 @@ class PostgresVersionValidatorTest {
     postgresConfig.getSpec().setPostgresVersion(FIRST_PG_MAJOR_VERSION);
 
     StackGresShardedClusterSpec spec = review.getRequest().getObject().getSpec();
-    String postgresProfile = spec.getCoordinator().getConfiguration().getPostgresConfig();
+    String postgresProfile = spec.getCoordinator().getConfigurationsForCoordinator()
+        .getSgPostgresConfig();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(configFinder.findByNameAndNamespace(postgresProfile, namespace))
@@ -254,10 +234,10 @@ class PostgresVersionValidatorTest {
 
     assertEquals(
         "Invalid postgres version, must be " + FIRST_PG_MAJOR_VERSION
-            + " to use sgPostgresConfig postgresconf for coordinator",
+            + " to use SGPostgresConfig postgresconf for coordinator",
         resultMessage);
 
-    verify(configFinder, times(1)).findByNameAndNamespace(any(), any());
+    verify(configFinder, times(3)).findByNameAndNamespace(any(), any());
   }
 
   @Test
@@ -269,12 +249,12 @@ class PostgresVersionValidatorTest {
     otherPostgresConfig.getSpec().setPostgresVersion(FIRST_PG_MAJOR_VERSION);
 
     StackGresShardedClusterSpec spec = review.getRequest().getObject().getSpec();
-    spec.getShards().getConfiguration().setPostgresConfig("test");
-    String postgresProfile = spec.getShards().getConfiguration().getPostgresConfig();
+    spec.getShards().getConfigurations().setSgPostgresConfig("test");
+    String postgresProfile = spec.getShards().getConfigurations().getSgPostgresConfig();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(configFinder.findByNameAndNamespace(spec.getCoordinator()
-        .getConfiguration().getPostgresConfig(), namespace))
+        .getConfigurationsForCoordinator().getSgPostgresConfig(), namespace))
         .thenReturn(Optional.of(postgresConfig));
     when(configFinder.findByNameAndNamespace(postgresProfile, namespace))
         .thenReturn(Optional.of(otherPostgresConfig));
@@ -287,10 +267,10 @@ class PostgresVersionValidatorTest {
 
     assertEquals(
         "Invalid postgres version, must be " + FIRST_PG_MAJOR_VERSION
-            + " to use sgPostgresConfig " + postgresProfile + " for shards",
+            + " to use SGPostgresConfig " + postgresProfile + " for shards",
         resultMessage);
 
-    verify(configFinder, times(2)).findByNameAndNamespace(any(), any());
+    verify(configFinder, times(4)).findByNameAndNamespace(any(), any());
   }
 
   @Test
@@ -304,19 +284,20 @@ class PostgresVersionValidatorTest {
     StackGresShardedClusterSpec spec = review.getRequest().getObject().getSpec();
     spec.getShards().setOverrides(List.of(
         new StackGresShardedClusterShardBuilder()
-        .withNewConfigurationForShards()
-        .withPostgresConfig("overrideTest")
-        .endConfigurationForShards()
+        .withIndex(0)
+        .withNewConfigurationsForShards()
+        .withSgPostgresConfig("overrideTest")
+        .endConfigurationsForShards()
         .build()));
     String postgresProfile = spec.getShards().getOverrides().get(0)
-         .getConfigurationForShards().getPostgresConfig();
+         .getConfigurationsForShards().getSgPostgresConfig();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(configFinder.findByNameAndNamespace(spec.getCoordinator()
-        .getConfiguration().getPostgresConfig(), namespace))
+        .getConfigurationsForCoordinator().getSgPostgresConfig(), namespace))
         .thenReturn(Optional.of(postgresConfig));
     when(configFinder.findByNameAndNamespace(spec.getShards()
-        .getConfiguration().getPostgresConfig(), namespace))
+        .getConfigurations().getSgPostgresConfig(), namespace))
         .thenReturn(Optional.of(postgresConfig));
     when(configFinder.findByNameAndNamespace(postgresProfile, namespace))
         .thenReturn(Optional.of(otherPostgresConfig));
@@ -329,27 +310,10 @@ class PostgresVersionValidatorTest {
 
     assertEquals(
         "Invalid postgres version, must be " + FIRST_PG_MAJOR_VERSION
-            + " to use sgPostgresConfig " + postgresProfile + " for shard 0",
+            + " to use SGPostgresConfig " + postgresProfile + " for shard 0",
         resultMessage);
 
-    verify(configFinder, times(3)).findByNameAndNamespace(any(), any());
-  }
-
-  @Test
-  void givenAnEmptyPostgresVersion_shouldFail() {
-    final StackGresShardedClusterReview review = AdmissionReviewFixtures.shardedCluster()
-        .loadInvalidCreationEmptyPgVersion().get();
-
-    ValidationFailed exception = assertThrows(ValidationFailed.class, () -> {
-      validator.validate(review);
-    });
-
-    String resultMessage = exception.getResult().getMessage();
-
-    assertEquals("postgres version must be provided",
-        resultMessage);
-
-    verify(configFinder, never()).findByNameAndNamespace(anyString(), anyString());
+    verify(configFinder, times(6)).findByNameAndNamespace(any(), any());
   }
 
   @Test
@@ -402,12 +366,12 @@ class PostgresVersionValidatorTest {
   }
 
   @Test
-  void givenMajorPostgresVersionUpdate_shouldPassForDbOps() throws ValidationFailed {
+  void givenMajorPostgresVersionUpdate_shouldPassForStream() throws ValidationFailed {
     final StackGresShardedClusterReview review = AdmissionReviewFixtures.shardedCluster()
         .loadMajorPostgresVersionUpdate().get();
     review.getRequest().getObject().getMetadata().setAnnotations(new HashMap<>());
     StackGresUtil.setLock(review.getRequest().getObject(),
-        "test", "test", Instant.now().getEpochSecond());
+        "test", "test", 300);
     review.getRequest().getUserInfo().setUsername("system:serviceaccount:test:test");
 
     review.getRequest().getObject().getSpec().getPostgres().setVersion(FIRST_PG_MAJOR_VERSION);
@@ -435,13 +399,13 @@ class PostgresVersionValidatorTest {
   }
 
   @Test
-  void givenMinorPostgresVersionUpdate_shouldPassForDbOps() throws ValidationFailed {
+  void givenMinorPostgresVersionUpdate_shouldPassForStream() throws ValidationFailed {
     final StackGresShardedClusterReview review = AdmissionReviewFixtures.shardedCluster()
         .loadMinorPostgresVersionUpdate().get();
 
     review.getRequest().getObject().getMetadata().setAnnotations(new HashMap<>());
     StackGresUtil.setLock(review.getRequest().getObject(),
-        "test", "test", Instant.now().getEpochSecond());
+        "test", "test", 300);
     review.getRequest().getUserInfo().setUsername("system:serviceaccount:test:test");
 
     review.getRequest().getObject().getSpec().getPostgres().setVersion(FIRST_PG_MINOR_VERSION);
@@ -456,7 +420,8 @@ class PostgresVersionValidatorTest {
     review.getRequest().getObject().getSpec().getPostgres().setVersion(FIRST_PG_MAJOR_VERSION);
 
     StackGresShardedClusterSpec spec = review.getRequest().getObject().getSpec();
-    String postgresProfile = spec.getCoordinator().getConfiguration().getPostgresConfig();
+    String postgresProfile = spec.getCoordinator().getConfigurationsForCoordinator()
+        .getSgPostgresConfig();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(configFinder.findByNameAndNamespace(postgresProfile, namespace))
@@ -468,7 +433,7 @@ class PostgresVersionValidatorTest {
 
     String resultMessage = exception.getResult().getMessage();
 
-    assertEquals("Invalid sgPostgresConfig value " + postgresProfile + " for coordinator",
+    assertEquals("SGPostgresConfig " + postgresProfile + " not found for coordinator",
         resultMessage);
 
     verify(configFinder).findByNameAndNamespace(any(), any());
@@ -481,12 +446,12 @@ class PostgresVersionValidatorTest {
     review.getRequest().getObject().getSpec().getPostgres().setVersion(FIRST_PG_MAJOR_VERSION);
 
     StackGresShardedClusterSpec spec = review.getRequest().getObject().getSpec();
-    spec.getShards().getConfiguration().setPostgresConfig("test");
-    String postgresProfile = spec.getShards().getConfiguration().getPostgresConfig();
+    spec.getShards().getConfigurations().setSgPostgresConfig("test");
+    String postgresProfile = spec.getShards().getConfigurations().getSgPostgresConfig();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(configFinder.findByNameAndNamespace(spec.getCoordinator()
-        .getConfiguration().getPostgresConfig(), namespace))
+        .getConfigurationsForCoordinator().getSgPostgresConfig(), namespace))
         .thenReturn(Optional.of(postgresConfig));
     when(configFinder.findByNameAndNamespace(postgresProfile, namespace))
         .thenReturn(Optional.empty());
@@ -497,7 +462,7 @@ class PostgresVersionValidatorTest {
 
     String resultMessage = exception.getResult().getMessage();
 
-    assertEquals("Invalid sgPostgresConfig value " + postgresProfile + " for shards",
+    assertEquals("SGPostgresConfig " + postgresProfile + " not found for shards",
         resultMessage);
 
     verify(configFinder, times(2)).findByNameAndNamespace(any(), any());
@@ -512,19 +477,20 @@ class PostgresVersionValidatorTest {
     StackGresShardedClusterSpec spec = review.getRequest().getObject().getSpec();
     spec.getShards().setOverrides(List.of(
         new StackGresShardedClusterShardBuilder()
-        .withNewConfigurationForShards()
-        .withPostgresConfig("overrideTest")
-        .endConfigurationForShards()
+        .withIndex(0)
+        .withNewConfigurationsForShards()
+        .withSgPostgresConfig("overrideTest")
+        .endConfigurationsForShards()
         .build()));
     String postgresProfile = spec.getShards().getOverrides().get(0)
-        .getConfigurationForShards().getPostgresConfig();
+        .getConfigurationsForShards().getSgPostgresConfig();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(configFinder.findByNameAndNamespace(spec.getCoordinator()
-        .getConfiguration().getPostgresConfig(), namespace))
+        .getConfigurationsForCoordinator().getSgPostgresConfig(), namespace))
         .thenReturn(Optional.of(postgresConfig));
     when(configFinder.findByNameAndNamespace(spec.getShards()
-        .getConfiguration().getPostgresConfig(), namespace))
+        .getConfigurations().getSgPostgresConfig(), namespace))
         .thenReturn(Optional.of(postgresConfig));
     when(configFinder.findByNameAndNamespace(postgresProfile, namespace))
         .thenReturn(Optional.empty());
@@ -535,48 +501,10 @@ class PostgresVersionValidatorTest {
 
     String resultMessage = exception.getResult().getMessage();
 
-    assertEquals("Invalid sgPostgresConfig value " + postgresProfile + " for shard 0",
+    assertEquals("SGPostgresConfig " + postgresProfile + " not found for shards override 0",
         resultMessage);
 
     verify(configFinder, times(3)).findByNameAndNamespace(any(), any());
-  }
-
-  @Test
-  void givenNoCoordinatorPostgresConfigReference_shouldFail() {
-    final StackGresShardedClusterReview review =
-        AdmissionReviewFixtures.shardedCluster().loadCreate().get();
-
-    StackGresShardedClusterSpec spec = review.getRequest().getObject().getSpec();
-    spec.getCoordinator().getConfiguration().setPostgresConfig(null);
-
-    ValidationFailed exception = assertThrows(ValidationFailed.class, () -> {
-      validator.validate(review);
-    });
-
-    String resultMessage = exception.getResult().getMessage();
-
-    assertEquals("sgPostgresConfig must be provided for coordinator", resultMessage);
-
-    verify(configFinder, never()).findByNameAndNamespace(anyString(), anyString());
-  }
-
-  @Test
-  void givenNoShardsPostgresConfigReference_shouldFail() {
-    final StackGresShardedClusterReview review =
-        AdmissionReviewFixtures.shardedCluster().loadCreate().get();
-
-    StackGresShardedClusterSpec spec = review.getRequest().getObject().getSpec();
-    spec.getShards().getConfiguration().setPostgresConfig(null);
-
-    ValidationFailed exception = assertThrows(ValidationFailed.class, () -> {
-      validator.validate(review);
-    });
-
-    String resultMessage = exception.getResult().getMessage();
-
-    assertEquals("sgPostgresConfig must be provided for shards", resultMessage);
-
-    verify(configFinder, never()).findByNameAndNamespace(anyString(), anyString());
   }
 
   @Test
@@ -587,7 +515,8 @@ class PostgresVersionValidatorTest {
     review.getRequest().getOldObject().getSpec().getPostgres().setVersion(FIRST_PG_MAJOR_VERSION);
 
     StackGresShardedClusterSpec spec = review.getRequest().getObject().getSpec();
-    String postgresProfile = spec.getCoordinator().getConfiguration().getPostgresConfig();
+    String postgresProfile = spec.getCoordinator().getConfigurationsForCoordinator()
+        .getSgPostgresConfig();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(configFinder.findByNameAndNamespace(postgresProfile, namespace))
@@ -599,8 +528,8 @@ class PostgresVersionValidatorTest {
 
     String resultMessage = exception.getResult().getMessage();
 
-    assertEquals("Invalid sgPostgresConfig value " + postgresProfile + " for coordinator",
-        resultMessage);
+    assertEquals("Cannot update coordinator to SGPostgresConfig "
+        + postgresProfile + " because it doesn't exists", resultMessage);
 
     verify(configFinder).findByNameAndNamespace(any(), any());
   }
@@ -613,12 +542,12 @@ class PostgresVersionValidatorTest {
     review.getRequest().getOldObject().getSpec().getPostgres().setVersion(FIRST_PG_MAJOR_VERSION);
 
     StackGresShardedClusterSpec spec = review.getRequest().getObject().getSpec();
-    spec.getShards().getConfiguration().setPostgresConfig("test");
-    String postgresProfile = spec.getShards().getConfiguration().getPostgresConfig();
+    spec.getShards().getConfigurations().setSgPostgresConfig("test");
+    String postgresProfile = spec.getShards().getConfigurations().getSgPostgresConfig();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(configFinder.findByNameAndNamespace(spec.getCoordinator()
-        .getConfiguration().getPostgresConfig(), namespace))
+        .getConfigurationsForCoordinator().getSgPostgresConfig(), namespace))
         .thenReturn(Optional.of(postgresConfig));
     when(configFinder.findByNameAndNamespace(postgresProfile, namespace))
         .thenReturn(Optional.empty());
@@ -629,8 +558,8 @@ class PostgresVersionValidatorTest {
 
     String resultMessage = exception.getResult().getMessage();
 
-    assertEquals("Invalid sgPostgresConfig value " + postgresProfile + " for shards",
-        resultMessage);
+    assertEquals("Cannot update shards to SGPostgresConfig "
+        + postgresProfile + " because it doesn't exists", resultMessage);
 
     verify(configFinder, times(2)).findByNameAndNamespace(any(), any());
   }
@@ -646,26 +575,28 @@ class PostgresVersionValidatorTest {
     StackGresShardedClusterSpec spec = review.getRequest().getObject().getSpec();
     spec.getShards().setOverrides(List.of(
         new StackGresShardedClusterShardBuilder()
-        .withNewConfigurationForShards()
-        .withPostgresConfig("overrideTest")
-        .endConfigurationForShards()
+        .withIndex(0)
+        .withNewConfigurationsForShards()
+        .withSgPostgresConfig("overrideTest")
+        .endConfigurationsForShards()
         .build()));
     StackGresShardedClusterSpec oldSpec = review.getRequest().getOldObject().getSpec();
     oldSpec.getShards().setOverrides(List.of(
         new StackGresShardedClusterShardBuilder()
-        .withNewConfigurationForShards()
-        .withPostgresConfig("overrideTestOldValue")
-        .endConfigurationForShards()
+        .withIndex(0)
+        .withNewConfigurationsForShards()
+        .withSgPostgresConfig("overrideTestOldValue")
+        .endConfigurationsForShards()
         .build()));
     String postgresProfile = spec.getShards().getOverrides().get(0)
-        .getConfigurationForShards().getPostgresConfig();
+        .getConfigurationsForShards().getSgPostgresConfig();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(configFinder.findByNameAndNamespace(spec.getCoordinator()
-        .getConfiguration().getPostgresConfig(), namespace))
+        .getConfigurationsForCoordinator().getSgPostgresConfig(), namespace))
         .thenReturn(Optional.of(postgresConfig));
     when(configFinder.findByNameAndNamespace(spec.getShards()
-        .getConfiguration().getPostgresConfig(), namespace))
+        .getConfigurations().getSgPostgresConfig(), namespace))
         .thenReturn(Optional.of(postgresConfig));
     when(configFinder.findByNameAndNamespace(postgresProfile, namespace))
         .thenReturn(Optional.empty());
@@ -676,8 +607,8 @@ class PostgresVersionValidatorTest {
 
     String resultMessage = exception.getResult().getMessage();
 
-    assertEquals("Invalid sgPostgresConfig value " + postgresProfile + " for shard 0",
-        resultMessage);
+    assertEquals("Cannot update shards override 0 to SGPostgresConfig "
+        + postgresProfile + " because it doesn't exists", resultMessage);
 
     verify(configFinder, times(2)).findByNameAndNamespace(any(), any());
   }
@@ -700,6 +631,16 @@ class PostgresVersionValidatorTest {
     String postgresVersion = getRandomBuggyPostgresVersion();
     review.getRequest().getObject().getSpec().getPostgres().setVersion(postgresVersion);
 
+    StackGresShardedClusterSpec spec = review.getRequest().getObject().getSpec();
+    String namespace = review.getRequest().getObject().getMetadata().getNamespace();
+
+    when(configFinder.findByNameAndNamespace(spec.getCoordinator()
+        .getConfigurationsForCoordinator().getSgPostgresConfig(), namespace))
+        .thenReturn(Optional.of(postgresConfig));
+    when(configFinder.findByNameAndNamespace(spec.getShards()
+        .getConfigurations().getSgPostgresConfig(), namespace))
+        .thenReturn(Optional.of(postgresConfig));
+
     ValidationFailed exception = assertThrows(ValidationFailed.class, () -> {
       validator.validate(review);
     });
@@ -708,7 +649,7 @@ class PostgresVersionValidatorTest {
 
     assertTrue(resultMessage.contains("Do not use PostgreSQL " + postgresVersion), resultMessage);
 
-    verify(configFinder, never()).findByNameAndNamespace(anyString(), anyString());
+    verify(configFinder, times(2)).findByNameAndNamespace(anyString(), anyString());
   }
 
 }

@@ -15,9 +15,6 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.stackgres.common.StackGresUtil;
@@ -26,17 +23,18 @@ import io.stackgres.common.crd.sgbackup.StackGresBackup;
 import io.stackgres.common.crd.sgbackup.StackGresBackupProcess;
 import io.stackgres.common.crd.sgbackup.StackGresBackupSpec;
 import io.stackgres.common.crd.sgbackup.StackGresBackupStatus;
-import io.stackgres.common.crd.sgbackupconfig.StackGresBackupConfig;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgcluster.StackGresClusterBackupConfiguration;
-import io.stackgres.common.crd.sgcluster.StackGresClusterConfiguration;
+import io.stackgres.common.crd.sgcluster.StackGresClusterConfigurations;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
 import io.stackgres.common.crd.sgobjectstorage.StackGresObjectStorage;
 import io.stackgres.common.crd.sgprofile.StackGresProfile;
 import io.stackgres.common.resource.CustomResourceFinder;
 import io.stackgres.common.resource.CustomResourceScanner;
-import io.stackgres.operator.conciliation.RequiredResourceDecorator;
 import io.stackgres.operator.conciliation.RequiredResourceGenerator;
+import io.stackgres.operator.conciliation.ResourceGenerationDiscoverer;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,27 +49,23 @@ public class BackupRequiredResourcesGenerator
 
   private final CustomResourceFinder<StackGresProfile> profileFinder;
 
-  private final CustomResourceFinder<StackGresBackupConfig> backupConfigFinder;
-
   private final CustomResourceScanner<StackGresBackup> backupScanner;
   private final CustomResourceFinder<StackGresObjectStorage> objectStorageFinder;
 
-  private final RequiredResourceDecorator<StackGresBackupContext> decorator;
+  private final ResourceGenerationDiscoverer<StackGresBackupContext> discoverer;
 
   @Inject
   public BackupRequiredResourcesGenerator(
       CustomResourceFinder<StackGresCluster> clusterFinder,
       CustomResourceFinder<StackGresProfile> profileFinder,
-      CustomResourceFinder<StackGresBackupConfig> backupConfigFinder,
       CustomResourceScanner<StackGresBackup> backupScanner,
       CustomResourceFinder<StackGresObjectStorage> objectStorageFinder,
-      RequiredResourceDecorator<StackGresBackupContext> decorator) {
+      ResourceGenerationDiscoverer<StackGresBackupContext> discoverer) {
     this.clusterFinder = clusterFinder;
     this.profileFinder = profileFinder;
-    this.backupConfigFinder = backupConfigFinder;
     this.backupScanner = backupScanner;
     this.objectStorageFinder = objectStorageFinder;
-    this.decorator = decorator;
+    this.discoverer = discoverer;
   }
 
   @Override
@@ -88,7 +82,7 @@ public class BackupRequiredResourcesGenerator
         .findByNameAndNamespace(clusterName, clusterNamespace);
     final Optional<StackGresProfile> profile = cluster
         .map(StackGresCluster::getSpec)
-        .map(StackGresClusterSpec::getResourceProfile)
+        .map(StackGresClusterSpec::getSgInstanceProfile)
         .flatMap(profileName -> profileFinder
             .findByNameAndNamespace(profileName, clusterNamespace));
 
@@ -105,22 +99,19 @@ public class BackupRequiredResourcesGenerator
         && !isBackupFinished(config)) {
       final var specConfiguration = cluster
           .map(StackGresCluster::getSpec)
-          .map(StackGresClusterSpec::getConfiguration);
-
-      final Optional<String> sgBackupConfigurationName = specConfiguration
-          .map(StackGresClusterConfiguration::getBackupConfig);
+          .map(StackGresClusterSpec::getConfigurations);
 
       final Optional<String> sgObjectStorageName = specConfiguration
-          .map(StackGresClusterConfiguration::getBackups)
+          .map(StackGresClusterConfigurations::getBackups)
           .map(Collection::stream)
           .flatMap(Stream::findFirst)
-          .map(StackGresClusterBackupConfiguration::getObjectStorage);
+          .map(StackGresClusterBackupConfiguration::getSgObjectStorage);
 
-      if (sgObjectStorageName.isEmpty() && sgBackupConfigurationName.isEmpty()) {
+      if (sgObjectStorageName.isEmpty()) {
         throw new IllegalArgumentException(
             "SGBackup " + backupNamespace + "." + backupName
                 + " target SGCluster " + spec.getSgCluster()
-                + " without a SGObjectStorage or SGBackupConfig");
+                + " without an SGObjectStorage");
       }
 
       sgObjectStorageName.ifPresent(osName -> contextBuilder.objectStorage(
@@ -130,17 +121,9 @@ public class BackupRequiredResourcesGenerator
                       "SGBackup " + backupNamespace + "." + backupName
                           + " target SGCluster " + spec.getSgCluster()
                           + " with a non existent SGObjectStorage " + osName))));
-
-      sgBackupConfigurationName.ifPresent(bcName -> contextBuilder.backupConfig(
-          backupConfigFinder.findByNameAndNamespace(bcName, backupNamespace)
-              .orElseThrow(
-                  () -> new IllegalArgumentException(
-                      "SGBackup " + backupNamespace + "." + backupName
-                          + " target SGCluster " + spec.getSgCluster()
-                          + " with a non existent SGBackupConfig " + bcName))));
     }
 
-    return decorator.decorateResources(contextBuilder.build());
+    return discoverer.generateResources(contextBuilder.build());
   }
 
   private boolean isBackupInTheSameSgClusterNamespace(
@@ -170,8 +153,7 @@ public class BackupRequiredResourcesGenerator
         .map(backup -> backup
             .map(StackGresBackup::getMetadata)
             .map(ObjectMeta::getNamespace))
-        .filter(Optional::isPresent)
-        .map(Optional::get)
+        .flatMap(Optional::stream)
         .filter(Predicate.not(backupNamespace::equals))
         .collect(Collectors.groupingBy(Function.identity()))
         .keySet();

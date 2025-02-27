@@ -97,7 +97,7 @@ public class ExtensionReconciliationTest {
               extension, version, target, publisher);
         });
     initReconciliator = new ExtensionReconciliator<>("test-0",
-        extensionManager, false, eventEmitter) {
+        extensionManager, () -> false, eventEmitter) {
       @Override
       protected void onUninstallException(KubernetesClient client, StackGresCluster cluster,
                                           String extension, String podName, Exception ex) {
@@ -111,7 +111,7 @@ public class ExtensionReconciliationTest {
       }
     };
     reconciliator = new ExtensionReconciliator<>("test-0",
-        extensionManager, true, eventEmitter) {
+        extensionManager, () -> true, eventEmitter) {
       @Override
       protected void onUninstallException(KubernetesClient client, StackGresCluster cluster,
                                           String extension, String podName, Exception ex) {
@@ -126,7 +126,7 @@ public class ExtensionReconciliationTest {
     };
   }
 
-  private StackGresClusterInstalledExtension getInstalledExtension() {
+  private StackGresClusterInstalledExtension createInstalledExtension() {
     StackGresClusterInstalledExtension installedExtension =
         new StackGresClusterInstalledExtension();
     installedExtension.setName("timescaledb");
@@ -154,7 +154,7 @@ public class ExtensionReconciliationTest {
 
   @Test
   void testReconciliationWithExtension_installIsPerformed() throws Exception {
-    StackGresClusterInstalledExtension installedExtension = getInstalledExtension();
+    StackGresClusterInstalledExtension installedExtension = createInstalledExtension();
     ExtensionReconciliatorContext context = getContext(cluster -> {
       cluster.getSpec().getPostgres().setExtensions(null);
       cluster.getSpec().setToInstallPostgresExtensions(new ArrayList<>());
@@ -165,7 +165,8 @@ public class ExtensionReconciliationTest {
         .thenReturn(extensionInstaller);
     when(extensionInstaller
         .isExtensionInstalled())
-        .thenReturn(false);
+        .thenReturn(false)
+        .thenReturn(true);
     when(extensionInstaller
         .isExtensionPendingOverwrite())
         .thenReturn(false);
@@ -183,14 +184,14 @@ public class ExtensionReconciliationTest {
         context.getCluster().getStatus().getPodStatuses()
             .stream().filter(podStatus -> podStatus.getName().equals("test-0"))
             .findAny().map(StackGresClusterPodStatus::getInstalledPostgresExtensions)
-            .stream().flatMap(List::stream).collect(ImmutableList.toImmutableList()));
-    verify(extensionInstaller, times(1)).isExtensionInstalled();
-    verify(extensionInstaller, times(0)).areLinksCreated();
+            .stream().flatMap(List::stream).toList());
+    verify(extensionInstaller, times(2)).isExtensionInstalled();
+    verify(extensionInstaller, times(1)).areLinksCreated();
     verify(extensionUninstaller, times(0)).isExtensionInstalled();
     verify(extensionInstaller, times(1)).downloadAndExtract();
     verify(extensionInstaller, times(1)).verify();
     verify(extensionInstaller, times(1)).installExtension();
-    verify(extensionInstaller, times(0)).createExtensionLinks();
+    verify(extensionInstaller, times(1)).createExtensionLinks();
     verify(extensionInstaller, times(1)).doesInstallOverwriteAnySharedFile();
     verify(extensionInstaller, times(0)).setExtensionAsPending();
     verify(extensionUninstaller, times(0)).uninstallExtension();
@@ -200,7 +201,7 @@ public class ExtensionReconciliationTest {
   @Test
   void testReconciliationWithExtensionAlreadyPresent_installIsSkippedButStatusUpdated()
       throws Exception {
-    StackGresClusterInstalledExtension installedExtension = getInstalledExtension();
+    StackGresClusterInstalledExtension installedExtension = createInstalledExtension();
     ExtensionReconciliatorContext context = getContext(cluster -> {
       cluster.getSpec().getPostgres().setExtensions(null);
       cluster.getSpec().setToInstallPostgresExtensions(new ArrayList<>());
@@ -228,8 +229,8 @@ public class ExtensionReconciliationTest {
         context.getCluster().getStatus().getPodStatuses()
             .stream().filter(podStatus -> podStatus.getName().equals("test-0"))
             .findAny().map(StackGresClusterPodStatus::getInstalledPostgresExtensions)
-            .stream().flatMap(List::stream).collect(ImmutableList.toImmutableList()));
-    verify(extensionInstaller, times(1)).isExtensionInstalled();
+            .stream().flatMap(List::stream).toList());
+    verify(extensionInstaller, times(2)).isExtensionInstalled();
     verify(extensionInstaller, times(1)).areLinksCreated();
     verify(extensionUninstaller, times(0)).isExtensionInstalled();
     verify(extensionInstaller, times(0)).downloadAndExtract();
@@ -244,7 +245,7 @@ public class ExtensionReconciliationTest {
   @Test
   void testReconciliationWithExtAlreadyPresentButLinksNotCreated_installIsSkippedButLinksCreated()
       throws Exception {
-    StackGresClusterInstalledExtension installedExtension = getInstalledExtension();
+    StackGresClusterInstalledExtension installedExtension = createInstalledExtension();
     ExtensionReconciliatorContext context = getContext(cluster -> {
       cluster.getSpec().getPostgres().setExtensions(null);
       cluster.getSpec().setToInstallPostgresExtensions(new ArrayList<>());
@@ -279,8 +280,8 @@ public class ExtensionReconciliationTest {
         context.getCluster().getStatus().getPodStatuses()
             .stream().filter(podStatus -> podStatus.getName().equals("test-0"))
             .findAny().map(StackGresClusterPodStatus::getInstalledPostgresExtensions)
-            .stream().flatMap(List::stream).collect(ImmutableList.toImmutableList()));
-    verify(extensionInstaller, times(1)).isExtensionInstalled();
+            .stream().flatMap(List::stream).toList());
+    verify(extensionInstaller, times(2)).isExtensionInstalled();
     verify(extensionInstaller, times(1)).areLinksCreated();
     verify(extensionUninstaller, times(0)).isExtensionInstalled();
     verify(extensionInstaller, times(0)).downloadAndExtract();
@@ -294,7 +295,7 @@ public class ExtensionReconciliationTest {
 
   @Test
   void testInitReconciliationWithExtensionThatOverwrite_installIsPerformed() throws Exception {
-    StackGresClusterInstalledExtension installedExtension = getInstalledExtension();
+    StackGresClusterInstalledExtension installedExtension = createInstalledExtension();
     ExtensionReconciliatorContext context = getContext(cluster -> {
       cluster.getSpec().getPostgres().setExtensions(null);
       cluster.getSpec().setToInstallPostgresExtensions(new ArrayList<>());
@@ -305,7 +306,8 @@ public class ExtensionReconciliationTest {
         .thenReturn(extensionInstaller);
     when(extensionInstaller
         .isExtensionInstalled())
-        .thenReturn(false);
+        .thenReturn(false)
+        .thenReturn(true);
     doNothing().when(eventEmitter).emitExtensionDeployed(installedExtension);
     Assertions.assertTrue(initReconciliator.reconcile(null, context).result().get());
     Assertions.assertTrue(Optional.of(context.getCluster())
@@ -320,15 +322,15 @@ public class ExtensionReconciliationTest {
         context.getCluster().getStatus().getPodStatuses()
             .stream().filter(podStatus -> podStatus.getName().equals("test-0"))
             .findAny().map(StackGresClusterPodStatus::getInstalledPostgresExtensions)
-            .stream().flatMap(List::stream).collect(ImmutableList.toImmutableList()));
-    verify(extensionInstaller, times(1)).isExtensionInstalled();
-    verify(extensionInstaller, times(0)).areLinksCreated();
+            .stream().flatMap(List::stream).toList());
+    verify(extensionInstaller, times(2)).isExtensionInstalled();
+    verify(extensionInstaller, times(1)).areLinksCreated();
     verify(extensionInstaller, times(0)).isExtensionPendingOverwrite();
     verify(extensionUninstaller, times(0)).isExtensionInstalled();
     verify(extensionInstaller, times(1)).downloadAndExtract();
     verify(extensionInstaller, times(1)).verify();
     verify(extensionInstaller, times(1)).installExtension();
-    verify(extensionInstaller, times(0)).createExtensionLinks();
+    verify(extensionInstaller, times(1)).createExtensionLinks();
     verify(extensionInstaller, times(0)).doesInstallOverwriteAnySharedFile();
     verify(extensionInstaller, times(0)).setExtensionAsPending();
     verify(extensionUninstaller, times(0)).uninstallExtension();
@@ -337,7 +339,7 @@ public class ExtensionReconciliationTest {
 
   @Test
   void testReconciliationWithExtensionThatOverwrite_installIsSkipped() throws Exception {
-    StackGresClusterInstalledExtension installedExtension = getInstalledExtension();
+    StackGresClusterInstalledExtension installedExtension = createInstalledExtension();
     when(extensionManager.getExtensionInstaller(
         any(), any(StackGresClusterInstalledExtension.class)))
         .thenReturn(extensionInstaller);
@@ -365,12 +367,12 @@ public class ExtensionReconciliationTest {
     Assertions.assertTrue(context.getCluster().getStatus().getPodStatuses()
         .stream().filter(podStatus -> podStatus.getName().equals("test-0"))
         .findAny().map(StackGresClusterPodStatus::getPendingRestart).orElse(false));
-    Assertions.assertIterableEquals(ImmutableList.of(installedExtension),
+    Assertions.assertIterableEquals(List.of(),
         context.getCluster().getStatus().getPodStatuses()
             .stream().filter(podStatus -> podStatus.getName().equals("test-0"))
             .findAny().map(StackGresClusterPodStatus::getInstalledPostgresExtensions)
-            .stream().flatMap(List::stream).collect(ImmutableList.toImmutableList()));
-    verify(extensionInstaller, times(1)).isExtensionInstalled();
+            .stream().flatMap(List::stream).toList());
+    verify(extensionInstaller, times(2)).isExtensionInstalled();
     verify(extensionInstaller, times(0)).areLinksCreated();
     verify(extensionInstaller, times(2)).isExtensionPendingOverwrite();
     verify(extensionUninstaller, times(0)).isExtensionInstalled();
@@ -386,7 +388,7 @@ public class ExtensionReconciliationTest {
 
   @Test
   void testInitReconciliationWithExtensionPending_installIsPerformed() throws Exception {
-    StackGresClusterInstalledExtension installedExtension = getInstalledExtension();
+    StackGresClusterInstalledExtension installedExtension = createInstalledExtension();
     ExtensionReconciliatorContext context = getContext(cluster -> {
       cluster.getSpec().getPostgres().setExtensions(null);
       cluster.getSpec().setToInstallPostgresExtensions(new ArrayList<>());
@@ -421,8 +423,8 @@ public class ExtensionReconciliationTest {
         context.getCluster().getStatus().getPodStatuses()
             .stream().filter(podStatus -> podStatus.getName().equals("test-0"))
             .findAny().map(StackGresClusterPodStatus::getInstalledPostgresExtensions)
-            .stream().flatMap(List::stream).collect(ImmutableList.toImmutableList()));
-    verify(extensionInstaller, times(1)).isExtensionInstalled();
+            .stream().flatMap(List::stream).toList());
+    verify(extensionInstaller, times(2)).isExtensionInstalled();
     verify(extensionInstaller, times(0)).areLinksCreated();
     verify(extensionInstaller, times(0)).isExtensionPendingOverwrite();
     verify(extensionUninstaller, times(0)).isExtensionInstalled();
@@ -438,7 +440,7 @@ public class ExtensionReconciliationTest {
 
   @Test
   void testReconciliationWithExtensionPending_installIsSkipped() throws Exception {
-    StackGresClusterInstalledExtension installedExtension = getInstalledExtension();
+    StackGresClusterInstalledExtension installedExtension = createInstalledExtension();
     ExtensionReconciliatorContext context = getContext(cluster -> {
       cluster.getSpec().getPostgres().setExtensions(null);
       cluster.getSpec().setToInstallPostgresExtensions(new ArrayList<>());
@@ -459,9 +461,6 @@ public class ExtensionReconciliationTest {
         .isExtensionInstalled())
         .thenReturn(false);
     when(extensionInstaller
-        .areLinksCreated())
-        .thenReturn(true);
-    when(extensionInstaller
         .isExtensionPendingOverwrite())
         .thenReturn(true);
     Assertions.assertFalse(reconciliator.reconcile(null, context).result().get());
@@ -477,9 +476,9 @@ public class ExtensionReconciliationTest {
         context.getCluster().getStatus().getPodStatuses()
             .stream().filter(podStatus -> podStatus.getName().equals("test-0"))
             .findAny().map(StackGresClusterPodStatus::getInstalledPostgresExtensions)
-            .stream().flatMap(List::stream).collect(ImmutableList.toImmutableList()));
-    verify(extensionInstaller, times(1)).isExtensionInstalled();
-    verify(extensionInstaller, times(1)).areLinksCreated();
+            .stream().flatMap(List::stream).toList());
+    verify(extensionInstaller, times(2)).isExtensionInstalled();
+    verify(extensionInstaller, times(0)).areLinksCreated();
     verify(extensionInstaller, times(1)).isExtensionPendingOverwrite();
     verify(extensionUninstaller, times(0)).isExtensionInstalled();
     verify(extensionInstaller, times(0)).downloadAndExtract();
@@ -493,7 +492,7 @@ public class ExtensionReconciliationTest {
 
   @Test
   void testReconciliationWithExtensionAlreadyInstalled_installIsSkipped() throws Exception {
-    StackGresClusterInstalledExtension installedExtension = getInstalledExtension();
+    StackGresClusterInstalledExtension installedExtension = createInstalledExtension();
     ExtensionReconciliatorContext context = getContext(cluster -> {
       cluster.getSpec().getPostgres().setExtensions(null);
       cluster.getSpec().setToInstallPostgresExtensions(new ArrayList<>());
@@ -528,8 +527,8 @@ public class ExtensionReconciliationTest {
         context.getCluster().getStatus().getPodStatuses()
             .stream().filter(podStatus -> podStatus.getName().equals("test-0"))
             .findAny().map(StackGresClusterPodStatus::getInstalledPostgresExtensions)
-            .stream().flatMap(List::stream).collect(ImmutableList.toImmutableList()));
-    verify(extensionInstaller, times(1)).isExtensionInstalled();
+            .stream().flatMap(List::stream).toList());
+    verify(extensionInstaller, times(2)).isExtensionInstalled();
     verify(extensionInstaller, times(1)).areLinksCreated();
     verify(extensionUninstaller, times(0)).isExtensionInstalled();
     verify(extensionInstaller, times(0)).downloadAndExtract();
@@ -545,9 +544,9 @@ public class ExtensionReconciliationTest {
   @Test
   void testReconciliationWithPreviousExtensionAlreadyInstalled_upgradeIsPerformed()
       throws Exception {
-    StackGresClusterInstalledExtension previousInstalledExtension = getInstalledExtension();
+    StackGresClusterInstalledExtension previousInstalledExtension = createInstalledExtension();
     previousInstalledExtension.setVersion("1.7.0");
-    StackGresClusterInstalledExtension installedExtension = getInstalledExtension();
+    StackGresClusterInstalledExtension installedExtension = createInstalledExtension();
     ExtensionReconciliatorContext context = getContext(cluster -> {
       cluster.getSpec().getPostgres().setExtensions(null);
       cluster.getSpec().setToInstallPostgresExtensions(new ArrayList<>());
@@ -568,7 +567,8 @@ public class ExtensionReconciliationTest {
         .thenReturn(false);
     when(extensionInstaller
         .isExtensionInstalled())
-        .thenReturn(false);
+        .thenReturn(false)
+        .thenReturn(true);
     doNothing().when(eventEmitter).emitExtensionChanged(previousInstalledExtension,
         installedExtension);
     Assertions.assertTrue(reconciliator.reconcile(null, context).result().get());
@@ -584,14 +584,14 @@ public class ExtensionReconciliationTest {
         context.getCluster().getStatus().getPodStatuses()
             .stream().filter(podStatus -> podStatus.getName().equals("test-0"))
             .findAny().map(StackGresClusterPodStatus::getInstalledPostgresExtensions)
-            .stream().flatMap(List::stream).collect(ImmutableList.toImmutableList()));
-    verify(extensionInstaller, times(1)).isExtensionInstalled();
-    verify(extensionInstaller, times(0)).areLinksCreated();
+            .stream().flatMap(List::stream).toList());
+    verify(extensionInstaller, times(2)).isExtensionInstalled();
+    verify(extensionInstaller, times(1)).areLinksCreated();
     verify(extensionUninstaller, times(0)).isExtensionInstalled();
     verify(extensionInstaller, times(1)).downloadAndExtract();
     verify(extensionInstaller, times(1)).verify();
     verify(extensionInstaller, times(1)).installExtension();
-    verify(extensionInstaller, times(0)).createExtensionLinks();
+    verify(extensionInstaller, times(1)).createExtensionLinks();
     verify(extensionInstaller, times(1)).doesInstallOverwriteAnySharedFile();
     verify(extensionInstaller, times(0)).setExtensionAsPending();
     verify(extensionUninstaller, times(0)).uninstallExtension();
@@ -600,7 +600,7 @@ public class ExtensionReconciliationTest {
 
   @Test
   void testInitReconciliationWithInstalledExtensions_uninstallIsPerformed() throws Exception {
-    StackGresClusterInstalledExtension installedExtension = getInstalledExtension();
+    StackGresClusterInstalledExtension installedExtension = createInstalledExtension();
     ExtensionReconciliatorContext context = getContext(cluster -> {
       cluster.getSpec().getPostgres().setExtensions(null);
       cluster.setStatus(new StackGresClusterStatus());
@@ -632,7 +632,7 @@ public class ExtensionReconciliationTest {
         context.getCluster().getStatus().getPodStatuses()
             .stream().filter(podStatus -> podStatus.getName().equals("test-0"))
             .findAny().map(StackGresClusterPodStatus::getInstalledPostgresExtensions)
-            .stream().flatMap(List::stream).collect(ImmutableList.toImmutableList()));
+            .stream().flatMap(List::stream).toList());
     verify(extensionInstaller, times(0)).isExtensionInstalled();
     verify(extensionInstaller, times(0)).areLinksCreated();
     verify(extensionUninstaller, times(1)).isExtensionInstalled();
@@ -650,7 +650,7 @@ public class ExtensionReconciliationTest {
   @Test
   void testReconciliationWithInstalledExtensions_uninstallIsSkippedButStatusUpdated()
       throws Exception {
-    final StackGresClusterInstalledExtension installedExtension = getInstalledExtension();
+    final StackGresClusterInstalledExtension installedExtension = createInstalledExtension();
     ExtensionReconciliatorContext context = getContext(cluster -> {
       cluster.getSpec().getPostgres().setExtensions(null);
       cluster.setStatus(new StackGresClusterStatus());
@@ -674,7 +674,7 @@ public class ExtensionReconciliationTest {
         context.getCluster().getStatus().getPodStatuses()
             .stream().filter(podStatus -> podStatus.getName().equals("test-0"))
             .findAny().map(StackGresClusterPodStatus::getInstalledPostgresExtensions)
-            .stream().flatMap(List::stream).collect(ImmutableList.toImmutableList()));
+            .stream().flatMap(List::stream).toList());
     verify(extensionInstaller, times(0)).isExtensionInstalled();
     verify(extensionInstaller, times(0)).areLinksCreated();
     verify(extensionUninstaller, times(0)).isExtensionInstalled();
@@ -706,7 +706,7 @@ public class ExtensionReconciliationTest {
         context.getCluster().getStatus().getPodStatuses()
             .stream().filter(podStatus -> podStatus.getName().equals("test-0"))
             .findAny().map(StackGresClusterPodStatus::getInstalledPostgresExtensions)
-            .stream().flatMap(List::stream).collect(ImmutableList.toImmutableList()));
+            .stream().flatMap(List::stream).toList());
     verify(extensionInstaller, times(0)).isExtensionInstalled();
     verify(extensionInstaller, times(0)).areLinksCreated();
     verify(extensionUninstaller, times(0)).isExtensionInstalled();

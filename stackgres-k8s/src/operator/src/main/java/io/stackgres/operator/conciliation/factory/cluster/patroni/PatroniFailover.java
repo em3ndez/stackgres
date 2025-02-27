@@ -7,9 +7,6 @@ package io.stackgres.operator.conciliation.factory.cluster.patroni;
 
 import java.util.stream.Stream;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
 import io.fabric8.kubernetes.api.model.EndpointsBuilder;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.stackgres.common.PatroniUtil;
@@ -18,15 +15,17 @@ import io.stackgres.common.labels.LabelFactoryForCluster;
 import io.stackgres.operator.conciliation.OperatorVersionBinder;
 import io.stackgres.operator.conciliation.ResourceGenerator;
 import io.stackgres.operator.conciliation.cluster.StackGresClusterContext;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
 @Singleton
 @OperatorVersionBinder
 public class PatroniFailover implements ResourceGenerator<StackGresClusterContext> {
 
-  private final LabelFactoryForCluster<StackGresCluster> labelFactory;
+  private final LabelFactoryForCluster labelFactory;
 
   @Inject
-  public PatroniFailover(LabelFactoryForCluster<StackGresCluster> labelFactory) {
+  public PatroniFailover(LabelFactoryForCluster labelFactory) {
     this.labelFactory = labelFactory;
   }
 

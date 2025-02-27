@@ -9,23 +9,30 @@ metadata:
       Fully Open Source.
     alm-examples: '[]'
     capabilities: Deep Insights
-    operatorhub.io/ui-metadata-max-k8s-version: "1.25.999"
+    operatorhub.io/ui-metadata-max-k8s-version: "$(yq -r '.kubeVersion|match("^[^ ]+ - ([^.]+\\.[^.]+)\\..*$").captures[0].string' "$PROJECT_PATH"/stackgres-k8s/install/helm/stackgres-operator/Chart.yaml).999"
     categories: Database
     repository: https://gitlab.com/ongresinc/stackgres
-    containerImage: quay.io/stackgres/operator:${VERSION}
-    olm.skipRange: '<${VERSION}'
+    containerImage: quay.io/stackgres/operator:${IMAGE_TAG}
 spec:
   displayName: StackGres
   provider:
     name: OnGres
     url: https://ongres.com
-  version: ${VERSION}
-  minKubeVersion: "1.18.0"
+  version: "${VERSION}"
+  minKubeVersion: "$(yq -r '.kubeVersion|match("^([^.]+\\.[^.]+)\\..*$").captures[0].string' "$PROJECT_PATH"/stackgres-k8s/install/helm/stackgres-operator/Chart.yaml).0"
   maturity: stable
   apiservicedefinitions: {}
   customresourcedefinitions:
     owned:
 $(
+  for CRD in $(grep -vxF SGBackupConfig.yaml config/crd/bases/index.txt)
+  do
+    if ! yq -r '.[].kind' config/crd/bases/crd-descriptors.yaml | grep -qxF "${CRD%.yaml}"
+    then
+      >&2 echo "Can not find ${CRD%.yaml} in config/crd/bases/crd-descriptors.yaml"
+      exit 1
+    fi
+  done
   yq -r '.[].kind' config/crd/bases/crd-descriptors.yaml \
     | while read KIND
       do
@@ -45,14 +52,32 @@ $(
       deployments: null
     strategy: ""
   installModes:
-  - supported: false
+$(
+  if [ "$CREATE_CONVERSION_WEBHOOKS" = true ]
+  then
+    cat << EOF
+  - supported: true
     type: OwnNamespace
-  - supported: false
+  - supported: true
     type: SingleNamespace
-  - supported: false
+  - supported: true
     type: MultiNamespace
   - supported: true
     type: AllNamespaces
+EOF
+ else
+    cat << EOF
+  - supported: true
+    type: OwnNamespace
+  - supported: true
+    type: SingleNamespace
+  - supported: true
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+EOF
+ fi
+)
   keywords:
   - postgresql
   - postgres
@@ -69,13 +94,13 @@ $(
   maintainers:
   - email: stackgres@ongres.com
     name: OnGres
+  labels:
+    operatorframework.io/arch.amd64: supported
+    operatorframework.io/arch.arm64: supported
+    operatorframework.io/os.linux: supported
   relatedImages:
-  - image: ongres/kubectl:v1.25.5-build-6.19
-    name: kubectl_1_25_5
-  - image: gcr.io/kubebuilder/kube-rbac-proxy:v0.13.0
-    name: kube-rbac-proxy_0_13_0
-  - image: quay.io/stackgres/helm-operator:${VERSION}
-    name: stackgres-operator-helm
+  - image: quay.io/ongres/kubectl:v1.31.3-build-6.38
+    name: kubectl_1_31_3
   - image: quay.io/stackgres/operator:${VERSION}
     name: stackgres-operator
   - image: quay.io/stackgres/restapi:${VERSION}

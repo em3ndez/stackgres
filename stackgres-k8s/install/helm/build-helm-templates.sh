@@ -29,7 +29,8 @@ mkdir -p "target/templates"
 
 helm template --namespace stackgres stackgres-operator \
   "target/stackgres-operator" \
-  --kube-version 1.27 \
+  --set skipInstallConfig=true \
+  --kube-version 1.31 \
   --set-string adminui.service.type=LoadBalancer \
   > "target/templates/stackgres-operator-demo-template.yml"
 
@@ -104,7 +105,7 @@ helm template --namespace default simple \
   --set configurations.create=false \
   --set cluster.create=true \
   --set profiles=null \
-  --set cluster.sgInstanceProfile=size-xs \
+  --set cluster.sgInstanceProfile=size-s \
   --set cluster.instances=2 \
   --set instanceProfiles=null \
   --set nonProductionOptions.disableClusterPodAntiAffinity=true \

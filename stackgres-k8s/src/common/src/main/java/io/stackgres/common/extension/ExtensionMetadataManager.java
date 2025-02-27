@@ -12,12 +12,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
-import javax.ws.rs.core.UriBuilder;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.stackgres.common.CdiUtil;
@@ -25,6 +24,7 @@ import io.stackgres.common.WebClientFactory;
 import io.stackgres.common.WebClientFactory.WebClient;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgcluster.StackGresClusterExtension;
+import jakarta.ws.rs.core.UriBuilder;
 import org.jooq.lambda.Seq;
 import org.jooq.lambda.tuple.Tuple;
 import org.jooq.lambda.tuple.Tuple3;
@@ -100,19 +100,6 @@ public abstract class ExtensionMetadataManager {
         .findFirst();
   }
 
-  public List<StackGresExtensionMetadata> requestExtensionsAnyVersion(
-      ExtensionRequest extensionRequest,
-      boolean detectOs) {
-    return Optional
-        .ofNullable(
-            getExtensionsMetadata().indexAnyVersions.get(
-                StackGresExtensionIndexAnyVersion.fromClusterExtension(extensionRequest, detectOs)
-            )
-        )
-        .map(this::extractLatestVersions)
-        .orElse(List.of());
-  }
-
   public List<StackGresExtensionMetadata> getExtensionsAnyVersion(
       StackGresCluster cluster, StackGresClusterExtension extension, boolean detectOs) {
     return Optional
@@ -130,7 +117,7 @@ public abstract class ExtensionMetadataManager {
         .grouped(Tuple3::limit2)
         .map(group -> group.v2
             .map(Tuple3::v3)
-            .min(StackGresExtensionMetadata::compareBuild)
+            .max(Comparator.comparing(StackGresExtensionMetadata::getBuild))
             .orElseThrow())
         .toUnmodifiableList();
   }

@@ -37,7 +37,14 @@
 					<th class="actions"></th>
 				</thead>
 				<tbody>
-					<template v-if="!sgshardedclusters.length">
+					<template v-if="sgshardedclusters === null">
+						<tr class="no-results">
+							<td colspan="999">
+								Loading data...
+							</td>
+						</tr>
+					</template>					
+					<template v-else-if="!sgshardedclusters.length">
 						<tr class="no-results">
 							<td colspan="7" v-if="iCan('create','sgshardedclusters',$route.params.namespace)">
 								No sharded clusters have been found, would you like to <router-link :to="'/' + $route.params.namespace + '/sgshardedclusters/new'" title="Add New Cluster">create a new one?</router-link>
@@ -89,8 +96,7 @@
 										</router-link>
 									</td>
 									<td class="actions">
-										<router-link :to="'/' + $route.params.namespace + '/sgshardedcluster/' + cluster.name" target="_blank" class="newTab"></router-link>
-										<router-link v-if="iCan('patch','sgshardedclusters',$route.params.namespace)" :to="'/' + $route.params.namespace + '/sgshardedcluster/' + cluster.name + '/edit'" title="Edit Cluster" data-active=".set.clu" class="editCRD"></router-link>
+										<router-link v-if="iCan('patch','sgshardedclusters',$route.params.namespace)" :to="'/' + $route.params.namespace + '/sgshardedcluster/' + cluster.name + '/edit'" title="Edit Cluster" class="editCRD"></router-link>
 										<a v-if="iCan('create','sgshardedclusters',$route.params.namespace)" @click="cloneCRD('SGShardedClusters', $route.params.namespace, cluster.name)" class="cloneCRD" title="Clone Cluster"></a>
 										<a v-if="iCan('delete','sgshardedclusters',$route.params.namespace)" @click="deleteCRD('sgshardedclusters', $route.params.namespace, cluster.name)" title="Delete Cluster" class="deleteCRD"></a>
 									</td>
@@ -100,7 +106,7 @@
 					</template>
 				</tbody>
 			</table>
-			<v-page :key="'pagination-'+pagination.rows" v-if="pagination.rows < sgshardedclusters.length" v-model="pagination.current" :page-size-menu="(pagination.rows > 1) ? [ pagination.rows, pagination.rows*2, pagination.rows*3 ] : [1]" :total-row="sgshardedclusters.length" @page-change="pageChange" align="center" ref="page"></v-page>
+			<v-page :key="'pagination-'+pagination.rows" v-if="( (sgshardedclusters !== null) && (pagination.rows < sgshardedclusters.length) )" v-model="pagination.current" :page-size-menu="(pagination.rows > 1) ? [ pagination.rows, pagination.rows*2, pagination.rows*3 ] : [1]" :total-row="sgshardedclusters.length" @page-change="pageChange" align="center" ref="page"></v-page>
 		</div>
 		<div id="nameTooltip">
 			<div class="info"></div>
@@ -130,7 +136,11 @@
 		},
 		computed: {
 			sgshardedclusters () {
-				return this.sortTable([...(store.state.sgshardedclusters.filter(cluster => (cluster.data.metadata.namespace == this.$route.params.namespace)))], this.currentSort.param, this.currentSortDir, this.currentSort.type)
+				return (
+					(store.state.sgshardedclusters !== null)
+						? this.sortTable([...(store.state.sgshardedclusters.filter(cluster => (cluster.data.metadata.namespace == this.$route.params.namespace)))], this.currentSort.param, this.currentSortDir, this.currentSort.type)
+						: null
+				)
 			},
 
 			profiles () {
@@ -159,12 +169,6 @@
 
 	td.clusterName > div + span {
 		width: calc(100% - 45px);
-	}
-
-	th.actions, td.actions {
-		width: 120px !important;
-		min-width: 120px;
-		max-width: 120px !important;
 	}
 
 	a.cloneCRD svg {

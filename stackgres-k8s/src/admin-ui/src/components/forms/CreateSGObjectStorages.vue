@@ -3,6 +3,12 @@
         <!-- Vue reactivity hack -->
         <template v-if="Object.keys(config).length > 0"></template>
 
+        <template v-if="editMode && !editReady">
+            <span class="warningText">
+                Loading data...
+            </span>
+        </template>
+
         <form id="createObjectStorage" class="form" @submit.prevent v-if="!editMode || editReady">
             <div class="header">
                 <h2>
@@ -18,7 +24,7 @@
                 </div>
             </div>
             
-            <span class="warning topLeft" v-if="nameColission && !editMode">
+            <span class="warning topLeft" v-if="nameCollision && !editMode">
                 There's already an <strong>SGObjectStorage</strong> with the same name on this namespace. Please specify a different name or create the configuration on another namespace
             </span>
 
@@ -268,9 +274,30 @@
             <button class="btn border" @click="cancel()">Cancel</button>
 
             <button type="button" class="btn floatRight" @click="createObjectStorage(true)">View Summary</button>
+            <button
+                data-field="dryRun"
+                type="button"
+                class="btn border floatRight"
+                title="Dry run mode helps to evaluate a request through the typical request stages without any storage persistance or resource allocation."
+                @click="
+                    dryRun = true;
+                    createObjectStorage();
+                "
+            >
+                Dry Run
+            </button>
         </form>
-
-        <CRDSummary :crd="previewCRD" kind="SGObjectStorage" v-if="showSummary" @closeSummary="showSummary = false"></CRDSummary>
+        <CRDSummary
+            v-if="showSummary"
+            :crd="previewCRD"
+            :dryRun="dryRun"
+            kind="SGObjectStorage"
+            @closeSummary="
+                showSummary = false;
+                dryRun = false;
+                previewCRD = {};
+            "
+        ></CRDSummary>
     </div>
 </template>
 
@@ -297,6 +324,7 @@
             return {
                 editMode: (vm.$route.name === 'EditObjectStorage'),
                 editReady: false,
+                dryRun: false,
                 previewCRD: {},
                 showSummary: false,
                 advancedModeStorage: false,
@@ -327,19 +355,22 @@
         },
         computed: {
 
-            nameColission() {
+            nameCollision() {
+                if(store.state.sgobjectstorages !== null) {
+                    const vc = this;
+                    var nameCollision = false;
+                    
+                    store.state.sgobjectstorages.forEach(function(item){
+                        if( (item.name == vc.name) && (item.data.metadata.namespace == vc.$route.params.namespace ) ) {
+                            nameCollision = true;
+                            return false
+                        }
+                    })
 
-                const vc = this;
-                var nameColission = false;
-                
-                store.state.sgobjectstorages.forEach(function(item){
-                    if( (item.name == vc.name) && (item.data.metadata.namespace == vc.$route.params.namespace ) ) {
-                        nameColission = true;
-                        return false
-                    }
-                })
-
-                return nameColission
+                    return nameCollision
+                } else {
+                    return false;
+                }
             },
 
             config() {
@@ -347,7 +378,7 @@
                 var vm = this;
                 var conf = {};
                 
-                if( vm.editMode && !vm.editReady ) {
+                if( vm.editMode && !vm.editReady && (store.state.sgobjectstorages !== null)) {
                     store.state.sgobjectstorages.forEach(function( config ){
                         if( (config.data.metadata.name === vm.$route.params.name) && (config.data.metadata.namespace === vm.$route.params.namespace) ) {
                             vm.type = config.data.spec.type;
@@ -409,8 +440,12 @@
                 const vc = this;
 
                 if(!vc.checkRequired()) {
+                    vc.dryRun = false;
+                    vc.showSummary = false;
                     return;
                 }
+
+                store.commit('loading', true);
 
                 if (!previous) {
                     sgApi
@@ -506,43 +541,58 @@
                     vc.previewCRD = {};
                     vc.previewCRD['data'] = config;
                     vc.showSummary = true;
+                    store.commit('loading', false);
 
                 } else {
 
                     if(this.editMode) {
                         sgApi
-                        .update('sgobjectstorages', config)
+                        .update('sgobjectstorages', config, vc.dryRun)
                         .then(function (response) {
-                            vc.notify('Object storage configuration <strong>"'+config.metadata.name+'"</strong> updated successfully', 'message','sgobjectstorages');
+                            if(vc.dryRun) {
+                                vc.showSummary = true;
+                                vc.validateDryRun(response.data);
+                            } else {
+                                vc.notify('Object storage configuration <strong>"'+config.metadata.name+'"</strong> updated successfully', 'message','sgobjectstorages');
 
-                            vc.fetchAPI('sgobjectstorage');
-                            router.push('/' + config.metadata.namespace + '/sgobjectstorage/' + config.metadata.name);
+                                vc.fetchAPI('sgobjectstorage');
+                                router.push('/' + config.metadata.namespace + '/sgobjectstorage/' + config.metadata.name);
+                            }
+                            store.commit('loading', false);
                         })
                         .catch(function (error) {
                             console.log(error.response);
                             vc.notify(error.response.data,'error','sgobjectstorages');
+                            store.commit('loading', false);
                         });
 
                     } else {
                         sgApi
-                        .create('sgobjectstorages', config)
+                        .create('sgobjectstorages', config, vc.dryRun)
                         .then(function (response) {
                             
-                            var urlParams = new URLSearchParams(window.location.search);
-                            if(urlParams.has('newtab')) {
-                                opener.fetchParentAPI('sgobjectstorages');
-                                vc.notify('Object storage configuration <strong>"'+config.metadata.name+'"</strong> created successfully.<br/><br/> You may now close this window and choose your configuration from the list.', 'message','sgobjectstorages');
+                            if(vc.dryRun) {
+                                vc.showSummary = true;
+                                vc.validateDryRun(response.data);
                             } else {
-                                vc.notify('Object storage configuration <strong>"'+config.metadata.name+'"</strong> created successfully', 'message','sgobjectstorages');
-                            }
+                                var urlParams = new URLSearchParams(window.location.search);
+                                if(urlParams.has('newtab')) {
+                                    opener.fetchParentAPI('sgobjectstorages');
+                                    vc.notify('Object storage configuration <strong>"'+config.metadata.name+'"</strong> created successfully.<br/><br/> You may now close this window and choose your configuration from the list.', 'message','sgobjectstorages');
+                                } else {
+                                    vc.notify('Object storage configuration <strong>"'+config.metadata.name+'"</strong> created successfully', 'message','sgobjectstorages');
+                                }
 
-                            vc.fetchAPI('sgobjectstorage');
-                            router.push('/' + config.metadata.namespace + '/sgobjectstorages');
+                                vc.fetchAPI('sgobjectstorage');
+                                router.push('/' + config.metadata.namespace + '/sgobjectstorages');
+                            }
+                            store.commit('loading', false);
                             
                         })
                         .catch(function (error) {
                             console.log(error.response);
                             vc.notify(error.response.data,'error','sgobjectstorages');
+                            store.commit('loading', false);
                         });
                     }
 

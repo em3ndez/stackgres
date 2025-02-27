@@ -9,16 +9,16 @@ import static io.stackgres.common.StackGresUtil.getPostgresFlavorComponent;
 
 import java.util.Optional;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.stackgres.common.ErrorType;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgdbops.StackGresDbOps;
 import io.stackgres.common.resource.CustomResourceFinder;
-import io.stackgres.operator.common.DbOpsReview;
+import io.stackgres.operator.common.StackGresDbOpsReview;
 import io.stackgres.operator.validation.ValidationType;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
 @Singleton
 @ValidationType(ErrorType.FORBIDDEN_CR_UPDATE)
@@ -33,7 +33,9 @@ public class DbOpsSecurityUpgradeValidator implements DbOpsValidator {
   }
 
   @Override
-  public void validate(DbOpsReview review) throws ValidationFailed {
+  @SuppressFBWarnings(value = "SF_SWITCH_NO_DEFAULT",
+      justification = "False positive")
+  public void validate(StackGresDbOpsReview review) throws ValidationFailed {
     switch (review.getRequest().getOperation()) {
       case CREATE:
         StackGresDbOps dbOps = review.getRequest().getObject();
@@ -43,7 +45,7 @@ public class DbOpsSecurityUpgradeValidator implements DbOpsValidator {
           if (cluster.map(c -> getPostgresFlavorComponent(c).get(c).streamOrderedVersions()
               .noneMatch(c.getSpec().getPostgres().getVersion()::equals))
               .orElse(false)) {
-            fail("Major version upgrade must be performed on StackGresCluster before performing"
+            fail("Major version upgrade must be performed on SGCluster before performing"
                 + " the upgrade since Postgres version " + cluster.get().getSpec().getPostgres()
                 .getVersion() + " will not be supported after the upgrade is completed");
           }

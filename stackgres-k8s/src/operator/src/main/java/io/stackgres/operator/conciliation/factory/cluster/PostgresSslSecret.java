@@ -5,19 +5,18 @@
 
 package io.stackgres.operator.conciliation.factory.cluster;
 
+import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
 
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
 import io.fabric8.kubernetes.api.model.SecretVolumeSourceBuilder;
 import io.fabric8.kubernetes.api.model.Volume;
 import io.fabric8.kubernetes.api.model.VolumeBuilder;
+import io.stackgres.common.PatroniUtil;
 import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.StackGresVolume;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
@@ -32,6 +31,8 @@ import io.stackgres.operator.conciliation.factory.ImmutableVolumePair;
 import io.stackgres.operator.conciliation.factory.VolumeFactory;
 import io.stackgres.operator.conciliation.factory.VolumePair;
 import io.stackgres.operatorframework.resource.ResourceUtil;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jetbrains.annotations.NotNull;
 
 @Singleton
@@ -39,12 +40,9 @@ import org.jetbrains.annotations.NotNull;
 public class PostgresSslSecret
     implements VolumeFactory<StackGresClusterContext> {
 
-  public static final String CERTIFICATE_KEY = "tls.crt";
-  public static final String PRIVATE_KEY_KEY = "tls.key";
-
   private static final String SSL_SUFFIX = "-ssl";
 
-  private final LabelFactoryForCluster<StackGresCluster> labelFactory;
+  private final LabelFactoryForCluster labelFactory;
 
   public static String name(StackGresClusterContext clusterContext) {
     return name(clusterContext.getSource());
@@ -56,7 +54,7 @@ public class PostgresSslSecret
   }
 
   @Inject
-  public PostgresSslSecret(LabelFactoryForCluster<StackGresCluster> labelFactory) {
+  public PostgresSslSecret(LabelFactoryForCluster labelFactory) {
     this.labelFactory = labelFactory;
   }
 
@@ -113,12 +111,13 @@ public class PostgresSslSecret
     var certificate = context.getPostgresSslCertificate();
     var privateKey = context.getPostgresSslPrivateKey();
     if (certificate.isEmpty() || privateKey.isEmpty()) {
-      var certificateAndPrivateKey = CryptoUtil.generateCertificateAndPrivateKey();
+      var certificateAndPrivateKey = CryptoUtil.generateCertificateAndPrivateKey(
+          ZonedDateTime.now().plusYears(7500).toInstant());
       certificate = Optional.of(certificateAndPrivateKey.v1);
       privateKey = Optional.of(certificateAndPrivateKey.v2);
     }
-    data.put(CERTIFICATE_KEY, certificate.orElseThrow());
-    data.put(PRIVATE_KEY_KEY, privateKey.orElseThrow());
+    data.put(PatroniUtil.CERTIFICATE_KEY, certificate.orElseThrow());
+    data.put(PatroniUtil.PRIVATE_KEY_KEY, privateKey.orElseThrow());
   }
 
 }

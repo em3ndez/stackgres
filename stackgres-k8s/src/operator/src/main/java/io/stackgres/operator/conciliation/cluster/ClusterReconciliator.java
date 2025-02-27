@@ -7,11 +7,7 @@ package io.stackgres.operator.conciliation.cluster;
 
 import java.util.Optional;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.context.Dependent;
-import javax.enterprise.event.Observes;
-import javax.inject.Inject;
-
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.quarkus.runtime.ShutdownEvent;
 import io.quarkus.runtime.StartupEvent;
@@ -24,14 +20,21 @@ import io.stackgres.common.event.EventEmitter;
 import io.stackgres.common.resource.CustomResourceFinder;
 import io.stackgres.common.resource.CustomResourceScanner;
 import io.stackgres.common.resource.CustomResourceScheduler;
+import io.stackgres.operator.app.OperatorLockHolder;
 import io.stackgres.operator.common.ClusterPatchResumer;
+import io.stackgres.operator.conciliation.AbstractConciliator;
 import io.stackgres.operator.conciliation.AbstractReconciliator;
-import io.stackgres.operator.conciliation.ComparisonDelegator;
-import io.stackgres.operator.conciliation.Conciliator;
+import io.stackgres.operator.conciliation.DeployedResourcesCache;
 import io.stackgres.operator.conciliation.HandlerDelegator;
+import io.stackgres.operator.conciliation.Metrics;
 import io.stackgres.operator.conciliation.ReconciliationResult;
+import io.stackgres.operator.conciliation.ReconciliatorWorkerThreadPool;
 import io.stackgres.operator.conciliation.StatusManager;
 import io.stackgres.operator.validation.cluster.PostgresConfigValidator;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.Dependent;
+import jakarta.enterprise.event.Observes;
+import jakarta.inject.Inject;
 import org.slf4j.helpers.MessageFormatter;
 
 @ApplicationScoped
@@ -42,13 +45,17 @@ public class ClusterReconciliator
   static class Parameters {
     @Inject CustomResourceScanner<StackGresCluster> scanner;
     @Inject CustomResourceFinder<StackGresCluster> finder;
-    @Inject Conciliator<StackGresCluster> conciliator;
+    @Inject AbstractConciliator<StackGresCluster> conciliator;
+    @Inject DeployedResourcesCache deployedResourcesCache;
     @Inject HandlerDelegator<StackGresCluster> handlerDelegator;
     @Inject KubernetesClient client;
     @Inject StatusManager<StackGresCluster, Condition> statusManager;
     @Inject EventEmitter<StackGresCluster> eventController;
     @Inject CustomResourceScheduler<StackGresCluster> clusterScheduler;
-    @Inject ComparisonDelegator<StackGresCluster> resourceComparator;
+    @Inject ObjectMapper objectMapper;
+    @Inject OperatorLockHolder operatorLockReconciliator;
+    @Inject ReconciliatorWorkerThreadPool reconciliatorWorkerThreadPool;
+    @Inject Metrics metrics;
   }
 
   private final StatusManager<StackGresCluster, Condition> statusManager;
@@ -59,12 +66,16 @@ public class ClusterReconciliator
   @Inject
   public ClusterReconciliator(Parameters parameters) {
     super(parameters.scanner, parameters.finder,
-        parameters.conciliator, parameters.handlerDelegator,
-        parameters.client, StackGresCluster.KIND);
+        parameters.conciliator, parameters.deployedResourcesCache,
+        parameters.handlerDelegator, parameters.client,
+        parameters.operatorLockReconciliator,
+        parameters.reconciliatorWorkerThreadPool,
+        parameters.metrics,
+        StackGresCluster.KIND);
     this.statusManager = parameters.statusManager;
     this.eventController = parameters.eventController;
     this.clusterScheduler = parameters.clusterScheduler;
-    this.patchResumer = new ClusterPatchResumer(parameters.resourceComparator);
+    this.patchResumer = new ClusterPatchResumer(parameters.objectMapper);
   }
 
   void onStart(@Observes StartupEvent ev) {
@@ -76,8 +87,8 @@ public class ClusterReconciliator
   }
 
   @Override
-  protected void reconciliationCycle(StackGresCluster configKey, boolean load) {
-    super.reconciliationCycle(configKey, load);
+  protected void reconciliationCycle(StackGresCluster configKey, int retry, boolean load) {
+    super.reconciliationCycle(configKey, retry, load);
   }
 
   @Override
@@ -122,6 +133,8 @@ public class ClusterReconciliator
             config.getStatus().setManagedSql(targetManagedSql);
             currentCluster.setStatus(config.getStatus());
           }
+          currentCluster.getSpec().setToInstallPostgresExtensions(
+              config.getSpec().getToInstallPostgresExtensions());
         });
   }
 
@@ -129,7 +142,7 @@ public class ClusterReconciliator
   protected void onConfigCreated(StackGresCluster cluster, ReconciliationResult result) {
     final String resourceChanged = patchResumer.resourceChanged(cluster, result);
     eventController.sendEvent(ClusterEventReason.CLUSTER_CREATED,
-        "Cluster " + cluster.getMetadata().getNamespace() + "."
+        "SGCluster " + cluster.getMetadata().getNamespace() + "."
             + cluster.getMetadata().getName() + " created: " + resourceChanged, cluster);
     statusManager.updateCondition(
         ClusterStatusCondition.FALSE_FAILED.getCondition(), cluster);
@@ -139,7 +152,7 @@ public class ClusterReconciliator
   protected void onConfigUpdated(StackGresCluster cluster, ReconciliationResult result) {
     final String resourceChanged = patchResumer.resourceChanged(cluster, result);
     eventController.sendEvent(ClusterEventReason.CLUSTER_UPDATED,
-        "Cluster " + cluster.getMetadata().getNamespace() + "."
+        "SGCluster " + cluster.getMetadata().getNamespace() + "."
             + cluster.getMetadata().getName() + " updated: " + resourceChanged, cluster);
     statusManager.updateCondition(
         ClusterStatusCondition.FALSE_FAILED.getCondition(), cluster);
@@ -148,7 +161,7 @@ public class ClusterReconciliator
   @Override
   protected void onError(Exception ex, StackGresCluster cluster) {
     String message = MessageFormatter.arrayFormat(
-        "Cluster reconciliation cycle failed",
+        "SGCluster reconciliation cycle failed",
         new String[]{
         }).getMessage();
     eventController.sendEvent(ClusterEventReason.CLUSTER_CONFIG_ERROR,

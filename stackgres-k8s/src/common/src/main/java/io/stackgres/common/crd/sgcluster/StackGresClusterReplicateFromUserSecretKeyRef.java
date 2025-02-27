@@ -7,16 +7,14 @@ package io.stackgres.common.crd.sgcluster;
 
 import java.util.Objects;
 
-import javax.validation.Valid;
-import javax.validation.constraints.NotNull;
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.crd.SecretKeySelector;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -26,12 +24,10 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresClusterReplicateFromUserSecretKeyRef {
 
-  @JsonProperty("username")
   @NotNull(message = "username is required")
   @Valid
   private SecretKeySelector username;
 
-  @JsonProperty("password")
   @NotNull(message = "password is required")
   @Valid
   private SecretKeySelector password;

@@ -5,9 +5,6 @@
 
 package io.stackgres.operator.mutation.distributedlogs;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
 import io.stackgres.common.CdiUtil;
 import io.stackgres.common.crd.sgdistributedlogs.StackGresDistributedLogs;
 import io.stackgres.common.crd.sgprofile.StackGresProfile;
@@ -16,6 +13,8 @@ import io.stackgres.common.resource.CustomResourceScheduler;
 import io.stackgres.operator.common.StackGresDistributedLogsReview;
 import io.stackgres.operator.initialization.DefaultCustomResourceFactory;
 import io.stackgres.operator.mutation.AbstractDefaultResourceMutator;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class DefaultProfileMutator
@@ -37,12 +36,12 @@ public class DefaultProfileMutator
 
   @Override
   protected String getTargetPropertyValue(StackGresDistributedLogs resource) {
-    return resource.getSpec().getResourceProfile();
+    return resource.getSpec().getSgInstanceProfile();
   }
 
   @Override
   protected void setTargetProperty(StackGresDistributedLogs resource, String value) {
-    resource.getSpec().setResourceProfile(value);
+    resource.getSpec().setSgInstanceProfile(value);
   }
 
 }

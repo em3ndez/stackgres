@@ -9,16 +9,46 @@ KIND_LOG_PATH="${KIND_LOG_PATH:-$TARGET_PATH/kind-logs}"
 KIND_LOG_RESOURCES_POLICY_PATH="${KIND_LOG_RESOURCES_POLICY_PATH:-$TARGET_PATH/kind-apiserver-audit-policy}"
 KIND_EXPANDABLE_STORAGE_CLASSNAME="${EXPANDABLE_STORAGE_CLASSNAME:-expandable-sc}"
 KIND_0_15_0="${KIND_0_15_0:-kind-0.15.0}"
-KIND_0_19_0="${KIND_0_19_0:-kind-0.19.0}"
+KIND_0_20_0="${KIND_0_20_0:-kind-0.20.0}"
+KIND_0_23_0="${KIND_0_23_0:-kind-0.23.0}"
+KIND_0_25_0="${KIND_0_25_0:-kind-0.25.0}"
+KIND_0_26_0="${KIND_0_26_0:-kind-0.26.0}"
 
 check_kind_version() {
   if [ "$(echo "$K8S_VERSION" | tr . '\n' | head -n 2 | xargs -I @ printf '%05d' @)" \
+      -ge "$(echo "1.29" | tr . '\n' | xargs -I @ printf '%05d' @)" ]
+  then
+    KIND="$KIND_0_26_0"
+    if ! "$KIND" version | grep -q -F 'kind v0.26.0 '
+    then
+      echo "To run Kubernetes 1.29+ kind v0.26.0 is required"
+      return 1
+    fi
+  elif [ "$(echo "$K8S_VERSION" | tr . '\n' | head -n 2 | xargs -I @ printf '%05d' @)" \
+      -ge "$(echo "1.26" | tr . '\n' | xargs -I @ printf '%05d' @)" ]
+  then
+    KIND="$KIND_0_25_0"
+    if ! "$KIND" version | grep -q -F 'kind v0.25.0 '
+    then
+      echo "To run Kubernetes 1.26+ kind v0.25.0 is required"
+      return 1
+    fi
+  elif [ "$(echo "$K8S_VERSION" | tr . '\n' | head -n 2 | xargs -I @ printf '%05d' @)" \
+      -ge "$(echo "1.25" | tr . '\n' | xargs -I @ printf '%05d' @)" ]
+  then
+    KIND="$KIND_0_23_0"
+    if ! "$KIND" version | grep -q -F 'kind v0.23.0 '
+    then
+      echo "To run Kubernetes 1.25+ kind v0.23.0 is required"
+      return 1
+    fi
+  elif [ "$(echo "$K8S_VERSION" | tr . '\n' | head -n 2 | xargs -I @ printf '%05d' @)" \
       -ge "$(echo "1.21" | tr . '\n' | xargs -I @ printf '%05d' @)" ]
   then
-    KIND="$KIND_0_19_0"
-    if ! "$KIND" version | grep -q -F 'kind v0.19.0 '
+    KIND="$KIND_0_20_0"
+    if ! "$KIND" version | grep -q -F 'kind v0.20.0 '
     then
-      echo "To run Kubernetes 1.21+ kind v0.19.0 is required"
+      echo "To run Kubernetes 1.21+ kind v0.20.0 is required"
       return 1
     fi
   else
@@ -46,7 +76,8 @@ update_k8s_config() {
     then
       local CONTAINER_NAME
       CONTAINER_NAME="$(cat /proc/self/cgroup | grep '^1:name' | cut -d / -f 3)"
-      CONTAINER_NAME="${CONTAINER_NAME:-$(hostname)}"
+      CONTAINER_NAME="${CONTAINER_NAME:-$(docker ps --filter name="^$(cat /etc/hostname)" --format '{{.Names}}')}"
+      CONTAINER_NAME="${CONTAINER_NAME:-$(docker ps --filter id="$(cat /etc/hostname)" --format '{{.ID}}')}"
       docker inspect "$CONTAINER_NAME" \
         -f '{{ range $key,$value := .NetworkSettings.Networks }}{{ printf "%s\n" $key }}{{ end }}' \
         | grep -q '^kind$' \
@@ -99,12 +130,29 @@ reuse_k8s() {
     return
   fi
 
+  if [ -n "$E2E_EXTRA_MOUNT_BUILD_PATH" ]
+  then
+    k8s_copy_to_extra_mount_build_path
+  fi
+
   echo "Reusing kind environment $KIND_NAME"
 }
 
 reset_k8s() {
   check_kind_version
   check_kind_image_exists
+
+  if [ -n "$E2E_EXTRA_MOUNT_BUILD_PATH" ]
+  then
+    k8s_copy_to_extra_mount_build_path
+    KIND_EXTRA_MOUNTS="$KIND_EXTRA_MOUNTS
+      $(realpath "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/operator/target/quarkus-app)
+      $(realpath "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/restapi/target/quarkus-app)
+      $(realpath "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/admin-ui/target/public)
+      $(realpath "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/jobs/target/quarkus-app)
+      $(realpath "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/cluster-controller/target/quarkus-app)
+      $(realpath "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/stream/target/quarkus-app)"
+  fi
 
   echo "Setting up kind environment $KIND_NAME..."
 
@@ -137,6 +185,27 @@ EOF
   cat << EOF > "$TARGET_PATH/kind-config.yaml"
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+featureGates:
+$(
+  if [ "$(echo "$K8S_VERSION" | tr . '\n' | head -n 2 | xargs -I @ printf '%05d' @)" \
+      -ge "$(echo "1.20" | tr . '\n' | xargs -I @ printf '%05d' @)" ] \
+      && [ "$(echo "$K8S_VERSION" | tr . '\n' | head -n 2 | xargs -I @ printf '%05d' @)" \
+      -lt "$(echo "1.32" | tr . '\n' | xargs -I @ printf '%05d' @)" ]
+  then
+    cat << INNER_INNER_EOF
+  HPAContainerMetrics: true
+INNER_INNER_EOF
+  fi
+)
+$(
+  if [ "$(echo "$K8S_VERSION" | tr . '\n' | head -n 2 | xargs -I @ printf '%05d' @)" \
+      -ge "$(echo "1.27" | tr . '\n' | xargs -I @ printf '%05d' @)" ]
+  then
+    cat << INNER_INNER_EOF
+  InPlacePodVerticalScaling: true
+INNER_INNER_EOF
+  fi
+)
 $(
   if [ -n "$KIND_CONTAINERD_CACHE_PATH" ] || \
     docker system info 2> /dev/null | grep -q "Backing Filesystem: \(zfs\|btrfs\)"
@@ -179,16 +248,19 @@ networking:
   apiServerAddress: "0.0.0.0"
 nodes:
 - role: control-plane
-$(
-  if [ "$KIND_LOG_RESOURCES" = true ]
-  then
-    cat << INNER_EOF
+  labels:
+    ingress-ready: true
   kubeadmConfigPatches:
   - |
     kind: ClusterConfiguration
     apiServer:
-        # enable auditing flags on the API server
         extraArgs:
+          enable-admission-plugins: NodeRestriction,OwnerReferencesPermissionEnforcement
+$(
+  if [ "$KIND_LOG_RESOURCES" = true ]
+  then
+    cat << INNER_EOF
+          # enable auditing flags on the API server
           audit-log-path: /var/log/kubernetes/kube-apiserver-audit.log
           audit-policy-file: /etc/kubernetes/policies/audit-policy.yaml
         # mount new files / directories on the control plane
@@ -215,7 +287,8 @@ INNER_EOF
     protocol: "$(echo "$K8S_EXTRA_PORT" | cut -d : -f 4)"
 INNER_EOF
   fi
-  if [ -n "$KIND_CONTAINERD_CACHE_PATH" ] \
+  if [ -n "$KIND_EXTRA_MOUNTS" ] \
+    || [ -n "$KIND_CONTAINERD_CACHE_PATH" ] \
     || [ "$KIND_LOG" = true ] \
     || [ "$KIND_LOG_RESOURCES" = true ]
   then
@@ -223,11 +296,21 @@ INNER_EOF
   extraMounts:
 INNER_EOF
   fi
+  if [ -n "$KIND_EXTRA_MOUNTS" ]
+  then
+    for KIND_EXTRA_MOUNT in $KIND_EXTRA_MOUNTS
+    do
+      cat << INNER_EOF
+  - hostPath: $KIND_EXTRA_MOUNT
+    containerPath: $KIND_EXTRA_MOUNT
+INNER_EOF
+    done
+  fi
   if [ -n "$KIND_CONTAINERD_CACHE_PATH" ]
   then
     mkdir -p "$KIND_CONTAINERD_CACHE_PATH"
     cat << INNER_EOF
-  - hostPath: $KIND_CONTAINERD_CACHE_PATH
+  - hostPath: $(realpath "$KIND_CONTAINERD_CACHE_PATH")
     containerPath: /containerd-cache
 INNER_EOF
   fi
@@ -289,21 +372,193 @@ EOF
   echo "Setting up calico for kind..."
   until kubectl get node --template '{{ if (index .items 0).spec.podCIDR }}true{{ end }}' | grep -q 'true'
   do
-    sleep 1
+    sleep 3
   done
   K8S_POD_CIDR="$(kubectl get node --template '{{ (index .items 0).spec.podCIDR }}')"
   if [ "$(echo "$K8S_VERSION" | tr . '\n' | head -n 2 | xargs -I @ printf '%05d' @)" \
       -ge "$(echo "1.22" | tr . '\n' | xargs -I @ printf '%05d' @)" ]
   then
-    kubectl create -f https://docs.projectcalico.org/archive/v3.24/manifests/tigera-operator.yaml
-    kubectl create -f https://docs.projectcalico.org/archive/v3.24/manifests/custom-resources.yaml
+    kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/tigera-operator.yaml
+    wait_until kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/custom-resources.yaml
     kubectl patch installations.operator.tigera.io default --type json \
       -p '[{"op":"replace","path":"/spec/calicoNetwork/ipPools/0/cidr","value":"'"$K8S_POD_CIDR"'"}]'
   else
     kubectl apply -f https://docs.projectcalico.org/v3.12/manifests/calico.yaml
-    kubectl -n kube-system set env daemonset/calico-node CALICO_IPV4POOL_CIDR=$K8S_POD_CIDR
+    kubectl -n kube-system set env daemonset/calico-node CALICO_IPV4POOL_CIDR="$K8S_POD_CIDR"
     kubectl -n kube-system set env daemonset/calico-node FELIX_IGNORELOOSERPF=true
   fi
+  echo "...done"
+
+  if [ "$K8S_DISABLE_VOLUME_SNAPSHOT" != true ]
+  then
+    echo "Setting up CSI Hostpath Driver with Snapshotter for kind..."
+    CSI_DRIVER_HOST_PATH_VERSION=""
+    if [ "$(echo "$K8S_VERSION" | tr . '\n' | head -n 2 | xargs -I @ printf '%05d' @)" \
+        -ge "$(echo "1.29" | tr . '\n' | xargs -I @ printf '%05d' @)" ]
+    then
+      CSI_DRIVER_HOST_PATH_VERSION=master
+      SNAPSHOTTER_VERSION=v6.3.2
+    elif [ "$(echo "$K8S_VERSION" | tr . '\n' | head -n 2 | xargs -I @ printf '%05d' @)" \
+        -ge "$(echo "1.26" | tr . '\n' | xargs -I @ printf '%05d' @)" ]
+    then
+      CSI_DRIVER_HOST_PATH_VERSION=v1.12.0
+      SNAPSHOTTER_VERSION=v6.3.2
+    elif [ "$(echo "$K8S_VERSION" | tr . '\n' | head -n 2 | xargs -I @ printf '%05d' @)" \
+        -ge "$(echo "1.24" | tr . '\n' | xargs -I @ printf '%05d' @)" ]
+    then
+      CSI_DRIVER_HOST_PATH_VERSION=v1.11.0
+      SNAPSHOTTER_VERSION=v6.3.2
+    elif [ "$(echo "$K8S_VERSION" | tr . '\n' | head -n 2 | xargs -I @ printf '%05d' @)" \
+        -ge "$(echo "1.22" | tr . '\n' | xargs -I @ printf '%05d' @)" ]
+    then
+      CSI_DRIVER_HOST_PATH_VERSION=v1.10.0
+      SNAPSHOTTER_VERSION=v6.3.2
+    elif [ "$(echo "$K8S_VERSION" | tr . '\n' | head -n 2 | xargs -I @ printf '%05d' @)" \
+        -ge "$(echo "1.21" | tr . '\n' | xargs -I @ printf '%05d' @)" ]
+    then
+      CSI_DRIVER_HOST_PATH_VERSION=v1.9.0
+      SNAPSHOTTER_VERSION=v6.3.2
+    elif [ "$(echo "$K8S_VERSION" | tr . '\n' | head -n 2 | xargs -I @ printf '%05d' @)" \
+        -ge "$(echo "1.20" | tr . '\n' | xargs -I @ printf '%05d' @)" ]
+    then
+      CSI_DRIVER_HOST_PATH_VERSION=v1.9.0
+      SNAPSHOTTER_VERSION=v3.0.3
+    elif [ "$(echo "$K8S_VERSION" | tr . '\n' | head -n 2 | xargs -I @ printf '%05d' @)" \
+        -ge "$(echo "1.19" | tr . '\n' | xargs -I @ printf '%05d' @)" ]
+    then
+      CSI_DRIVER_HOST_PATH_VERSION=v1.7.3
+      SNAPSHOTTER_VERSION=v3.0.3
+    elif [ "$(echo "$K8S_VERSION" | tr . '\n' | head -n 2 | xargs -I @ printf '%05d' @)" \
+        -ge "$(echo "1.18" | tr . '\n' | xargs -I @ printf '%05d' @)" ]
+    then
+      CSI_DRIVER_HOST_PATH_VERSION=v1.7.2
+      SNAPSHOTTER_VERSION=v3.0.3
+    fi
+    if [ -z "$CSI_DRIVER_HOST_PATH_VERSION" ]
+    then
+      echo "Can not find a valid csi driver host path version"
+      exit 1
+    fi
+    if ! git -C "$TARGET_PATH/csi-driver-host-path/.git" diff origin/"$CSI_DRIVER_HOST_PATH_VERSION" 2>/dev/null
+    then
+      rm -rf "$TARGET_PATH/csi-driver-host-path"
+      git clone -b "$CSI_DRIVER_HOST_PATH_VERSION" --single-branch \
+        https://github.com/kubernetes-csi/csi-driver-host-path \
+        "$TARGET_PATH/csi-driver-host-path"
+    fi
+    
+    {
+      # Apply VolumeSnapshot CRDs
+      kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${SNAPSHOTTER_VERSION}/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml"
+      kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${SNAPSHOTTER_VERSION}/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml"
+      kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${SNAPSHOTTER_VERSION}/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml"
+      # Create snapshot controller
+      kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${SNAPSHOTTER_VERSION}/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml"
+      kubectl create -f "https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/${SNAPSHOTTER_VERSION}/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml"
+      CSI_DRIVER_HOST_PATH_PATH="$TARGET_PATH/csi-driver-host-path/deploy/kubernetes-$(printf %s "$K8S_VERSION" | cut -d . -f 1-2)"
+      if [ "$(printf %s "$K8S_VERSION" | cut -d . -f 1-2)" = 1.20 ]
+      then
+        CSI_DRIVER_HOST_PATH_PATH="$TARGET_PATH/csi-driver-host-path/deploy/kubernetes-1.21"
+      elif [ "$(printf %s "$K8S_VERSION" | cut -d . -f 1-2)" = 1.23 ]
+      then
+        CSI_DRIVER_HOST_PATH_PATH="$TARGET_PATH/csi-driver-host-path/deploy/kubernetes-1.22"
+      elif [ "$(printf %s "$K8S_VERSION" | cut -d . -f 1-2)" = 1.29 ] \
+        || [ "$(printf %s "$K8S_VERSION" | cut -d . -f 1-2)" = 1.30 ] \
+        || [ "$(printf %s "$K8S_VERSION" | cut -d . -f 1-2)" = 1.31 ] \
+        || [ "$(printf %s "$K8S_VERSION" | cut -d . -f 1-2)" = 1.32 ]
+      then
+        CSI_DRIVER_HOST_PATH_PATH="$TARGET_PATH/csi-driver-host-path/deploy/kubernetes-1.28"
+      fi
+      cat << 'EOF' > "$CSI_DRIVER_HOST_PATH_PATH/kubectlw"
+set -e
+if [ "x$1" = xapply ]
+then
+  if [ "$#" = 3 ] && [ "x$2" = x--kustomize ]
+  then
+    for YAML in "$3"/*.yaml
+    do
+      echo "Mocking $YAML"
+      yq -y -c '
+          .
+            | if (. | type) == "array" then .[] else . end
+            | if (.|has("metadata")) then .metadata.namespace = "kube-system" else . end
+          ' "$YAML"  \
+        | sed 's#namespace: default#namespace: kube-system#' > "$YAML.tmp"
+      mv "$YAML.tmp" "$YAML"
+    done
+    kubectl -n kube-system apply --kustomize "$3"
+  elif [ "$#" = 3 ] && [ "x$2 $3" = 'x-f -' ]
+  then
+      echo "Mocking stdin"
+      yq -y -c '
+          .
+            | if (. | type) == "array" then .[] else . end
+            | if (.|has("metadata")) then .metadata.namespace = "kube-system" else . end
+          '  \
+        | sed 's#namespace: default#namespace: kube-system#' \
+        | kubectl -n kube-system apply -f -
+  else
+    printf '%s\n' "No mock for $*"
+    exit 1
+  fi
+else
+  kubectl -n kube-system "$@"
+fi
+EOF
+      sed -i "s#kubectl#sh $CSI_DRIVER_HOST_PATH_PATH/kubectlw#" \
+        "$CSI_DRIVER_HOST_PATH_PATH"/deploy.sh
+      IMAGE_TAG= bash "$CSI_DRIVER_HOST_PATH_PATH"/deploy.sh
+      kubectl create -f "$TARGET_PATH/csi-driver-host-path/examples/csi-storageclass.yaml"
+      kubectl get storageclass -o name | xargs -I % kubectl annotate % --overwrite storageclass.kubernetes.io/is-default-class=false
+      kubectl annotate storageclass csi-hostpath-sc --overwrite storageclass.kubernetes.io/is-default-class=true
+      kubectl annotate volumesnapshotclass csi-hostpath-snapclass --overwrite snapshot.storage.kubernetes.io/is-default-class="true"
+      kubectl patch sts -n kube-system csi-hostpathplugin --type json -p '[{"op":"add","path":"/spec/template/spec/containers/7/args/2","value":"--timeout=3m"}]'
+    }
+    echo "...done"
+  fi
+
+  if [ "$ENABLE_METRIC_SERVER" = true ]
+  then
+    setup_metric_server
+  fi
+}
+
+k8s_copy_to_extra_mount_build_path() {
+  if [ -z "$PROJECT_PATH" ]
+  then
+    echo "PROJECT_PATH not set"
+    return 1
+  fi
+  if [ -z "$E2E_EXTRA_MOUNT_BUILD_PATH" ]
+  then
+    echo "E2E_EXTRA_MOUNT_BUILD_PATH not set"
+    return 1
+  fi
+  mkdir -p "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/operator/target/quarkus-app
+  cp -a "$PROJECT_PATH"/stackgres-k8s/src/operator/target/quarkus-app/. \
+    "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/operator/target/quarkus-app/.
+  mkdir -p "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/restapi/target/quarkus-app
+  cp -a "$PROJECT_PATH"/stackgres-k8s/src/restapi/target/quarkus-app/. \
+    "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/restapi/target/quarkus-app/.
+  mkdir -p "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/admin-ui/target/public
+  cp -a "$PROJECT_PATH"/stackgres-k8s/src/admin-ui/target/public/. \
+    "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/admin-ui/target/public/.
+  mkdir -p "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/jobs/target/quarkus-app
+  cp -a "$PROJECT_PATH"/stackgres-k8s/src/jobs/target/quarkus-app/. \
+    "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/jobs/target/quarkus-app/.
+  mkdir -p "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/cluster-controller/target/quarkus-app
+  cp -a "$PROJECT_PATH"/stackgres-k8s/src/cluster-controller/target/quarkus-app/. \
+    "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/cluster-controller/target/quarkus-app/.
+  mkdir -p "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/stream/target/quarkus-app
+  cp -a "$PROJECT_PATH"/stackgres-k8s/src/stream/target/quarkus-app/. \
+    "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/stream/target/quarkus-app/.
+}
+
+setup_metric_server() {
+  echo "Setting up metric server for kind..."
+  kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+  kubectl patch -n kube-system deploy metrics-server --type json \
+    -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/5","value":"--kubelet-insecure-tls"}]'
   echo "...done"
 }
 
@@ -318,6 +573,18 @@ delete_k8s() {
 
     echo "...done"
   fi
+}
+
+has_image_k8s() {
+  check_kind_version
+
+  local KIND_IMAGE_ID
+  KIND_IMAGE_ID="$( (docker exec "${KIND_NAME}-control-plane" crictl inspecti -o json "$1" 2>/dev/null || printf '{"status": {"id": "unknown"}}') | jq -r '.status.id' | grep -v '^$')"
+  if [ "$KIND_IMAGE_ID" != unknown ]
+  then
+    return
+  fi
+  return 1
 }
 
 load_image_k8s() {
@@ -381,6 +648,14 @@ tag_image_k8s() {
   echo "Tagged image $1 as $2 in kind environemnt $KIND_NAME"
 }
 
+get_latest_image_k8s() {
+  check_kind_version
+
+  local IMAGE="$1"
+  docker exec "$KIND_NAME-control-plane" crictl images -o json \
+    | jq -r '.images|map(select(.repoTags|any(.|startswith("'"${IMAGE%%:*}"':"))))|last|.repoTags|last'
+}
+
 load_certificate_k8s() {
   check_kind_version
 
@@ -407,11 +682,13 @@ excluded_namespaces() {
 excluded_customresourcedefinitions() {
   echo ".*\.crd\.projectcalico\.org"
   echo ".*\.operator\.tigera\.io"
+  echo ".*\.snapshot\.storage\.k8s\.io"
 }
 
 excluded_podsecuritypolicies() {
   echo "calico-.*"
   echo "tigera-operator"
+  echo "csi-node-driver"
 }
 
 excluded_clusterroles() {
@@ -424,6 +701,12 @@ excluded_clusterroles() {
   echo "system:.*"
   echo "tigera-operator"
   echo "view"
+  echo "external-provisioner-runner"
+  echo "external-attacher-runner"
+  echo "external-snapshotter-runner"
+  echo "snapshot-controller-runner"
+  echo "external-resizer-runner"
+  echo "external-health-monitor-controller-runner"
 }
 
 excluded_clusterrolebindings() {
@@ -433,6 +716,17 @@ excluded_clusterrolebindings() {
   echo "local-path-provisioner-bind"
   echo "system:.*"
   echo "tigera-operator"
+  echo "csi-hostpathplugin-health-monitor-controller-cluster-role"
+  echo "csi-hostpathplugin-provisioner-cluster-role"
+  echo "csi-hostpathplugin-snapshotter-cluster-role"
+  echo "csi-snapshotter-role"
+  echo "snapshot-controller-role"
+  echo "csi-hostpathplugin-resizer-cluster-role"
+  echo "csi-external-health-monitor-controller-role"
+  echo "csi-attacher-role"
+  echo "csi-hostpathplugin-attacher-cluster-role"
+  echo "csi-provisioner-role"
+  echo "csi-resizer-role"
 }
 
 get_k8s_versions() {
@@ -455,13 +749,19 @@ get_kind_image() {
 
 get_kind_images() {
   cat << EOF
-v1.27.1@sha256:b7d12ed662b873bd8510879c1846e87c7e676a79fefc93e17b2a52989d3ff42b
-v1.26.4@sha256:f4c0d87be03d6bea69f5e5dc0adb678bb498a190ee5c38422bf751541cebe92e
-v1.25.9@sha256:c08d6c52820aa42e533b70bce0c2901183326d86dcdcbedecc9343681db45161
-v1.24.13@sha256:cea86276e698af043af20143f4bf0509e730ec34ed3b7fa790cc0bea091bc5dd
-v1.23.17@sha256:f77f8cf0b30430ca4128cc7cfafece0c274a118cd0cdb251049664ace0dee4ff
-v1.22.17@sha256:9af784f45a584f6b28bce2af84c494d947a05bd709151466489008f80a9ce9d5
-v1.21.14@sha256:220cfafdf6e3915fbce50e13d1655425558cb98872c53f802605aa2fb2d569cf
+
+v1.32.0@sha256:c48c62eac5da28cdadcf560d1d8616cfa6783b58f0d94cf63ad1bf49600cb027
+v1.31.4@sha256:2cb39f7295fe7eafee0842b1052a599a4fb0f8bcf3f83d96c7f4864c357c6c30
+v1.30.8@sha256:17cd608b3971338d9180b00776cb766c50d0a0b6b904ab4ff52fd3fc5c6369bf
+v1.29.12@sha256:62c0672ba99a4afd7396512848d6fc382906b8f33349ae68fb1dbfe549f70dec
+v1.28.15@sha256:a7c05c7ae043a0b8c818f5a06188bc2c4098f6cb59ca7d1856df00375d839251
+v1.27.16@sha256:2d21a61643eafc439905e18705b8186f3296384750a835ad7a005dceb9546d20
+v1.26.15@sha256:c79602a44b4056d7e48dc20f7504350f1e87530fe953428b792def00bc1076dd
+v1.25.16@sha256:5da57dfc290ac3599e775e63b8b6c49c0c85d3fec771cd7d55b45fae14b38d3b
+v1.24.15@sha256:7db4f8bea3e14b82d12e044e25e34bd53754b7f2b0e9d56df21774e6f66a70ab
+v1.23.17@sha256:59c989ff8a517a93127d4a536e7014d28e235fb3529d9fba91b3951d461edfdb
+v1.22.17@sha256:f5b2e5698c6c9d6d0adc419c0deae21a425c07d81bbf3b6a6834042f25d4fba2
+v1.21.14@sha256:8a4e9bb3f415d2bb81629ce33ef9c76ba514c14d707f9797a01e3216376ba093
 v1.20.15@sha256:d67de8f84143adebe80a07672f370365ec7d23f93dc86866f0e29fa29ce026fe
 v1.19.16@sha256:707469aac7e6805e52c3bde2a8a8050ce2b15decff60db6c5077ba9975d28b98
 v1.18.20@sha256:61c9e1698c1cb19c3b1d8151a9135b379657aee23c59bde4a8d87923fcb43a91

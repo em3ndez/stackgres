@@ -5,31 +5,30 @@
 
 package io.stackgres.operator.validation.dbops;
 
-import javax.validation.constraints.AssertTrue;
-
 import io.stackgres.common.crd.sgdbops.StackGresDbOpsRepack;
-import io.stackgres.operator.common.DbOpsReview;
+import io.stackgres.operator.common.StackGresDbOpsReview;
 import io.stackgres.operator.common.fixture.AdmissionReviewFixtures;
+import io.stackgres.operator.validation.AbstractConstraintValidator;
 import io.stackgres.operator.validation.ConstraintValidationTest;
-import io.stackgres.operator.validation.ConstraintValidator;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.validation.constraints.AssertTrue;
 import org.junit.jupiter.api.Test;
 
-class DbOpsRepackConstraintValidatorTest extends ConstraintValidationTest<DbOpsReview> {
+class DbOpsRepackConstraintValidatorTest extends ConstraintValidationTest<StackGresDbOpsReview> {
 
   @Override
-  protected ConstraintValidator<DbOpsReview> buildValidator() {
+  protected AbstractConstraintValidator<StackGresDbOpsReview> buildValidator() {
     return new DbOpsConstraintValidator();
   }
 
   @Override
-  protected DbOpsReview getValidReview() {
+  protected StackGresDbOpsReview getValidReview() {
     return AdmissionReviewFixtures.dbOps().loadRepackCreate().get();
   }
 
   @Override
-  protected DbOpsReview getInvalidReview() {
-    final DbOpsReview review = AdmissionReviewFixtures.dbOps().loadRepackCreate().get();
+  protected StackGresDbOpsReview getInvalidReview() {
+    final StackGresDbOpsReview review = AdmissionReviewFixtures.dbOps().loadRepackCreate().get();
 
     review.getRequest().getObject().setSpec(null);
     return review;
@@ -37,8 +36,7 @@ class DbOpsRepackConstraintValidatorTest extends ConstraintValidationTest<DbOpsR
 
   @Test
   void nullVacuum_shouldPass() throws ValidationFailed {
-
-    DbOpsReview review = getValidReview();
+    StackGresDbOpsReview review = getValidReview();
     review.getRequest().getObject().getSpec().setBenchmark(null);
 
     validator.validate(review);
@@ -46,8 +44,7 @@ class DbOpsRepackConstraintValidatorTest extends ConstraintValidationTest<DbOpsR
 
   @Test
   void wrongWaitTimeout_shouldFail() {
-
-    DbOpsReview review = getValidReview();
+    StackGresDbOpsReview review = getValidReview();
     review.getRequest().getObject().getSpec().getRepack().setWaitTimeout("10s");
 
     checkErrorCause(StackGresDbOpsRepack.class, "spec.repack.waitTimeout",

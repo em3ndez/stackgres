@@ -7,12 +7,8 @@ package io.stackgres.common.crd.sgobjectstorage;
 
 import java.util.Objects;
 
-import javax.validation.Valid;
-import javax.validation.constraints.NotNull;
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.fabric8.kubernetes.api.model.Namespaced;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.CustomResource;
@@ -27,6 +23,8 @@ import io.stackgres.common.crd.CommonDefinition;
 import io.stackgres.common.crd.storages.BackupStorage;
 import io.sundr.builder.annotations.Buildable;
 import io.sundr.builder.annotations.BuildableReference;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -52,8 +50,7 @@ public class StackGresObjectStorage extends CustomResource<BackupStorage, Void>
 
   public static final String VERSION = "v1beta1";
 
-  @JsonProperty("spec")
-  @NotNull(message = "The specification is required")
+  @NotNull(message = "spec is required")
   @Valid
   private BackupStorage spec;
 
@@ -79,13 +76,25 @@ public class StackGresObjectStorage extends CustomResource<BackupStorage, Void>
 
   @Override
   public int hashCode() {
-    return Objects.hash(spec);
+    final int prime = 31;
+    int result = super.hashCode();
+    result = prime * result + Objects.hash(spec);
+    return result;
   }
 
   @Override
   public boolean equals(Object obj) {
-    return obj instanceof StackGresObjectStorage other
-        && Objects.equals(spec, other.spec);
+    if (this == obj) {
+      return true;
+    }
+    if (!super.equals(obj)) {
+      return false;
+    }
+    if (!(obj instanceof StackGresObjectStorage)) {
+      return false;
+    }
+    StackGresObjectStorage other = (StackGresObjectStorage) obj;
+    return Objects.equals(spec, other.spec);
   }
 
   @Override

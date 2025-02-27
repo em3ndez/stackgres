@@ -7,27 +7,25 @@ package io.stackgres.operator.conciliation.factory.cluster.patroni;
 
 import java.util.stream.Stream;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
 import io.fabric8.kubernetes.api.model.EndpointsBuilder;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.stackgres.common.PatroniUtil;
-import io.stackgres.common.StackGresVersion;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.labels.LabelFactoryForCluster;
 import io.stackgres.operator.conciliation.OperatorVersionBinder;
 import io.stackgres.operator.conciliation.ResourceGenerator;
 import io.stackgres.operator.conciliation.cluster.StackGresClusterContext;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
 @Singleton
-@OperatorVersionBinder(startAt = StackGresVersion.V_1_5)
+@OperatorVersionBinder
 public class PatroniEndpoint implements ResourceGenerator<StackGresClusterContext> {
 
-  private final LabelFactoryForCluster<StackGresCluster> labelFactory;
+  private final LabelFactoryForCluster labelFactory;
 
   @Inject
-  public PatroniEndpoint(LabelFactoryForCluster<StackGresCluster> labelFactory) {
+  public PatroniEndpoint(LabelFactoryForCluster labelFactory) {
     this.labelFactory = labelFactory;
   }
 

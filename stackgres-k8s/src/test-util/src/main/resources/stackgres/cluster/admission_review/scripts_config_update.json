@@ -55,12 +55,14 @@
           "mode": "async",
           "role": "ha-read"
         },
-        "sgInstanceProfile": "size-xs",
+        "sgInstanceProfile": "size-s",
         "configurations": {
           "sgPostgresConfig": "postgresconf",
           "sgPoolingConfig": "pgbouncerconf",
-          "backupPath": "sgbackups.stackgres.io/default/stackgres/11",
-          "sgBackupConfig": "newbackupconf"
+          "backups": [{
+            "path": "sgbackups.stackgres.io/default/stackgres/11",
+            "sgObjectStorage": "newobjstorage"
+          }]
         },
         "pods":{
           "persistentVolume": {
@@ -96,10 +98,12 @@
         "configurations": {
           "sgPostgresConfig": "postgresconf",
           "sgPoolingConfig": "pgbouncerconf",
-          "backupPath": "sgbackups.stackgres.io/default/stackgres/11",
-          "sgBackupConfig": "backupconf"
+          "backups": [{
+            "path": "sgbackups.stackgres.io/default/stackgres/11",
+            "sgObjectStorage": "objstorage"
+          }]
         },
-        "sgInstanceProfile": "size-xs",
+        "sgInstanceProfile": "size-s",
         "pods":{
           "persistentVolume": {
             "size": "5Gi",

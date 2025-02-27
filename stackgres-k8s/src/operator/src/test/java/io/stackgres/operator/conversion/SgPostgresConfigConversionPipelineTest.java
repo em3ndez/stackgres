@@ -5,7 +5,7 @@
 
 package io.stackgres.operator.conversion;
 
-import javax.inject.Inject;
+import java.util.List;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
@@ -13,6 +13,7 @@ import io.quarkus.test.junit.QuarkusTest;
 import io.stackgres.common.crd.sgpgconfig.StackGresPostgresConfig;
 import io.stackgres.common.fixture.Fixtures;
 import io.stackgres.testutil.JsonUtil;
+import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
 @QuarkusTest
@@ -52,10 +53,13 @@ class SgPostgresConfigConversionPipelineTest {
   void resourceConversionWithBackupFromVersion1ToVersion1beta1_shouldNotFail() {
     ObjectNode fromVersion1 = getFromVersion1Resource();
     ObjectNode toVersion1beta1 = getToVersion1beta1Resource();
+    List<ObjectNode> converted = pipeline.convert(
+        ConversionUtil.API_VERSION_1BETA1,
+        ImmutableList.of(fromVersion1));
+    JsonUtil.sortArray(toVersion1beta1.get("status").get("defaultParameters"));
+    JsonUtil.sortArray(converted.getFirst().get("status").get("defaultParameters"));
     JsonUtil.assertJsonEquals(toVersion1beta1,
-        pipeline.convert(
-            ConversionUtil.API_VERSION_1BETA1,
-            ImmutableList.of(fromVersion1)).get(0));
+        converted.getFirst());
   }
 
 }

@@ -9,8 +9,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-import javax.validation.Valid;
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -18,7 +16,9 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.crd.Condition;
 import io.stackgres.common.crd.sgcluster.StackGresClusterInstalledExtension;
+import io.stackgres.common.crd.sgcluster.StackGresClusterServiceBindingStatus;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.Valid;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -33,13 +33,27 @@ public class StackGresShardedClusterStatus {
   @Valid
   private List<Condition> conditions = new ArrayList<>();
 
-  @JsonProperty("clusterStatuses")
   @Valid
   private List<StackGresShardedClusterClusterStatus> clusterStatuses;
 
-  @JsonProperty("toInstallPostgresExtensions")
   @Valid
   private List<StackGresClusterInstalledExtension> toInstallPostgresExtensions;
+
+  @Valid
+  private StackGresClusterServiceBindingStatus binding;
+
+  @Valid
+  private StackGresShardedClusterDbOpsStatus dbOps;
+
+  private List<String> sgBackups;
+
+  public List<String> getSgBackups() {
+    return sgBackups;
+  }
+
+  public void setSgBackups(List<String> sgBackups) {
+    this.sgBackups = sgBackups;
+  }
 
   public List<Condition> getConditions() {
     return conditions;
@@ -66,9 +80,26 @@ public class StackGresShardedClusterStatus {
     this.toInstallPostgresExtensions = toInstallPostgresExtensions;
   }
 
+  public StackGresClusterServiceBindingStatus getBinding() {
+    return binding;
+  }
+
+  public void setBinding(StackGresClusterServiceBindingStatus binding) {
+    this.binding = binding;
+  }
+
+  public StackGresShardedClusterDbOpsStatus getDbOps() {
+    return dbOps;
+  }
+
+  public void setDbOps(StackGresShardedClusterDbOpsStatus dbOps) {
+    this.dbOps = dbOps;
+  }
+
   @Override
   public int hashCode() {
-    return Objects.hash(clusterStatuses, conditions, toInstallPostgresExtensions);
+    return Objects.hash(binding, clusterStatuses, conditions, dbOps, sgBackups,
+        toInstallPostgresExtensions);
   }
 
   @Override
@@ -80,8 +111,11 @@ public class StackGresShardedClusterStatus {
       return false;
     }
     StackGresShardedClusterStatus other = (StackGresShardedClusterStatus) obj;
-    return Objects.equals(clusterStatuses, other.clusterStatuses)
+    return Objects.equals(binding, other.binding)
+        && Objects.equals(clusterStatuses, other.clusterStatuses)
         && Objects.equals(conditions, other.conditions)
+        && Objects.equals(dbOps, other.dbOps)
+        && Objects.equals(sgBackups, other.sgBackups)
         && Objects.equals(toInstallPostgresExtensions, other.toInstallPostgresExtensions);
   }
 

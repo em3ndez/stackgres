@@ -6,20 +6,18 @@
 package io.stackgres.operator.validation.shardedcluster;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
 
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.storage.StorageClass;
 import io.stackgres.common.ErrorType;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
-import io.stackgres.common.crd.sgcluster.StackGresClusterPod;
-import io.stackgres.common.crd.sgcluster.StackGresPodPersistentVolume;
+import io.stackgres.common.crd.sgcluster.StackGresClusterPods;
+import io.stackgres.common.crd.sgcluster.StackGresClusterPodsPersistentVolume;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedCluster;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterShard;
-import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterShardPod;
+import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterShardPods;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterShards;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterSpec;
 import io.stackgres.common.labels.LabelFactoryForCluster;
@@ -32,6 +30,8 @@ import io.stackgres.operator.validation.PersistentVolumeSizeExpansionValidator;
 import io.stackgres.operator.validation.ValidationType;
 import io.stackgres.operatorframework.admissionwebhook.Operation;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jetbrains.annotations.NotNull;
 import org.jooq.lambda.Seq;
 import org.jooq.lambda.tuple.Tuple2;
@@ -49,7 +49,7 @@ public class OverridesShardsPersistentVolumeSizeExpansionValidator
 
   private final LabelFactoryForShardedCluster labelFactory;
 
-  private final LabelFactoryForCluster<StackGresCluster> clusterLabelFactory;
+  private final LabelFactoryForCluster clusterLabelFactory;
 
   @Inject
   public OverridesShardsPersistentVolumeSizeExpansionValidator(
@@ -57,7 +57,7 @@ public class OverridesShardsPersistentVolumeSizeExpansionValidator
       CustomResourceScanner<StackGresCluster> clusterScanner,
       LabelFactoryForShardedCluster labelFactory,
       ResourceScanner<PersistentVolumeClaim> pvcScanner,
-      LabelFactoryForCluster<StackGresCluster> clusterLabelFactory) {
+      LabelFactoryForCluster clusterLabelFactory) {
     this.finder = finder;
     this.clusterScanner = clusterScanner;
     this.labelFactory = labelFactory;
@@ -78,9 +78,9 @@ public class OverridesShardsPersistentVolumeSizeExpansionValidator
             Optional.of(review.getRequest().getOldObject().getSpec().getShards())
             .map(StackGresShardedClusterShards::getOverrides)))
         .flatMap(List::stream)
-        .filter(overrideShard -> overrideShard.getPodForShards() != null
-            && overrideShard.getPodForShards().getPersistentVolume() != null
-            && overrideShard.getPodForShards().getPersistentVolume().getSize() != null)
+        .filter(overrideShard -> overrideShard.getPodsForShards() != null
+            && overrideShard.getPodsForShards().getPersistentVolume() != null
+            && overrideShard.getPodsForShards().getPersistentVolume().getSize() != null)
         .grouped(StackGresShardedClusterShard::getIndex)
         .map(Tuple2::v1)
         .toList()) {
@@ -91,12 +91,11 @@ public class OverridesShardsPersistentVolumeSizeExpansionValidator
 
   @ValidationType(ErrorType.FORBIDDEN_CLUSTER_UPDATE)
   class OverrideShardPersistentVolumeSizeExpansionValidator
-      extends PersistentVolumeSizeExpansionValidator<StackGresShardedClusterReview,
-          StackGresShardedCluster, StackGresCluster>
+      extends PersistentVolumeSizeExpansionValidator<StackGresShardedClusterReview, StackGresShardedCluster>
       implements ShardedClusterValidator {
-    final int index;
+    final Integer index;
 
-    public OverrideShardPersistentVolumeSizeExpansionValidator(int index) {
+    public OverrideShardPersistentVolumeSizeExpansionValidator(Integer index) {
       this.index = index;
     }
 
@@ -106,12 +105,14 @@ public class OverridesShardsPersistentVolumeSizeExpansionValidator
           .map(StackGresShardedClusterShards::getOverrides)
           .stream()
           .flatMap(List::stream)
-          .filter(overrideShard -> overrideShard.getIndex() == index)
+          .filter(overrideShard -> Objects.equals(
+              overrideShard.getIndex(),
+              index))
           .findFirst()
-          .map(StackGresShardedClusterShard::getPodForShards)
-          .map(StackGresShardedClusterShardPod::getPersistentVolume)
-          .map(StackGresPodPersistentVolume::getSize)
-          .orElse(cluster.getSpec().getShards().getPod().getPersistentVolume().getSize());
+          .map(StackGresShardedClusterShard::getPodsForShards)
+          .map(StackGresShardedClusterShardPods::getPersistentVolume)
+          .map(StackGresClusterPodsPersistentVolume::getSize)
+          .orElse(cluster.getSpec().getShards().getPods().getPersistentVolume().getSize());
     }
 
     @Override
@@ -122,17 +123,16 @@ public class OverridesShardsPersistentVolumeSizeExpansionValidator
           .map(StackGresShardedClusterShards::getOverrides)
           .stream()
           .flatMap(List::stream)
-          .filter(overrideShard -> overrideShard.getIndex() == index)
-          .map(StackGresShardedClusterShard::getPodForShards)
-          .map(StackGresClusterPod::getPersistentVolume)
+          .filter(overrideShard -> Objects.equals(
+              overrideShard.getIndex(),
+              index))
+          .flatMap(override -> Optional.of(override)
+              .map(StackGresShardedClusterShard::getPodsForShards)
+              .map(StackGresClusterPods::getPersistentVolume)
+              .stream())
           .findFirst()
-          .or(() -> Optional.of(cluster.getSpec().getShards().getPod().getPersistentVolume()))
-          .map(StackGresPodPersistentVolume::getStorageClass);
-    }
-
-    @Override
-    protected boolean isOperationUpdate(StackGresShardedClusterReview review) {
-      return review.getRequest().getOperation() == Operation.UPDATE;
+          .or(() -> Optional.of(cluster.getSpec().getShards().getPods().getPersistentVolume()))
+          .map(StackGresClusterPodsPersistentVolume::getStorageClass);
     }
 
     @Override
@@ -146,7 +146,7 @@ public class OverridesShardsPersistentVolumeSizeExpansionValidator
     }
 
     @Override
-    protected LabelFactoryForCluster<StackGresCluster> getLabelFactory() {
+    protected LabelFactoryForCluster getLabelFactory() {
       return clusterLabelFactory;
     }
 

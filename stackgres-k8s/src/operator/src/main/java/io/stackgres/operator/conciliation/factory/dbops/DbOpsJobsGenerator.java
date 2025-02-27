@@ -10,9 +10,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.stackgres.common.DbOpsUtil;
 import io.stackgres.common.crd.sgdbops.StackGresDbOps;
@@ -20,6 +17,8 @@ import io.stackgres.common.crd.sgdbops.StackGresDbOpsSpec;
 import io.stackgres.operator.conciliation.OperatorVersionBinder;
 import io.stackgres.operator.conciliation.ResourceGenerator;
 import io.stackgres.operator.conciliation.dbops.StackGresDbOpsContext;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jooq.lambda.Seq;
 
 @Singleton
@@ -45,12 +44,12 @@ public class DbOpsJobsGenerator implements ResourceGenerator<StackGresDbOpsConte
   @Override
   public Stream<HasMetadata> generateResource(StackGresDbOpsContext config) {
     Instant now = Instant.now();
-    Map<String, JobFactory> factories = jobsDiscoverer.discoverFactories(config);
+    Map<String, DbOpsJobFactory> factories = jobsDiscoverer.discoverFactories(config);
     return Seq.of(config.getSource())
         .filter(dbOp -> !DbOpsUtil.isAlreadyCompleted(dbOp))
         .filter(dbOp -> !isToRunAfter(dbOp, now))
         .map(dbOp -> {
-          JobFactory jobFactory = factories.get(dbOp.getSpec().getOp());
+          DbOpsJobFactory jobFactory = factories.get(dbOp.getSpec().getOp());
           if (jobFactory == null) {
             throw new UnsupportedOperationException("DbOps "
                 + dbOp.getSpec().getOp() + " not implemented!");

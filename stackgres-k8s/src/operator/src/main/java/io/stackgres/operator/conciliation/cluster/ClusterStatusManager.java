@@ -5,17 +5,13 @@
 
 package io.stackgres.operator.conciliation.cluster;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
-import com.google.common.collect.ImmutableList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.apps.StatefulSet;
@@ -29,10 +25,15 @@ import io.stackgres.common.crd.Condition;
 import io.stackgres.common.crd.sgcluster.ClusterStatusCondition;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgcluster.StackGresClusterPodStatus;
+import io.stackgres.common.crd.sgcluster.StackGresClusterServiceBindingStatus;
 import io.stackgres.common.crd.sgcluster.StackGresClusterStatus;
 import io.stackgres.common.labels.LabelFactoryForCluster;
 import io.stackgres.operator.conciliation.StatusManager;
+import io.stackgres.operator.conciliation.factory.cluster.ServiceBindingSecret;
 import io.stackgres.operatorframework.resource.ConditionUpdater;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import org.jooq.lambda.tuple.Tuple;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,12 +44,12 @@ public class ClusterStatusManager
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ClusterStatusManager.class);
 
-  private final LabelFactoryForCluster<StackGresCluster> labelFactory;
+  private final LabelFactoryForCluster labelFactory;
 
   private final KubernetesClient client;
 
   @Inject
-  public ClusterStatusManager(LabelFactoryForCluster<StackGresCluster> labelFactory,
+  public ClusterStatusManager(LabelFactoryForCluster labelFactory,
       KubernetesClient client) {
     this.labelFactory = labelFactory;
     this.client = client;
@@ -60,7 +61,13 @@ public class ClusterStatusManager
 
   @Override
   public StackGresCluster refreshCondition(StackGresCluster source) {
-    if (isPendingRestart(source)) {
+    if (source.getStatus() == null) {
+      source.setStatus(new StackGresClusterStatus());
+    }
+    source.getStatus().setBinding(new StackGresClusterServiceBindingStatus());
+    source.getStatus().getBinding().setName(ServiceBindingSecret.name(source));
+    StatusContext context = getStatusContext(source);
+    if (isPendingRestart(source, context)) {
       updateCondition(getPodRequiresRestart(), source);
     } else {
       updateCondition(getFalsePendingRestart(), source);
@@ -70,21 +77,44 @@ public class ClusterStatusManager
     } else {
       updateCondition(getFalsePendingUpgrade(), source);
     }
+    if (source.getStatus() != null
+        && source.getStatus().getArch() != null
+        && source.getStatus().getOs() != null
+        && source.getStatus().getPodStatuses() != null
+        && source.getSpec().getToInstallPostgresExtensions() != null) {
+      source.getStatus().getPodStatuses()
+          .stream()
+          .filter(StackGresClusterPodStatus::getPrimary)
+          .flatMap(podStatus -> source.getSpec().getToInstallPostgresExtensions().stream()
+              .filter(toInstallExtension -> podStatus
+                  .getInstalledPostgresExtensions().stream()
+                  .noneMatch(toInstallExtension::equals))
+              .map(toInstallExtension -> Tuple.tuple(
+                  toInstallExtension,
+                  podStatus.getInstalledPostgresExtensions().stream()
+                  .filter(installedExtension -> Objects.equals(
+                      installedExtension.getName(),
+                      toInstallExtension.getName()))
+                  .findFirst())))
+          .filter(t -> t.v2.isPresent())
+          .map(t -> t.map2(Optional::get))
+          .forEach(t -> t.v1.setBuild(t.v2.getBuild()));
+    }
+    source.getStatus().setInstances(context.clusterPods().size());
+    source.getStatus().setLabelSelector(labelFactory.clusterLabels(source)
+        .entrySet()
+        .stream()
+        .map(e -> e.getKey() + "=" + e.getValue())
+        .collect(Collectors.joining(",")));
     return source;
   }
 
   /**
    * Check pending restart status condition.
    */
-  public boolean isPendingRestart(StackGresCluster cluster) {
-    List<StackGresClusterPodStatus> clusterPodStatuses = Optional.ofNullable(cluster.getStatus())
-        .map(StackGresClusterStatus::getPodStatuses)
-        .orElse(ImmutableList.of());
-    Optional<StatefulSet> clusterStatefulSet = getClusterStatefulSet(cluster);
-    List<Pod> clusterPods = clusterStatefulSet.map(sts -> getClusterPods(sts, cluster))
-        .orElse(ImmutableList.of());
+  public boolean isPendingRestart(StackGresCluster cluster, StatusContext context) {
     RestartReasons reasons = ClusterPendingRestartUtil.getRestartReasons(
-        clusterPodStatuses, clusterStatefulSet, clusterPods);
+        context.clusterPodStatuses(), context.clusterStatefulSet(), context.clusterPods());
     for (RestartReason reason : reasons.getReasons()) {
       switch (reason) {
         case PATRONI:
@@ -104,6 +134,17 @@ public class ClusterStatusManager
       }
     }
     return reasons.requiresRestart();
+  }
+
+  private StatusContext getStatusContext(StackGresCluster cluster) {
+    List<StackGresClusterPodStatus> clusterPodStatuses = Optional
+        .ofNullable(cluster.getStatus())
+        .map(StackGresClusterStatus::getPodStatuses)
+        .orElse(List.of());
+    Optional<StatefulSet> clusterStatefulSet = getClusterStatefulSet(cluster);
+    List<Pod> clusterPods = getClusterPods(cluster);
+    StatusContext context = new StatusContext(clusterPodStatuses, clusterStatefulSet, clusterPods);
+    return context;
   }
 
   /**
@@ -138,18 +179,16 @@ public class ClusterStatusManager
         .findFirst();
   }
 
-  private List<Pod> getClusterPods(StatefulSet sts, StackGresCluster cluster) {
+  private List<Pod> getClusterPods(StackGresCluster cluster) {
     final Map<String, String> podClusterLabels =
         labelFactory.clusterLabels(cluster);
 
-    return client.pods().inNamespace(sts.getMetadata().getNamespace())
+    return client.pods().inNamespace(cluster.getMetadata().getNamespace())
         .withLabels(podClusterLabels)
         .list()
-        .getItems().stream()
-        .filter(pod -> pod.getMetadata().getOwnerReferences().stream()
-            .anyMatch(ownerReference -> ownerReference.getKind().equals("StatefulSet")
-                && ownerReference.getName().equals(sts.getMetadata().getName())))
-        .collect(Collectors.toUnmodifiableList());
+        .getItems()
+        .stream()
+        .toList();
   }
 
   @Override
@@ -157,7 +196,7 @@ public class ClusterStatusManager
       StackGresCluster source) {
     return Optional.ofNullable(source.getStatus())
         .map(StackGresClusterStatus::getConditions)
-        .orElseGet(ArrayList::new);
+        .orElse(List.of());
   }
 
   @Override
@@ -185,4 +224,11 @@ public class ClusterStatusManager
   protected Condition getClusterRequiresUpgrade() {
     return ClusterStatusCondition.CLUSTER_REQUIRES_UPGRADE.getCondition();
   }
+
+  record StatusContext(
+      List<StackGresClusterPodStatus> clusterPodStatuses,
+      Optional<StatefulSet> clusterStatefulSet,
+      List<Pod> clusterPods) {
+  }
+
 }

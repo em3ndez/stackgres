@@ -9,17 +9,19 @@ export const sgclusterform = {
         
 
         return {
+            formHash: (+new Date).toString(),
             previewCRD: {},
             showSummary: false,
             advancedMode: false,
-            currentStep: 'cluster',
+            currentStep: null,
             errorStep: [],
             editReady: false,
+            dryRun: false,
             nullVal: null,
             name: vc.$route.params.hasOwnProperty('name') ? vc.$route.params.name : '',
             namespace: vc.$route.params.hasOwnProperty('namespace') ? vc.$route.params.namespace : '',
             babelfishFeatureGates: false,
-            postgresVersion: 'latest',
+            postgresVersion: vc.$route.query.hasOwnProperty('postgresVersion') ? vc.$route.query.postgresVersion : 'latest',
             flavor: 'vanilla',
             ssl: {
                 enabled: false,
@@ -42,21 +44,19 @@ export const sgclusterform = {
             enableClusterPodAntiAffinity: true,
             postgresUtil: true,
             enableMonitoring: false,
-            podsMetadata: [ { label: '', value: ''} ],
-            nodeSelector: [ { label: '', value: ''} ],
-            tolerations: [ { key: '', operator: 'Equal', value: null, effect: null, tolerationSeconds: null } ],
+            podsMetadata: [],
+            nodeSelector: [],
+            tolerations: [],
             currentScriptIndex: { base: 0, entry: 0 },
             managedSql: {
                 continueOnSGScriptError: false,
-                scripts: [ {} ]
+                scripts: []
             },
-            scriptSource: [ 
-                { base: '', entries: ['raw'] }
-            ],
-            annotationsAll: [ { annotation: '', value: '' } ],
+            scriptSource: [],
+            annotationsAll: [],
             annotationsAllText: '',
-            annotationsPods: [ { annotation: '', value: '' } ],
-            annotationsServices: [ { annotation: '', value: '' } ],
+            annotationsPods: [],
+            annotationsServices: [],
             searchExtension: '',
             extLicense: 'opensource',
             extensionsList: {
@@ -81,29 +81,8 @@ export const sgclusterform = {
                 { label: 'Greater Than', value: 'Gt' },
                 { label: 'Less Than', value: 'Lt' },
             ],
-            requiredAffinity: [
-                {   
-                    matchExpressions: [
-                        { key: '', operator: '', values: [ '' ] }
-                    ],
-                    matchFields: [
-                        { key: '', operator: '', values: [ '' ] }
-                    ]
-                }
-            ],
-            preferredAffinity: [
-                {
-                    preference: {
-                        matchExpressions: [
-                            { key: '', operator: '', values: [ '' ] }
-                        ],
-                        matchFields: [
-                            { key: '', operator: '', values: [ '' ] }
-                        ]
-                    },
-                    weight:  1
-                }
-            ],
+            requiredAffinity: [],
+            preferredAffinity: [],
             managedBackups: false,
             backups: [{
                 path: null,
@@ -115,7 +94,10 @@ export const sgclusterform = {
                     maxDiskBandwidth: '',
                     uploadDiskConcurrency: 1
                 },
-                sgObjectStorage: ''
+                sgObjectStorage: '',
+                useVolumeSnapshot: false,
+                volumeSnapshotClass: null,
+                fastVolumeSnapshot: false,
             }],
             cronSchedule: [{
                 min: tzCrontab[0],
@@ -125,65 +107,20 @@ export const sgclusterform = {
                 dow: tzCrontab[4],
             }],
             pods: {
-                customVolumes: [{
-                    name: null,
-                }],
-                customInitContainers: [{
-                    name: null,
-                    image: null,
-                    imagePullPolicy: null,
-                    args: [null],
-                    command: [null],
-                    workingDir: null,
-                    env: [ { name: null, value: null } ],
-                    ports: [{
-                        containerPort: null,
-                        hostIP: null,
-                        hostPort: null,
-                        name: null,
-                        protocol: null
-                    }],
-                    volumeMounts: [{
-                        mountPath: null,
-                        mountPropagation: null,
-                        name: null,
-                        readOnly: false,
-                        subPath: null,
-                        subPathExpr: null,
-                    }]
-                }],
-                customContainers: [{
-                    name: null,
-                    image: null,
-                    imagePullPolicy: null,
-                    args: [null],
-                    command: [null],
-                    workingDir: null,
-                    env: [ { name: null, value: null } ],
-                    ports: [{
-                        containerPort: null,
-                        hostIP: null,
-                        hostPort: null,
-                        name: null,
-                        protocol: null
-                    }],
-                    volumeMounts: [{
-                        mountPath: null,
-                        mountPropagation: null,
-                        name: null,
-                        readOnly: false,
-                        subPath: null,
-                        subPathExpr: null,
-                    }]
-                }]
+                customVolumes: [],
+                customInitContainers: [],
+                customContainers: []
             },
             customVolumesType: [null],
-            postgresServicesPrimaryAnnotations: [ { annotation: '', value: '' } ],
-            postgresServicesReplicasAnnotations: [ { annotation: '', value: '' } ],
+            postgresServicesPrimaryAnnotations: [],
+            postgresServicesReplicasAnnotations: [],
         }
     },
 
     computed: {
+        theme() {
+            return store.state.theme
+        },
 
         profiles () {
             return store.state.sginstanceprofiles
@@ -196,11 +133,7 @@ export const sgclusterform = {
         connPoolConf () {
             return store.state.sgpoolconfigs
         },
-
-        sgbackups () {
-            return store.state.sgbackups
-        },
-
+        
         sgobjectstorages () {
             return store.state.sgobjectstorages
         },
@@ -233,7 +166,7 @@ export const sgclusterform = {
         },
 
         currentStepIndex() {
-            return this.formSteps.indexOf(this.currentStep)
+            return this.hasOwnProperty('formTemplate') ? this.formSteps[this.formTemplate].indexOf(this.currentStep) : this.formSteps.indexOf(this.currentStep)
         }
     },
 
@@ -293,6 +226,7 @@ export const sgclusterform = {
                     }],
                 }
             } );
+            this.formHash = (+new Date).toString();
         },
 
         setScriptSource( baseIndex, index, scriptSource = this.scriptSource, managedSql = this.managedSql ) {
@@ -337,6 +271,7 @@ export const sgclusterform = {
                     }
                 } 
             }
+            this.formHash = (+new Date).toString();
         },
 
         isDefaultScript(scriptName) {
@@ -438,16 +373,49 @@ export const sgclusterform = {
 
         },
 
-        pushLabel(el) {
-            el.push( { label: '', value: '' } )
+        pushLabel(el, prop = '') {
+            if(prop.length) {
+                if(this.isNull(el[prop]) ) {
+                    this.$set(el, prop, [{ label: '', value: '' }]);
+                } else {
+                    el[prop].push( { label: '', value: '' } );
+                }
+            } else {
+                if(el === null) {
+                    el = [];
+                }
+                el.push( { label: '', value: '' } )
+            }
         },
 
-        pushAnnotation(el) {
-            el.push( { annotation: '', value: '' } )
+        pushAnnotation(el, prop = '') {
+            if(prop.length) {
+                if(this.isNull(el[prop]) ) {
+                    this.$set(el, prop, [{ annotation: '', value: '' }]);
+                } else {
+                    el[prop].push( { annotation: '', value: '' } );
+                }
+            } else {
+                if(el === null) {
+                    el = [];
+                }
+                el.push( { annotation: '', value: '' } );
+            }
         },
 
-        pushToleration (tolerations = this.tolerations) {
-            tolerations.push({ key: '', operator: 'Equal', value: null, effect: null, tolerationSeconds: null })
+        pushToleration (el = this.tolerations, prop = '') {
+            if(prop.length) {
+                if(this.isNull(el[prop]) ) {
+                    this.$set(el, prop, [{ key: '', operator: 'Equal', value: null, effect: null, tolerationSeconds: null }]);
+                } else {
+                    el[prop].push({ key: '', operator: 'Equal', value: null, effect: null, tolerationSeconds: null });
+                }
+            } else {
+                if(el === null) {
+                    el = [];
+                }
+                el.push({ key: '', operator: 'Equal', value: null, effect: null, tolerationSeconds: null })
+            }
         },
 
         setVersion( version = 'latest') {
@@ -590,12 +558,23 @@ export const sgclusterform = {
             return [...ext].sort((a,b) => (a.name > b.name) ? 1 : ((b.name > a.name) ? -1 : 0))
         },
 
-        addNodeSelectorRequirement(affinity) {
-            affinity.push({ key: '', operator: '', values: [ '' ] })
+        addNodeSelectorRequirement(affinity, prop = '') {
+            if(prop.length) {
+                if(!affinity.hasOwnProperty(prop)) {
+                    affinity[prop] = [];
+                }
+                affinity[prop].push({ key: '', operator: '', values: [ '' ] });
+            } else {
+                affinity.push({ key: '', operator: '', values: [ '' ] })
+            }
         },
 
         addRequiredAffinityTerm(term = this.requiredAffinity, path = '') {
             if(!path.length) {
+                if(term === null) {
+                    term = [];
+                }
+
                 term.push({
                     matchExpressions: [
                         { key: '', operator: '', values: [ '' ] }
@@ -606,17 +585,26 @@ export const sgclusterform = {
                 });
             } else {
                 let [prop, ...pathSplit] = path.split('.');
-                    
-                if(!term.hasOwnProperty(prop)) {
-                    term[prop] = pathSplit.length ? {} : [];
+                
+                if(!term.hasOwnProperty(prop) || (term[prop] === null) ) {
+                    this.$set(
+                        term, prop, 
+                            pathSplit.length
+                                ? {} 
+                                : []
+                        );
                 }
-
-                this.addRequiredAffinityTerm(term[prop], pathSplit.join('.'));
+                
+                this.addRequiredAffinityTerm(term[prop], pathSplit.length ? pathSplit.join('.') : '');
             }
         },
         
         addPreferredAffinityTerm(term = this.preferredAffinity, path = '') {
             if(!path.length) {
+                if(term === null) {
+                    term = [];
+                }
+
                 term.push({
                     preference: {
                         matchExpressions: [
@@ -630,12 +618,17 @@ export const sgclusterform = {
                 });
             } else {
                 let [prop, ...pathSplit] = path.split('.');
-                    
-                if(!term.hasOwnProperty(prop)) {
-                    term[prop] = pathSplit.length ? {} : [];
-                }
 
-                this.addPreferredAffinityTerm(term[prop], pathSplit.join('.'));
+                if(!term.hasOwnProperty(prop) || (term[prop] === null) ) {
+                    this.$set(
+                        term, prop, 
+                            pathSplit.length
+                                ? {} 
+                                : []
+                        );
+                }
+                
+                this.addPreferredAffinityTerm(term[prop], pathSplit.length ? pathSplit.join('.') : '');
             }
         },
 
@@ -774,7 +767,7 @@ export const sgclusterform = {
         validateSelectedPgConfig() {
             const vc = this;
 
-            if( vc.hasOwnProperty('pgConfig') && (vc.pgConfig.length) ) {
+            if( vc.hasOwnProperty('pgConfig') && (!vc.isNull(vc.pgConfig)) ) {
                 let config = vc.pgConf.find(c => (c.data.metadata.name == vc.pgConfig) && (c.data.metadata.namespace == vc.$route.params.namespace) && (c.data.spec.postgresVersion == vc.shortPostgresVersion))
 
                 if(typeof config == 'undefined') {
@@ -1002,7 +995,7 @@ export const sgclusterform = {
                     this.pushElement(parent[prop], pathSplit.join('.'), el);
                 }
             }
-        }
+        },
 
     },
 

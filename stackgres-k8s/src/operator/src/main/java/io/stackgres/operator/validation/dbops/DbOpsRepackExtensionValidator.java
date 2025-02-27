@@ -9,19 +9,18 @@ import java.util.List;
 import java.util.Optional;
 import java.util.TreeSet;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
 import io.stackgres.common.ErrorType;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
 import io.stackgres.common.crd.sgcluster.StackGresClusterStatus;
 import io.stackgres.common.crd.sgdbops.StackGresDbOps;
 import io.stackgres.common.resource.CustomResourceFinder;
-import io.stackgres.operator.common.DbOpsReview;
+import io.stackgres.operator.common.StackGresDbOpsReview;
 import io.stackgres.operator.validation.ValidationType;
 import io.stackgres.operatorframework.admissionwebhook.Operation;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
 @Singleton
 @ValidationType(ErrorType.EXTENSION_NOT_FOUND)
@@ -37,7 +36,7 @@ public class DbOpsRepackExtensionValidator implements DbOpsValidator {
   }
 
   @Override
-  public void validate(DbOpsReview review) throws ValidationFailed {
+  public void validate(StackGresDbOpsReview review) throws ValidationFailed {
     if (review.getRequest().getOperation() == Operation.CREATE) {
       StackGresDbOps dbops = review.getRequest().getObject();
       if (dbops.getSpec().isOpRepack()) {

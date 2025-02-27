@@ -9,9 +9,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Stream;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder;
 import io.fabric8.kubernetes.api.model.HasMetadata;
@@ -20,20 +17,21 @@ import io.fabric8.kubernetes.api.model.VolumeBuilder;
 import io.stackgres.common.ClusterContext;
 import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.StackGresVolume;
-import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.labels.LabelFactoryForCluster;
 import io.stackgres.operator.conciliation.OperatorVersionBinder;
 import io.stackgres.operator.conciliation.cluster.StackGresClusterContext;
 import io.stackgres.operator.conciliation.factory.ImmutableVolumePair;
 import io.stackgres.operator.conciliation.factory.VolumeFactory;
 import io.stackgres.operator.conciliation.factory.VolumePair;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jetbrains.annotations.NotNull;
 
 @Singleton
 @OperatorVersionBinder
 public class MajorVersionUpgradeConfigMap implements VolumeFactory<StackGresClusterContext> {
 
-  private LabelFactoryForCluster<StackGresCluster> labelFactory;
+  private LabelFactoryForCluster labelFactory;
 
   public static String name(ClusterContext clusterContext) {
     return StackGresVolume.POSTGRES_CONFIG
@@ -79,7 +77,7 @@ public class MajorVersionUpgradeConfigMap implements VolumeFactory<StackGresClus
   }
 
   @Inject
-  public void setLabelFactory(LabelFactoryForCluster<StackGresCluster> labelFactory) {
+  public void setLabelFactory(LabelFactoryForCluster labelFactory) {
     this.labelFactory = labelFactory;
   }
 

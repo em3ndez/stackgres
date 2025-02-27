@@ -7,12 +7,8 @@ package io.stackgres.common.crd.sgdistributedlogs;
 
 import java.util.Objects;
 
-import javax.validation.Valid;
-import javax.validation.constraints.NotNull;
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.fabric8.kubernetes.api.model.Namespaced;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.CustomResource;
@@ -26,6 +22,8 @@ import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.crd.CommonDefinition;
 import io.sundr.builder.annotations.Buildable;
 import io.sundr.builder.annotations.BuildableReference;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -50,12 +48,10 @@ public final class StackGresDistributedLogs
 
   public static final String KIND = "SGDistributedLogs";
 
-  @JsonProperty("spec")
-  @NotNull(message = "The specification is required")
+  @NotNull(message = "spec is required")
   @Valid
   private StackGresDistributedLogsSpec spec;
 
-  @JsonProperty("status")
   @Valid
   private StackGresDistributedLogsStatus status;
 

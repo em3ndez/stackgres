@@ -9,18 +9,17 @@ import static java.util.Optional.ofNullable;
 
 import java.util.Optional;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
 import io.stackgres.common.ErrorType;
 import io.stackgres.common.crd.sgbackup.StackGresBackup;
 import io.stackgres.common.crd.sgbackup.StackGresBackupStatus;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.resource.CustomResourceFinder;
-import io.stackgres.operator.common.BackupReview;
+import io.stackgres.operator.common.StackGresBackupReview;
 import io.stackgres.operator.resource.NamedResource;
 import io.stackgres.operator.validation.ValidationType;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
 @Singleton
 @ValidationType(ErrorType.INVALID_CR_REFERENCE)
@@ -38,30 +37,27 @@ public class ClusterValidator implements BackupValidator {
   }
 
   @Override
-  public void validate(BackupReview review) throws ValidationFailed {
+  public void validate(StackGresBackupReview review) throws ValidationFailed {
     StackGresBackup backup = review.getRequest().getObject();
-    String clusterName = backup != null ? backup.getSpec().getSgCluster() : null;
 
     switch (review.getRequest().getOperation()) {
       case CREATE -> {
-        validateCluster(backup, review, clusterName);
+        validateCluster(backup, review, backup.getSpec().getSgCluster());
       }
       case UPDATE -> {
         if (!review.getRequest().getOldObject().getSpec().getSgCluster()
-            .equals(clusterName)) {
-          final String message = "Backup cluster can not be updated.";
+            .equals(backup.getSpec().getSgCluster())) {
+          final String message = "Backup sgCluster can not be updated.";
           fail(message);
         }
       }
       default -> {
       }
     }
-
   }
 
-  private void validateCluster(StackGresBackup backup, BackupReview review, String clusterName)
+  private void validateCluster(StackGresBackup backup, StackGresBackupReview review, String clusterName)
       throws ValidationFailed {
-
     if (hasStatusBackupConfig(backup)) {
       return;
     }
@@ -70,16 +66,15 @@ public class ClusterValidator implements BackupValidator {
     Optional<StackGresCluster> clusterOpt = clusterFinder
         .findByNameAndNamespace(namedResource.resource(), namedResource.namespace());
 
-    checkIfClusterExists(clusterOpt, "Cluster " + clusterName + " not found");
+    checkIfClusterExists(clusterOpt, "SGCluster " + clusterName + " not found");
     checkIfClusterHasValidBackupConfig(clusterOpt,
-        "Cluster " + clusterName + " has no backup configuration");
+        "SGCluster " + clusterName + " has no backup configuration");
   }
 
   private void checkIfClusterHasValidBackupConfig(Optional<StackGresCluster> clusterOpt,
       String onError) throws ValidationFailed {
-
     var backupConfig = ofNullable(
-        clusterOpt.get().getSpec().getConfiguration().getBackups());
+        clusterOpt.get().getSpec().getConfigurations().getBackups());
 
     if (backupConfig.isEmpty() || backupConfig.get().isEmpty()) {
       fail(onError);
@@ -90,19 +85,18 @@ public class ClusterValidator implements BackupValidator {
   private boolean hasStatusBackupConfig(StackGresBackup backup) {
     return Optional.of(backup)
         .map(StackGresBackup::getStatus)
-        .map(StackGresBackupStatus::getBackupConfig)
+        .map(StackGresBackupStatus::getSgBackupConfig)
         .isPresent();
   }
 
   private void checkIfClusterExists(Optional<StackGresCluster> clusterOpt, String onError)
       throws ValidationFailed {
-
     if (clusterOpt.isEmpty()) {
       fail(onError);
     }
   }
 
-  private NamedResource getClusterLocation(BackupReview review) {
+  private NamedResource getClusterLocation(StackGresBackupReview review) {
     StackGresBackup backup = review.getRequest().getObject();
     String cluster = backup.getSpec().getSgCluster();
     if (cluster.contains(".")) {

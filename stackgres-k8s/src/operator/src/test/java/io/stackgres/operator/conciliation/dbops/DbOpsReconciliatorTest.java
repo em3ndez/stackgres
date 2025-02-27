@@ -19,11 +19,13 @@ import io.stackgres.common.event.EventEmitter;
 import io.stackgres.common.fixture.Fixtures;
 import io.stackgres.common.resource.CustomResourceFinder;
 import io.stackgres.common.resource.CustomResourceScheduler;
-import io.stackgres.operator.conciliation.ComparisonDelegator;
-import io.stackgres.operator.conciliation.Conciliator;
+import io.stackgres.operator.conciliation.AbstractConciliator;
+import io.stackgres.operator.conciliation.DeployedResourcesCache;
 import io.stackgres.operator.conciliation.HandlerDelegator;
+import io.stackgres.operator.conciliation.Metrics;
 import io.stackgres.operator.conciliation.ReconciliationResult;
 import io.stackgres.operator.conciliation.factory.cluster.KubernetessMockResourceGenerationUtil;
+import io.stackgres.testutil.JsonUtil;
 import org.jooq.lambda.tuple.Tuple;
 import org.jooq.lambda.tuple.Tuple2;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,7 +41,9 @@ class DbOpsReconciliatorTest {
   @Mock
   CustomResourceFinder<StackGresDbOps> finder;
   @Mock
-  Conciliator<StackGresDbOps> conciliator;
+  AbstractConciliator<StackGresDbOps> conciliator;
+  @Mock
+  DeployedResourcesCache deployedResourcesCache;
   @Mock
   HandlerDelegator<StackGresDbOps> handlerDelegator;
   @Mock
@@ -49,7 +53,7 @@ class DbOpsReconciliatorTest {
   @Mock
   CustomResourceScheduler<StackGresDbOps> dbOpsScheduler;
   @Mock
-  ComparisonDelegator<StackGresDbOps> resourceComparator;
+  Metrics metrics;
 
   private DbOpsReconciliator reconciliator;
 
@@ -58,11 +62,13 @@ class DbOpsReconciliatorTest {
     DbOpsReconciliator.Parameters parameters = new DbOpsReconciliator.Parameters();
     parameters.finder = finder;
     parameters.conciliator = conciliator;
+    parameters.deployedResourcesCache = deployedResourcesCache;
     parameters.handlerDelegator = handlerDelegator;
     parameters.eventController = eventController;
     parameters.statusManager = statusManager;
     parameters.dbOpsScheduler = dbOpsScheduler;
-    parameters.resourceComparator = resourceComparator;
+    parameters.objectMapper = JsonUtil.jsonMapper();
+    parameters.metrics = metrics;
     reconciliator = new DbOpsReconciliator(parameters);
   }
 
@@ -80,7 +86,7 @@ class DbOpsReconciliatorTest {
             Collections.emptyList(),
             Collections.emptyList()));
 
-    reconciliator.reconciliationCycle(dbOps, false);
+    reconciliator.reconciliationCycle(dbOps, 0, false);
 
     verify(conciliator).evalReconciliationState(dbOps);
     creations.forEach(resource -> verify(handlerDelegator).create(dbOps, resource));
@@ -102,7 +108,7 @@ class DbOpsReconciliatorTest {
             patches,
             Collections.emptyList()));
 
-    reconciliator.reconciliationCycle(dbOps, false);
+    reconciliator.reconciliationCycle(dbOps, 0, false);
 
     verify(conciliator).evalReconciliationState(dbOps);
     patches.forEach(resource -> verify(handlerDelegator).patch(dbOps, resource.v1, resource.v2));
@@ -121,7 +127,7 @@ class DbOpsReconciliatorTest {
             Collections.emptyList(),
             deletions));
 
-    reconciliator.reconciliationCycle(dbOps, false);
+    reconciliator.reconciliationCycle(dbOps, 0, false);
 
     verify(conciliator).evalReconciliationState(dbOps);
     deletions.forEach(resource -> verify(handlerDelegator).delete(dbOps, resource));

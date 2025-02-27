@@ -5,14 +5,13 @@
 
 package io.stackgres.operator.validation.objectstorage;
 
-import javax.inject.Singleton;
-
 import io.stackgres.common.ErrorType;
 import io.stackgres.common.crd.storages.BackupStorage;
-import io.stackgres.operator.common.ObjectStorageReview;
+import io.stackgres.operator.common.StackGresObjectStorageReview;
 import io.stackgres.operator.validation.ValidationType;
 import io.stackgres.operatorframework.admissionwebhook.Operation;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.inject.Singleton;
 
 @Singleton
 @ValidationType(ErrorType.CONSTRAINT_VIOLATION)
@@ -22,7 +21,7 @@ public class ObjectStorageTypeValidator implements ObjectStorageValidator {
       .getErrorTypeUri(ErrorType.CONSTRAINT_VIOLATION);
 
   @Override
-  public void validate(ObjectStorageReview review) throws ValidationFailed {
+  public void validate(StackGresObjectStorageReview review) throws ValidationFailed {
     Operation operation = review.getRequest().getOperation();
 
     if (operation == Operation.CREATE || operation == Operation.UPDATE) {

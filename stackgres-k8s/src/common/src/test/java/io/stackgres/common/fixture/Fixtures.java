@@ -7,17 +7,18 @@ package io.stackgres.common.fixture;
 
 import io.stackgres.common.fixture.backup.BackupFixture;
 import io.stackgres.common.fixture.backup.BackupListFixture;
-import io.stackgres.common.fixture.backupconfig.BackupConfigFixture;
-import io.stackgres.common.fixture.backupconfig.BackupConfigListFixture;
 import io.stackgres.common.fixture.cluster.ClusterFixture;
 import io.stackgres.common.fixture.cluster.ClusterListFixture;
 import io.stackgres.common.fixture.cluster.JsonClusterFixture;
+import io.stackgres.common.fixture.config.ConfigFixture;
 import io.stackgres.common.fixture.dbops.DbOpsFixture;
+import io.stackgres.common.fixture.dbops.DbOpsListFixture;
 import io.stackgres.common.fixture.distributedlogs.DistributedLogsFixture;
 import io.stackgres.common.fixture.distributedlogs.DistributedLogsListFixture;
 import io.stackgres.common.fixture.instanceprofile.InstanceProfileFixture;
 import io.stackgres.common.fixture.instanceprofile.InstanceProfileListFixture;
 import io.stackgres.common.fixture.objectstorage.ObjectStorageFixture;
+import io.stackgres.common.fixture.objectstorage.ObjectStorageListFixture;
 import io.stackgres.common.fixture.poolingconfig.JsonPoolingConfigFixture;
 import io.stackgres.common.fixture.poolingconfig.PoolingConfigFixture;
 import io.stackgres.common.fixture.poolingconfig.PoolingConfigListFixture;
@@ -25,19 +26,17 @@ import io.stackgres.common.fixture.postgresconfig.JsonPostgresConfigFixture;
 import io.stackgres.common.fixture.postgresconfig.PostgresConfigFixture;
 import io.stackgres.common.fixture.postgresconfig.PostgresConfigListFixture;
 import io.stackgres.common.fixture.script.ScriptFixture;
+import io.stackgres.common.fixture.shardedbackup.ShardedBackupFixture;
+import io.stackgres.common.fixture.shardedbackup.ShardedBackupListFixture;
 import io.stackgres.common.fixture.shardedcluster.ShardedClusterFixture;
 import io.stackgres.common.fixture.shardedcluster.ShardedClusterListFixture;
+import io.stackgres.common.fixture.shardeddbops.ShardedDbOpsFixture;
+import io.stackgres.common.fixture.shardeddbops.ShardedDbOpsListFixture;
+import io.stackgres.common.fixture.stream.StreamFixture;
+import io.stackgres.common.fixture.stream.StreamListFixture;
 import io.stackgres.common.fixture.upgrade.Upgrade;
 
 public interface Fixtures {
-
-  static BackupConfigFixture backupConfig() {
-    return new BackupConfigFixture();
-  }
-
-  static BackupConfigListFixture backupConfigList() {
-    return new BackupConfigListFixture();
-  }
 
   static BackupFixture backup() {
     return new BackupFixture();
@@ -65,6 +64,10 @@ public interface Fixtures {
 
   static DbOpsFixture dbOps() {
     return new DbOpsFixture();
+  }
+
+  static DbOpsListFixture dbOpsList() {
+    return new DbOpsListFixture();
   }
 
   static InstanceProfileFixture instanceProfile() {
@@ -95,6 +98,10 @@ public interface Fixtures {
     return new ObjectStorageFixture();
   }
 
+  static ObjectStorageListFixture objectStorageList() {
+    return new ObjectStorageListFixture();
+  }
+
   static ScriptFixture script() {
     return new ScriptFixture();
   }
@@ -105,6 +112,34 @@ public interface Fixtures {
 
   static ShardedClusterListFixture shardedClusterList() {
     return new ShardedClusterListFixture();
+  }
+
+  static ShardedBackupFixture shardedBackup() {
+    return new ShardedBackupFixture();
+  }
+
+  static ShardedBackupListFixture shardedBackupList() {
+    return new ShardedBackupListFixture();
+  }
+
+  static ShardedDbOpsFixture shardedDbOps() {
+    return new ShardedDbOpsFixture();
+  }
+
+  static ShardedDbOpsListFixture shardedDbOpsList() {
+    return new ShardedDbOpsListFixture();
+  }
+
+  static StreamFixture stream() {
+    return new StreamFixture();
+  }
+
+  static StreamListFixture streamList() {
+    return new StreamListFixture();
+  }
+
+  static ConfigFixture config() {
+    return new ConfigFixture();
   }
 
   static ExtensionMetadataFixture extensionMetadata() {

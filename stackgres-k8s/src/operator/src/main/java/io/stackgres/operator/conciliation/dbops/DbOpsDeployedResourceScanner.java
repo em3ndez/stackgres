@@ -8,9 +8,6 @@ package io.stackgres.operator.conciliation.dbops;
 import java.util.Map;
 import java.util.function.Function;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ServiceAccount;
@@ -20,13 +17,17 @@ import io.fabric8.kubernetes.api.model.rbac.RoleBinding;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
+import io.stackgres.common.CdiUtil;
 import io.stackgres.common.crd.sgdbops.StackGresDbOps;
 import io.stackgres.common.labels.LabelFactoryForDbOps;
-import io.stackgres.operator.conciliation.DeployedResourcesScanner;
+import io.stackgres.operator.conciliation.AbstractDeployedResourcesScanner;
+import io.stackgres.operator.conciliation.DeployedResourcesCache;
 import io.stackgres.operator.conciliation.ReconciliationOperations;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
-public class DbOpsDeployedResourceScanner extends DeployedResourcesScanner<StackGresDbOps>
+public class DbOpsDeployedResourceScanner extends AbstractDeployedResourcesScanner<StackGresDbOps>
     implements ReconciliationOperations {
 
   private final KubernetesClient client;
@@ -34,10 +35,19 @@ public class DbOpsDeployedResourceScanner extends DeployedResourcesScanner<Stack
 
   @Inject
   public DbOpsDeployedResourceScanner(
+      DeployedResourcesCache deployedResourcesCache,
       KubernetesClient client,
       LabelFactoryForDbOps labelFactory) {
+    super(deployedResourcesCache);
     this.client = client;
     this.labelFactory = labelFactory;
+  }
+
+  public DbOpsDeployedResourceScanner() {
+    super(null);
+    CdiUtil.checkPublicNoArgsConstructorIsCalledToCreateProxy(getClass());
+    this.client = null;
+    this.labelFactory = null;
   }
 
   @Override
@@ -54,7 +64,8 @@ public class DbOpsDeployedResourceScanner extends DeployedResourcesScanner<Stack
   protected Map<Class<? extends HasMetadata>,
       Function<KubernetesClient, MixedOperation<? extends HasMetadata,
           ? extends KubernetesResourceList<? extends HasMetadata>,
-              ? extends Resource<? extends HasMetadata>>>> getInNamepspaceResourceOperations() {
+              ? extends Resource<? extends HasMetadata>>>> getInNamepspaceResourceOperations(
+                  StackGresDbOps config) {
     return IN_NAMESPACE_RESOURCE_OPERATIONS;
   }
 

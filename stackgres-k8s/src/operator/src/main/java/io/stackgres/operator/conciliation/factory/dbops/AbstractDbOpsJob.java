@@ -5,6 +5,8 @@
 
 package io.stackgres.operator.conciliation.factory.dbops;
 
+import static io.stackgres.common.StackGresUtil.getDefaultPullPolicy;
+
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -27,12 +29,13 @@ import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder;
 import io.fabric8.kubernetes.client.CustomResource;
 import io.stackgres.common.CdiUtil;
-import io.stackgres.common.ClusterStatefulSetPath;
+import io.stackgres.common.ClusterPath;
 import io.stackgres.common.DbOpsUtil;
 import io.stackgres.common.KubectlUtil;
+import io.stackgres.common.OperatorProperty;
+import io.stackgres.common.StackGresContext;
 import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.StackGresVolume;
-import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgdbops.DbOpsStatusCondition;
 import io.stackgres.common.crd.sgdbops.StackGresDbOps;
 import io.stackgres.common.crd.sgdbops.StackGresDbOpsSpec;
@@ -47,14 +50,14 @@ import org.jooq.lambda.Unchecked;
 import org.jooq.lambda.tuple.Tuple;
 import org.jooq.lambda.tuple.Tuple2;
 
-public abstract class AbstractDbOpsJob implements JobFactory {
+public abstract class AbstractDbOpsJob implements DbOpsJobFactory {
 
   private static final Pattern UPPERCASE_PATTERN = Pattern.compile("(\\p{javaUpperCase})");
 
   private final ResourceFactory<StackGresDbOpsContext, PodSecurityContext> podSecurityFactory;
   private final DbOpsEnvironmentVariables clusterEnvironmentVariables;
   private final Map<DbOpsStatusCondition, String> conditions;
-  protected final LabelFactoryForCluster<StackGresCluster> labelFactory;
+  protected final LabelFactoryForCluster labelFactory;
   protected final LabelFactoryForDbOps dbOpsLabelFactory;
   protected final KubectlUtil kubectl;
   private final DbOpsVolumeMounts dbOpsVolumeMounts;
@@ -63,7 +66,7 @@ public abstract class AbstractDbOpsJob implements JobFactory {
   protected AbstractDbOpsJob(
       ResourceFactory<StackGresDbOpsContext, PodSecurityContext> podSecurityFactory,
       DbOpsEnvironmentVariables clusterEnvironmentVariables,
-      LabelFactoryForCluster<StackGresCluster> labelFactory,
+      LabelFactoryForCluster labelFactory,
       LabelFactoryForDbOps dbOpsLabelFactory,
       ObjectMapper jsonMapper,
       KubectlUtil kubectl,
@@ -121,13 +124,13 @@ public abstract class AbstractDbOpsJob implements JobFactory {
     return StackGresUtil.getPatroniImageName(context.getCluster());
   }
 
-  protected abstract ClusterStatefulSetPath getRunScript();
+  protected abstract ClusterPath getRunScript();
 
   protected String getSetResultImage(StackGresDbOpsContext context) {
     return kubectl.getImageName(context.getCluster());
   }
 
-  protected ClusterStatefulSetPath getSetResultScript() {
+  protected ClusterPath getSetResultScript() {
     return null;
   }
 
@@ -202,7 +205,7 @@ public abstract class AbstractDbOpsJob implements JobFactory {
         .withInitContainers(new ContainerBuilder()
             .withName("set-dbops-running")
             .withImage(getSetResultImage(context))
-            .withImagePullPolicy("IfNotPresent")
+            .withImagePullPolicy(getDefaultPullPolicy())
             .withEnv(ImmutableList.<EnvVar>builder()
                 .addAll(clusterEnvironmentVariables.listResources(context))
                 .add(
@@ -227,16 +230,36 @@ public abstract class AbstractDbOpsJob implements JobFactory {
                         .withValue(namespace)
                         .build(),
                     new EnvVarBuilder()
-                        .withName("DB_OPS_NAME")
+                        .withName("DBOPS_NAME")
                         .withValue(name)
                         .build(),
                     new EnvVarBuilder()
-                        .withName("DB_OPS_CRD_NAME")
+                        .withName("DBOPS_CRD_NAME")
                         .withValue(CustomResource.getCRDName(StackGresDbOps.class))
                         .build(),
                     new EnvVarBuilder()
                         .withName("HOME")
                         .withValue("/tmp")
+                        .build(),
+                    new EnvVarBuilder()
+                        .withName("LOCK_DURATION")
+                        .withValue(OperatorProperty.LOCK_DURATION.getString())
+                        .build(),
+                    new EnvVarBuilder()
+                        .withName("LOCK_POLL_INTERVAL")
+                        .withValue(OperatorProperty.LOCK_POLL_INTERVAL.getString())
+                        .build(),
+                    new EnvVarBuilder()
+                        .withName("LOCK_SERVICE_ACCOUNT_KEY")
+                        .withValue(StackGresContext.LOCK_SERVICE_ACCOUNT_KEY)
+                        .build(),
+                    new EnvVarBuilder()
+                        .withName("LOCK_POD_KEY")
+                        .withValue(StackGresContext.LOCK_POD_KEY)
+                        .build(),
+                    new EnvVarBuilder()
+                        .withName("LOCK_TIMEOUT_KEY")
+                        .withValue(StackGresContext.LOCK_TIMEOUT_KEY)
                         .build())
                 .addAll(Seq.of(DbOpsStatusCondition.values())
                     .map(c -> new EnvVarBuilder()
@@ -246,14 +269,14 @@ public abstract class AbstractDbOpsJob implements JobFactory {
                     .toList())
                 .build())
             .withCommand("/bin/sh", "-ex",
-                ClusterStatefulSetPath.LOCAL_BIN_SET_DBOPS_RUNNING_SH_PATH.path())
+                ClusterPath.LOCAL_BIN_SET_DBOPS_RUNNING_SH_PATH.path())
             .withVolumeMounts(dbOpsVolumeMounts.getVolumeMounts(context))
             .build())
         .withContainers(
             new ContainerBuilder()
                 .withName("run-dbops")
                 .withImage(getRunImage(context))
-                .withImagePullPolicy("IfNotPresent")
+                .withImagePullPolicy(getDefaultPullPolicy())
                 .withEnv(ImmutableList.<EnvVar>builder()
                     .addAll(clusterEnvironmentVariables
                         .listResources(context))
@@ -283,7 +306,7 @@ public abstract class AbstractDbOpsJob implements JobFactory {
                         new EnvVarBuilder()
                             .withName("RUN_SCRIPT_PATH")
                             .withValue(Optional.ofNullable(getRunScript())
-                                .map(ClusterStatefulSetPath::path)
+                                .map(ClusterPath::path)
                                 .orElse(""))
                             .build(),
                         new EnvVarBuilder()
@@ -297,13 +320,13 @@ public abstract class AbstractDbOpsJob implements JobFactory {
                     .addAll(runEnvVars)
                     .build())
                 .withCommand("/bin/sh", "-ex",
-                    ClusterStatefulSetPath.LOCAL_BIN_RUN_DBOPS_SH_PATH.path())
+                    ClusterPath.LOCAL_BIN_RUN_DBOPS_SH_PATH.path())
                 .withVolumeMounts(dbOpsVolumeMounts.getVolumeMounts(context))
                 .build(),
             new ContainerBuilder()
                 .withName("set-dbops-result")
                 .withImage(kubectl.getImageName(context.getCluster()))
-                .withImagePullPolicy("IfNotPresent")
+                .withImagePullPolicy(getDefaultPullPolicy())
                 .withEnv(ImmutableList.<EnvVar>builder()
                     .addAll(clusterEnvironmentVariables
                         .listResources(context))
@@ -329,7 +352,7 @@ public abstract class AbstractDbOpsJob implements JobFactory {
                         new EnvVarBuilder()
                             .withName("SET_RESULT_SCRIPT_PATH")
                             .withValue(Optional.ofNullable(getSetResultScript())
-                                .map(ClusterStatefulSetPath::path)
+                                .map(ClusterPath::path)
                                 .orElse(""))
                             .build(),
                         new EnvVarBuilder()
@@ -337,18 +360,12 @@ public abstract class AbstractDbOpsJob implements JobFactory {
                             .withValue(namespace)
                             .build(),
                         new EnvVarBuilder()
-                            .withName("DB_OPS_NAME")
+                            .withName("DBOPS_NAME")
                             .withValue(name)
                             .build(),
                         new EnvVarBuilder()
-                            .withName("DB_OPS_CRD_NAME")
+                            .withName("DBOPS_CRD_NAME")
                             .withValue(CustomResource.getCRDName(StackGresDbOps.class))
-                            .build(),
-                        new EnvVarBuilder()
-                            .withName("JOB_POD_LABELS")
-                            .withValue(Seq.seq(labels)
-                                .append(Tuple.tuple("job-name", jobName(dbOps)))
-                                .map(t -> t.v1 + "=" + t.v2).toString(","))
                             .build(),
                         new EnvVarBuilder()
                             .withName("HOME")
@@ -363,7 +380,7 @@ public abstract class AbstractDbOpsJob implements JobFactory {
                     .addAll(setResultEnvVars)
                     .build())
                 .withCommand("/bin/sh", "-ex",
-                    ClusterStatefulSetPath.LOCAL_BIN_SET_DBOPS_RESULT_SH_PATH.path())
+                    ClusterPath.LOCAL_BIN_SET_DBOPS_RESULT_SH_PATH.path())
                 .withVolumeMounts(dbOpsVolumeMounts.getVolumeMounts(context))
                 .build())
         .withVolumes(

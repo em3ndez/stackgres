@@ -9,9 +9,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.IntOrString;
 import io.fabric8.kubernetes.api.model.Service;
@@ -20,18 +17,21 @@ import io.fabric8.kubernetes.api.model.ServicePortBuilder;
 import io.stackgres.common.EnvoyUtil;
 import io.stackgres.common.PatroniUtil;
 import io.stackgres.common.StackGresPort;
-import io.stackgres.common.StackGresShardedClusterForCitusUtil;
+import io.stackgres.common.StackGresShardedClusterUtil;
 import io.stackgres.common.crd.postgres.service.StackGresPostgresService;
-import io.stackgres.common.crd.sgcluster.StackGresCluster;
+import io.stackgres.common.crd.postgres.service.StackGresPostgresServiceNodePort;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedCluster;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterPostgresCoordinatorServices;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterPostgresServices;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterPostgresShardsServices;
+import io.stackgres.common.crd.sgshardedcluster.StackGresShardingType;
 import io.stackgres.common.labels.LabelFactoryForCluster;
 import io.stackgres.common.labels.LabelFactoryForShardedCluster;
 import io.stackgres.operator.conciliation.OperatorVersionBinder;
 import io.stackgres.operator.conciliation.ResourceGenerator;
 import io.stackgres.operator.conciliation.shardedcluster.StackGresShardedClusterContext;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jooq.lambda.Seq;
 
 @Singleton
@@ -40,12 +40,12 @@ public class ShardedClusterServices implements
     ResourceGenerator<StackGresShardedClusterContext> {
 
   private final LabelFactoryForShardedCluster labelFactory;
-  private final LabelFactoryForCluster<StackGresCluster> clusterLabelFactory;
+  private final LabelFactoryForCluster clusterLabelFactory;
 
   @Inject
   public ShardedClusterServices(
       LabelFactoryForShardedCluster labelFactory,
-      LabelFactoryForCluster<StackGresCluster> clusterLabelFactory) {
+      LabelFactoryForCluster clusterLabelFactory) {
     this.labelFactory = labelFactory;
     this.clusterLabelFactory = clusterLabelFactory;
   }
@@ -60,7 +60,9 @@ public class ShardedClusterServices implements
     var coordinatorServices = context.getSource().getSpec().getPostgresServices().getCoordinator();
     if (Optional.of(coordinatorServices.getAny())
         .map(StackGresPostgresService::getEnabled)
-        .orElse(true)) {
+        .orElse(true)
+        && !StackGresShardingType.SHARDING_SPHERE.equals(
+            StackGresShardingType.fromString(context.getShardedCluster().getSpec().getType()))) {
       services = services.append(createCoordinatorAnyService(context));
     }
 
@@ -85,7 +87,7 @@ public class ShardedClusterServices implements
     return new ServiceBuilder()
         .withNewMetadata()
         .withNamespace(cluster.getMetadata().getNamespace())
-        .withName(StackGresShardedClusterForCitusUtil.anyCoordinatorServiceName(
+        .withName(StackGresShardedClusterUtil.anyCoordinatorServiceName(
             context.getSource()))
         .addToLabels(labelFactory.genericLabels(cluster))
         .endMetadata()
@@ -93,12 +95,22 @@ public class ShardedClusterServices implements
         .editSpec()
         .addAllToPorts(List.of(
             new ServicePortBuilder()
+                .withNodePort(Optional
+                        .ofNullable(cluster.getSpec().getPostgresServices().getCoordinator().getAny())
+                        .map(StackGresPostgresService::getNodePorts)
+                        .map(StackGresPostgresServiceNodePort::getPgport)
+                        .orElse(null))
                 .withProtocol("TCP")
                 .withName(EnvoyUtil.POSTGRES_PORT_NAME)
                 .withPort(PatroniUtil.POSTGRES_SERVICE_PORT)
                 .withTargetPort(new IntOrString(EnvoyUtil.POSTGRES_PORT_NAME))
                 .build(),
             new ServicePortBuilder()
+                .withNodePort(Optional
+                        .ofNullable(cluster.getSpec().getPostgresServices().getCoordinator().getAny())
+                        .map(StackGresPostgresService::getNodePorts)
+                        .map(StackGresPostgresServiceNodePort::getReplicationport)
+                        .orElse(null))
                 .withProtocol("TCP")
                 .withName(EnvoyUtil.POSTGRES_REPLICATION_PORT_NAME)
                 .withPort(PatroniUtil.REPLICATION_SERVICE_PORT)
@@ -115,7 +127,7 @@ public class ShardedClusterServices implements
             .map(ServicePortBuilder::build)
             .toList())
         .withSelector(clusterLabelFactory.clusterLabelsWithoutUid(
-            context.getCoordinator().getCluster()))
+            context.getCoordinator()))
         .endSpec()
         .build();
   }
@@ -125,7 +137,7 @@ public class ShardedClusterServices implements
     return new ServiceBuilder()
         .withNewMetadata()
         .withNamespace(cluster.getMetadata().getNamespace())
-        .withName(StackGresShardedClusterForCitusUtil.primaryCoordinatorServiceName(
+        .withName(StackGresShardedClusterUtil.primaryCoordinatorServiceName(
             context.getSource()))
         .addToLabels(labelFactory.genericLabels(cluster))
         .endMetadata()
@@ -133,17 +145,31 @@ public class ShardedClusterServices implements
         .editSpec()
         .addAllToPorts(List.of(
             new ServicePortBuilder()
+                .withNodePort(Optional
+                        .ofNullable(cluster.getSpec().getPostgresServices().getCoordinator().getPrimary())
+                        .map(StackGresPostgresService::getNodePorts)
+                        .map(StackGresPostgresServiceNodePort::getPgport)
+                        .orElse(null))
                 .withProtocol("TCP")
                 .withName(EnvoyUtil.POSTGRES_PORT_NAME)
                 .withPort(PatroniUtil.POSTGRES_SERVICE_PORT)
                 .withTargetPort(new IntOrString(EnvoyUtil.POSTGRES_PORT_NAME))
-                .build(),
+                .build()))
+        .addAllToPorts(Seq.of(
             new ServicePortBuilder()
+                .withNodePort(Optional
+                        .ofNullable(cluster.getSpec().getPostgresServices().getCoordinator().getPrimary())
+                        .map(StackGresPostgresService::getNodePorts)
+                        .map(StackGresPostgresServiceNodePort::getReplicationport)
+                        .orElse(null))
                 .withProtocol("TCP")
                 .withName(EnvoyUtil.POSTGRES_REPLICATION_PORT_NAME)
                 .withPort(PatroniUtil.REPLICATION_SERVICE_PORT)
                 .withTargetPort(new IntOrString(EnvoyUtil.POSTGRES_REPLICATION_PORT_NAME))
-                .build()))
+                .build())
+            .filter(ignore -> !StackGresShardingType.SHARDING_SPHERE.equals(
+                StackGresShardingType.fromString(context.getShardedCluster().getSpec().getType())))
+            .toList())
         .addAllToPorts(
             Optional.of(context.getSource().getSpec().getPostgresServices())
             .map(StackGresShardedClusterPostgresServices::getCoordinator)
@@ -163,7 +189,7 @@ public class ShardedClusterServices implements
     return new ServiceBuilder()
         .withNewMetadata()
         .withNamespace(cluster.getMetadata().getNamespace())
-        .withName(StackGresShardedClusterForCitusUtil.primariesShardsServiceName(
+        .withName(StackGresShardedClusterUtil.primariesShardsServiceName(
             context.getSource()))
         .addToLabels(labelFactory.genericLabels(cluster))
         .endMetadata()
@@ -171,12 +197,22 @@ public class ShardedClusterServices implements
         .editSpec()
         .addAllToPorts(List.of(
             new ServicePortBuilder()
+                .withNodePort(Optional
+                        .ofNullable(cluster.getSpec().getPostgresServices().getShards().getPrimaries())
+                        .map(StackGresPostgresService::getNodePorts)
+                        .map(StackGresPostgresServiceNodePort::getPgport)
+                        .orElse(null))
                 .withProtocol("TCP")
                 .withName(EnvoyUtil.POSTGRES_PORT_NAME)
                 .withPort(PatroniUtil.POSTGRES_SERVICE_PORT)
                 .withTargetPort(new IntOrString(EnvoyUtil.POSTGRES_PORT_NAME))
                 .build(),
             new ServicePortBuilder()
+                .withNodePort(Optional
+                        .ofNullable(cluster.getSpec().getPostgresServices().getShards().getPrimaries())
+                        .map(StackGresPostgresService::getNodePorts)
+                        .map(StackGresPostgresServiceNodePort::getReplicationport)
+                        .orElse(null))
                 .withProtocol("TCP")
                 .withName(EnvoyUtil.POSTGRES_REPLICATION_PORT_NAME)
                 .withPort(PatroniUtil.REPLICATION_SERVICE_PORT)

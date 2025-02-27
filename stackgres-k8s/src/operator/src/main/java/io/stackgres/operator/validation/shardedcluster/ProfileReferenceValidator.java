@@ -6,20 +6,26 @@
 package io.stackgres.operator.validation.shardedcluster;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.stackgres.common.ErrorType;
+import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
 import io.stackgres.common.crd.sgprofile.StackGresProfile;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedCluster;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterShard;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterShards;
+import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterSpec;
 import io.stackgres.common.resource.CustomResourceFinder;
 import io.stackgres.operator.common.StackGresShardedClusterReview;
+import io.stackgres.operator.validation.AbstractReferenceValidator;
 import io.stackgres.operator.validation.ValidationType;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
+import org.jooq.lambda.Seq;
 
 @Singleton
 @ValidationType(ErrorType.INVALID_CR_REFERENCE)
@@ -32,89 +38,151 @@ public class ProfileReferenceValidator implements ShardedClusterValidator {
     this.profileFinder = profileFinder;
   }
 
-  @Override
-  public void validate(StackGresShardedClusterReview review) throws ValidationFailed {
-    switch (review.getRequest().getOperation()) {
-      case CREATE: {
-        StackGresShardedCluster cluster = review.getRequest().getObject();
-        String coordinatorResourceProfile = cluster.getSpec().getCoordinator().getResourceProfile();
-        checkIfProfileExists(review, coordinatorResourceProfile,
-            "Invalid profile " + coordinatorResourceProfile + " for coordinator");
-        String shardsResourceProfile = cluster.getSpec().getShards().getResourceProfile();
-        checkIfProfileExists(review, shardsResourceProfile,
-            "Invalid profile " + shardsResourceProfile + " for shards");
-        for (var overrideShard : Optional.of(cluster.getSpec().getShards())
-            .map(StackGresShardedClusterShards::getOverrides)
-            .orElse(List.of())) {
-          if (overrideShard.getResourceProfile() == null) {
-            continue;
-          }
-          String overrideshardsResourceProfile = overrideShard
-              .getResourceProfile();
-          checkIfProfileExists(review, overrideshardsResourceProfile,
-              "Invalid profile " + overrideshardsResourceProfile + " for shard "
-                  + overrideShard.getIndex());
-        }
-        break;
-      }
-      case UPDATE: {
-        StackGresShardedCluster cluster = review.getRequest().getObject();
-        StackGresShardedCluster oldCluster = review.getRequest().getOldObject();
-        String coordinatorResourceProfile = cluster.getSpec().getCoordinator().getResourceProfile();
-        String oldCoordinatorResourceProfile =
-            oldCluster.getSpec().getCoordinator().getResourceProfile();
-        if (!coordinatorResourceProfile.equals(oldCoordinatorResourceProfile)) {
-          checkIfProfileExists(review, coordinatorResourceProfile,
-              "Cannot update coordinator to profile "
-                  + coordinatorResourceProfile + " because it doesn't exists");
-        }
-        String shardsResourceProfile = cluster.getSpec().getShards().getResourceProfile();
-        String oldShardsResourceProfile = oldCluster.getSpec().getShards().getResourceProfile();
-        if (!shardsResourceProfile.equals(oldShardsResourceProfile)) {
-          checkIfProfileExists(review, shardsResourceProfile,
-              "Cannot update shards to profile "
-                  + shardsResourceProfile + " because it doesn't exists");
-        }
-        for (var overrideShard : Optional.of(cluster.getSpec().getShards())
-            .map(StackGresShardedClusterShards::getOverrides)
-            .orElse(List.of())) {
-          if (overrideShard.getResourceProfile() == null) {
-            continue;
-          }
-          String overrideshardsResourceProfile = overrideShard
-              .getResourceProfile();
-          String oldOverrideshardsResourceProfile = Optional.of(oldCluster.getSpec().getShards())
-              .map(StackGresShardedClusterShards::getOverrides)
-              .stream()
-              .flatMap(List::stream)
-              .filter(oldOverrideShard -> oldOverrideShard.getIndex() == overrideShard.getIndex())
-              .findFirst()
-              .map(StackGresShardedClusterShard::getResourceProfile)
-              .orElse(oldShardsResourceProfile);
-          if (!overrideshardsResourceProfile.equals(oldOverrideshardsResourceProfile)) {
-            checkIfProfileExists(review, overrideshardsResourceProfile,
-                "Cannot update shard " + overrideShard.getIndex() + " to profile "
-                    + overrideshardsResourceProfile + " because it doesn't exists");
-          }
-        }
-        break;
-      }
-      default:
+  private class CoordinatorProfileReference
+      extends AbstractReferenceValidator<
+        StackGresShardedCluster, StackGresShardedClusterReview, StackGresProfile> {
+
+    private CoordinatorProfileReference(
+        CustomResourceFinder<StackGresProfile> profileFinder) {
+      super(profileFinder);
     }
 
+    @Override
+    protected Class<StackGresProfile> getReferenceClass() {
+      return StackGresProfile.class;
+    }
+
+    @Override
+    protected String getReference(StackGresShardedCluster resource) {
+      return Optional.ofNullable(resource.getSpec()
+          .getCoordinator().getSgInstanceProfile())
+          .orElse(null);
+    }
+
+    @Override
+    protected boolean checkReferenceFilter(StackGresShardedClusterReview review) {
+      return !Optional.ofNullable(review.getRequest().getDryRun()).orElse(false);
+    }
+
+    @Override
+    protected void onNotFoundReference(String message) throws ValidationFailed {
+      ProfileReferenceValidator.this.fail(message);
+    }
+
+    @Override
+    protected String getCreateNotFoundErrorMessage(String reference) {
+      return HasMetadata.getKind(getReferenceClass())
+          + " " + reference + " not found for coordinator";
+    }
+
+    @Override
+    protected String getUpdateNotFoundErrorMessage(String reference) {
+      return "Cannot update coordinator to "
+          + HasMetadata.getKind(getReferenceClass()) + " "
+          + reference + " because it doesn't exists";
+    }
   }
 
-  private void checkIfProfileExists(
-      StackGresShardedClusterReview review, String resourceProfile, String onError)
-      throws ValidationFailed {
-    StackGresShardedCluster cluster = review.getRequest().getObject();
-    String namespace = cluster.getMetadata().getNamespace();
+  private class ShardsProfileReference
+      extends CoordinatorProfileReference {
 
-    Optional<StackGresProfile> profileOpt = profileFinder
-        .findByNameAndNamespace(resourceProfile, namespace);
+    private ShardsProfileReference(
+        CustomResourceFinder<StackGresProfile> profileFinder) {
+      super(profileFinder);
+    }
 
-    if (!profileOpt.isPresent()) {
-      fail(onError);
+    @Override
+    protected String getReference(StackGresShardedCluster resource) {
+      return Optional.ofNullable(resource.getSpec()
+          .getShards().getSgInstanceProfile())
+          .orElse(null);
+    }
+
+    @Override
+    protected String getCreateNotFoundErrorMessage(String reference) {
+      return HasMetadata.getKind(getReferenceClass())
+          + " " + reference + " not found for shards";
+    }
+
+    @Override
+    protected String getUpdateNotFoundErrorMessage(String reference) {
+      return "Cannot update shards to "
+          + HasMetadata.getKind(getReferenceClass()) + " "
+          + reference + " because it doesn't exists";
+    }
+  }
+
+  private class ShardsOverrideProfileReference
+      extends CoordinatorProfileReference {
+
+    private final int index;
+    private final Integer shardIndex;
+
+    private ShardsOverrideProfileReference(
+        CustomResourceFinder<StackGresProfile> profileFinder,
+        int index,
+        Integer shardIndex) {
+      super(profileFinder);
+      this.index = index;
+      this.shardIndex = shardIndex;
+    }
+
+    @Override
+    protected String getReference(StackGresShardedCluster resource) {
+      return Optional.ofNullable(resource.getSpec()
+          .getShards().getOverrides())
+          .map(overrides -> overrides.get(index))
+          .map(StackGresShardedClusterShard::getSgInstanceProfile)
+          .orElse(null);
+    }
+
+    @Override
+    protected boolean checkReferenceFilter(StackGresShardedClusterReview review) {
+      return super.checkReferenceFilter(review)
+          && !Objects.equals(
+              review.getRequest().getObject().getSpec()
+              .getShards().getOverrides().get(index).getSgInstanceProfile(),
+              Optional.ofNullable(review.getRequest().getOldObject())
+              .map(StackGresShardedCluster::getSpec)
+              .map(StackGresShardedClusterSpec::getShards)
+              .map(StackGresClusterSpec::getSgInstanceProfile)
+              .orElse(null));
+    }
+
+    @Override
+    protected String getCreateNotFoundErrorMessage(String reference) {
+      return HasMetadata.getKind(getReferenceClass())
+          + " " + reference + " not found for shards override " + shardIndex;
+    }
+
+    @Override
+    protected String getUpdateNotFoundErrorMessage(String reference) {
+      return "Cannot update shards override " + shardIndex + " to "
+          + HasMetadata.getKind(getReferenceClass()) + " "
+          + reference + " because it doesn't exists";
+    }
+  }
+
+  @Override
+  @SuppressFBWarnings(value = "SF_SWITCH_NO_DEFAULT",
+      justification = "False positive")
+  public void validate(StackGresShardedClusterReview review) throws ValidationFailed {
+    new CoordinatorProfileReference(profileFinder).validate(review);
+    new ShardsProfileReference(profileFinder).validate(review);
+    for (var overrideShard : Optional.ofNullable(review.getRequest().getObject())
+        .map(StackGresShardedCluster::getSpec)
+        .map(StackGresShardedClusterSpec::getShards)
+        .map(StackGresShardedClusterShards::getOverrides)
+        .map(Seq::seq)
+        .map(seq -> seq.zipWithIndex().toList())
+        .orElse(List.of())) {
+      if (overrideShard.v1.getSgInstanceProfile() == null) {
+        continue;
+      }
+      new ShardsOverrideProfileReference(
+          profileFinder,
+          overrideShard.v2.intValue(),
+          overrideShard.v1.getIndex()).validate(review);
     }
   }
 

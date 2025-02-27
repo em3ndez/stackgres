@@ -52,27 +52,45 @@ then
   E2E_ONLY_INCLUDES="$("$BATCH_LIST_TEST_FUNCTION" | to_e2e_test_batch "$BATCH_INDEX" "$BATCH_COUNT")"
 fi
 
+echo "Variables:"
+echo
+sh stackgres-k8s/e2e/e2e get_variables_for_hash \
+  | while read -r VARIABLE
+    do
+      printf ' - %s\n' "$VARIABLE"
+    done
+echo
+
 if [ "$E2E_USE_TEST_CACHE" = true ]
 then
   echo "Retrieving cache..."
   E2E_EXCLUDES_BY_HASH="$(get_already_passed_tests)"
   echo 'done'
 
-  if [ "$E2E_REPEAT_TESTS" != true ]
+  if echo "$E2E_EXCLUDES_BY_HASH" | grep -q '[^ ]'
   then
-    if echo "$E2E_EXCLUDES_BY_HASH" | grep -q '[^ ]'
-    then
-      echo "Excluding following tests since already passed:"
-      echo
-      printf '%s' "$E2E_EXCLUDES_BY_HASH" | tr ' ' '\n' | grep -v '^$' \
-        | while read -r E2E_EXCLUDED_TEST
-          do
-            printf ' - %s\n' "$E2E_EXCLUDED_TEST"
-          done
-      echo
-    fi
-    E2E_EXCLUDES="$(echo "$E2E_EXCLUDES $E2E_EXCLUDES_BY_HASH" | tr ' ' '\n' | sort | uniq | tr '\n' ' ')"
+    echo "Excluding following tests since already passed:"
+    echo
+    printf '%s' "$E2E_EXCLUDES_BY_HASH" | tr ' ' '\n' | grep -v '^$' \
+      | while read -r E2E_EXCLUDED_TEST
+        do
+          printf ' - %s\n' "$E2E_EXCLUDED_TEST"
+        done
+    echo
   fi
+  E2E_EXCLUDES="$(echo "$E2E_EXCLUDES $E2E_EXCLUDES_BY_HASH" | tr ' ' '\n' | sort | uniq | tr '\n' ' ')"
+
+  echo "Retrieved image digests:"
+  sort stackgres-k8s/e2e/target/all-test-result-images | uniq \
+    | while read -r IMAGE_NAME
+      do
+        printf ' - %s => %s\n' "$IMAGE_NAME" "$(
+          { grep "^$IMAGE_NAME=" stackgres-k8s/e2e/target/test-result-image-digests || echo '=<not found>'; } \
+            | cut -d = -f 2-)"
+      done
+  echo "done"
+
+  echo
 fi
 
 if [ -z "$E2E_ONLY_INCLUDES" ]
@@ -202,6 +220,8 @@ fi
 
 echo "Preparing environment"
 
+echo "Start background repository cache"
+start_background_repository_cache
 echo "Setup k8s"
 setup_k8s
 echo "Setup images"
@@ -356,6 +376,7 @@ EOF
     sleep 1
   done
   kill "$(cat "$TARGET_PATH/specs_to_run.tail.pid")"
+  printf %s "$OVERALL_RESULT" > "$TARGET_PATH/overall-result"
   if [ "$OVERALL_RESULT" = false ]
   then
     return 1
@@ -371,20 +392,27 @@ SPEC_EMITTER_PID="$!"
 trap_kill "$SPEC_EMITTER_PID"
 
 set +e
-OVERALL_RESULT=true
 "$SHELL" -c '
   echo $$ > "'"$TARGET_PATH/specs_to_run.tail.pid"'"
   exec tail -n +1 -f "'"$TARGET_PATH/specs_to_run.pipe"'"
   ' | xargs_parallel_shell % "$E2E_PATH/e2e" spec_with_lock %
 set -e
 
-if ! wait "$SPEC_EMITTER_PID"
+OVERALL_RESULT=true
+if wait "$SPEC_EMITTER_PID"
 then
-  if [ "$OVERALL_RESULT" = true ]
+  if [ "$(cat "$TARGET_PATH/overall-result")" != true ]
   then
-    echo "No test failed but overall process failed...this is weird!"
+    echo "Some test failed but overall process didn't...this is weird!"
     OVERALL_RESULT=false
   fi
+else
+  if [ "$(cat "$TARGET_PATH/overall-result")" = true ]
+  then
+    echo "No test failed but overall process did...this is weird!"
+    OVERALL_RESULT=false
+  fi
+  OVERALL_RESULT=false
 fi
 
 cat << EOF > "$TARGET_PATH/e2e-tests-junit-report.xml"

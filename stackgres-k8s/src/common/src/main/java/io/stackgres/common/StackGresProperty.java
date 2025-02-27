@@ -11,6 +11,8 @@ public enum StackGresProperty implements StackGresPropertyReader {
 
   OPERATOR_VERSION("stackgres.operatorVersion"),
   OPERATOR_IMAGE_VERSION("stackgres.operatorImageVersion"),
+  OPERATOR_JVM_IMAGE_VERSION("stackgres.operatorJvmImageVersion"),
+  OPERATOR_NATIVE_IMAGE_VERSION("stackgres.operatorNativeImageVersion"),
   DOCUMENTATION_URI("stackgres.documentation.uri"),
   DOCUMENTATION_ERRORS_PATH("stackgres.documentation.errorsPath"),
   SG_CONTAINER_REGISTRY("stackgres.containerRegistry"),
@@ -25,7 +27,11 @@ public enum StackGresProperty implements StackGresPropertyReader {
   SG_IMAGE_CLUSTER_CONTROLLER("stackgres.imageClusterController"),
   SG_IMAGE_DISTRIBUTEDLOGS_CONTROLLER("stackgres.imageDistributedlogsController"),
   SG_IMAGE_KUBECTL("stackgres.imageKubectl"),
-  SG_IMAGE_BABELFISH_COMPASS("stackgres.imageBabelfishCompass");
+  SG_IMAGE_BABELFISH_COMPASS("stackgres.imageBabelfishCompass"),
+  SG_IMAGE_OTEL_COLLECTOR("stackgres.imageOtelCollector"),
+  SG_IMAGE_JOBS("stackgres.imageJobs"),
+  SG_IMAGE_STREAM("stackgres.imageStream"),
+  SG_IMAGE_PGLAMBDA("stackgres.imagePglambda");
 
   private static final Properties APPLICATION_PROPERTIES =
       StackGresPropertyReader.readApplicationProperties(StackGresProperty.class);

@@ -5,17 +5,15 @@
 
 package io.stackgres.operator.conciliation.factory.shardedcluster;
 
-import static io.stackgres.common.StackGresShardedClusterForCitusUtil.CERTIFICATE_KEY;
-import static io.stackgres.common.StackGresShardedClusterForCitusUtil.PRIVATE_KEY_KEY;
-import static io.stackgres.common.StackGresShardedClusterForCitusUtil.postgresSslSecretName;
+import static io.stackgres.common.StackGresShardedClusterUtil.CERTIFICATE_KEY;
+import static io.stackgres.common.StackGresShardedClusterUtil.PRIVATE_KEY_KEY;
+import static io.stackgres.common.StackGresShardedClusterUtil.postgresSslSecretName;
 
+import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
-
-import javax.inject.Inject;
-import javax.inject.Singleton;
 
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
@@ -30,6 +28,8 @@ import io.stackgres.operator.conciliation.OperatorVersionBinder;
 import io.stackgres.operator.conciliation.ResourceGenerator;
 import io.stackgres.operator.conciliation.shardedcluster.StackGresShardedClusterContext;
 import io.stackgres.operatorframework.resource.ResourceUtil;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
 @Singleton
 @OperatorVersionBinder
@@ -77,7 +77,8 @@ public class ShardedPostgresSslSecret
     var certificate = context.getPostgresSslCertificate();
     var privateKey = context.getPostgresSslPrivateKey();
     if (certificate.isEmpty() || privateKey.isEmpty()) {
-      var certificateAndPrivateKey = CryptoUtil.generateCertificateAndPrivateKey();
+      var certificateAndPrivateKey = CryptoUtil.generateCertificateAndPrivateKey(
+          ZonedDateTime.now().plusYears(7500).toInstant());
       certificate = Optional.of(certificateAndPrivateKey.v1);
       privateKey = Optional.of(certificateAndPrivateKey.v2);
     }

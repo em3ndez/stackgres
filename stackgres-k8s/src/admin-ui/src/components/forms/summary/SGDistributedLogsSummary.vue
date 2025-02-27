@@ -19,11 +19,24 @@
             </li>
         </ul>
 
-        <ul class="section">
+        <ul class="section"
+            v-if="showDefaults || 
+                (crd.data.spec.profile != 'production') ||
+                (crd.data.spec.persistentVolume.size != '1Gi') ||
+                hasProp(crd, 'data.spec.persistentVolume.storageClass') ||
+                hasProp(crd, 'data.spec.sgInstanceProfile') || 
+                hasProp(crd, 'data.spec.configurations.sgPostgresConfig')
+            ">
             <li>
                 <button class="toggleSummary"></button>
                 <strong class="sectionTitle">Specs </strong>
-                <ul>                     
+                <ul>      
+                    <li v-if="showDefaults || (crd.data.spec.profile != 'production')">
+                        <strong class="label">Profile</strong>
+                        <span class="helpTooltip" :data-tooltip="getTooltip('sgdistributedlogs.spec.profile')"></span>
+                        <span class="value capitalize"> : {{ crd.data.spec.profile }}</span>
+                    </li>
+
                     <li v-if="showDefaults || (crd.data.spec.persistentVolume.size != '1Gi') || hasProp(crd, 'data.spec.persistentVolume.storageClass')">
                         <button class="toggleSummary"></button>
                         <strong class="label">Persistent Volume</strong>
@@ -264,15 +277,30 @@
             </li>
         </ul>
 
-        <ul class="section" v-if="showDefaults || hasProp(crd, 'data.spec.nonProductionOptions.disableClusterPodAntiAffinity')">
+        <ul class="section" v-if="
+            showDefaults || 
+            (hasProp(crd, 'data.spec.nonProductionOptions.disableClusterPodAntiAffinity') && (crd.data.spec.nonProductionOptions.disableClusterPodAntiAffinity != null)) ||
+            (hasProp(crd, 'data.spec.nonProductionOptions.disablePatroniResourceRequirements') && (crd.data.spec.nonProductionOptions.disablePatroniResourceRequirements != null)) ||
+            (hasProp(crd, 'data.spec.nonProductionOptions.disableClusterResourceRequirements') && (crd.data.spec.nonProductionOptions.disableClusterResourceRequirements != null))
+        ">
             <li>
                 <button class="toggleSummary"></button>
                 <strong class="sectionTitle">Non Production Settings </strong>
                 <ul>
-                    <li>
+                    <li v-if="showDefaults || (hasProp(crd, 'data.spec.nonProductionOptions.disableClusterPodAntiAffinity') && (crd.data.spec.nonProductionOptions.disableClusterPodAntiAffinity != null))">
                         <strong class="label">Cluster Pod Anti Affinity</strong>
                         <span class="helpTooltip" :data-tooltip="getTooltip('sgdistributedlogs.spec.nonProductionOptions.disableClusterPodAntiAffinity').replace('If set to `true` it will allow','When disabled, it allows running')"></span>
-                        <span> : {{ hasProp(crd, 'data.spec.nonProductionOptions.disableClusterPodAntiAffinity') ? isEnabled(crd.data.spec.nonProductionOptions.disableClusterPodAntiAffinity, true) : 'Enabled' }}</span>
+                        <span> : {{ (hasProp(crd, 'data.spec.nonProductionOptions.disableClusterPodAntiAffinity') && (crd.data.spec.nonProductionOptions.disableClusterPodAntiAffinity != null)) ? isEnabled(crd.data.spec.nonProductionOptions.disableClusterPodAntiAffinity, true) : 'Default'}}</span>
+                    </li>
+                    <li v-if="showDefaults || (hasProp(crd, 'data.spec.nonProductionOptions.disablePatroniResourceRequirements') && (crd.data.spec.nonProductionOptions.disablePatroniResourceRequirements != null))">
+                        <strong class="label">Patroni Resource Requirements</strong>
+                        <span class="helpTooltip" :data-tooltip="getTooltip('sgdistributedlogs.spec.nonProductionOptions.disablePatroniResourceRequirements').replace('Set this property to true to prevent','When disabled, it prevents')"></span>
+                        <span> : {{ (hasProp(crd, 'data.spec.nonProductionOptions.disablePatroniResourceRequirements') && (crd.data.spec.nonProductionOptions.disablePatroniResourceRequirements != null)) ? isEnabled(crd.data.spec.nonProductionOptions.disablePatroniResourceRequirements, true) : 'Default'}}</span>
+                    </li>
+                    <li v-if="showDefaults || (hasProp(crd, 'data.spec.nonProductionOptions.disableClusterResourceRequirements') && (crd.data.spec.nonProductionOptions.disableClusterResourceRequirements != null))">
+                        <strong class="label">Cluster Resource Requirements</strong>
+                        <span class="helpTooltip" :data-tooltip="getTooltip('sgdistributedlogs.spec.nonProductionOptions.disableClusterResourceRequirements').replace('Set this property to true to prevent','When disabled, it prevents')"></span>
+                        <span> : {{ (hasProp(crd, 'data.spec.nonProductionOptions.disableClusterResourceRequirements') && (crd.data.spec.nonProductionOptions.disableClusterResourceRequirements != null)) ? isEnabled(crd.data.spec.nonProductionOptions.disableClusterResourceRequirements, true) : 'Default'}}</span>
                     </li>
                 </ul>
             </li>

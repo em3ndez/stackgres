@@ -9,16 +9,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Stream;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder;
 import io.fabric8.kubernetes.api.model.Volume;
 import io.fabric8.kubernetes.api.model.VolumeBuilder;
 import io.stackgres.common.ClusterContext;
-import io.stackgres.common.ClusterStatefulSetPath;
+import io.stackgres.common.ClusterPath;
 import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.StackGresVolume;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
@@ -30,6 +27,8 @@ import io.stackgres.operator.conciliation.factory.VolumeFactory;
 import io.stackgres.operator.conciliation.factory.VolumePair;
 import io.stackgres.operator.conciliation.factory.cluster.backup.AbstractBackupConfigMap;
 import io.stackgres.operator.conciliation.factory.cluster.backup.BackupEnvVarFactory;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jetbrains.annotations.NotNull;
 
 @Singleton
@@ -37,7 +36,7 @@ import org.jetbrains.annotations.NotNull;
 public class ReplicateConfigMap extends AbstractBackupConfigMap
     implements VolumeFactory<StackGresClusterContext> {
 
-  private LabelFactoryForCluster<StackGresCluster> labelFactory;
+  private LabelFactoryForCluster labelFactory;
 
   public static String name(ClusterContext context) {
     final String clusterName = context.getCluster().getMetadata().getName();
@@ -79,6 +78,7 @@ public class ReplicateConfigMap extends AbstractBackupConfigMap
     context.getReplicateConfiguration()
         .ifPresent(config -> data.putAll(
                 getBackupEnvVars(
+                    context,
                     config
                 )
             )
@@ -96,18 +96,18 @@ public class ReplicateConfigMap extends AbstractBackupConfigMap
 
   @Override
   protected String getAwsS3CompatibleCaCertificateFilePath(ClusterContext context) {
-    return ClusterStatefulSetPath.REPLICATE_SECRET_PATH.path(context)
+    return ClusterPath.REPLICATE_SECRET_PATH.path(context)
         + "/" + BackupEnvVarFactory.AWS_S3_COMPATIBLE_CA_CERTIFICATE_FILE_NAME;
   }
 
   @Override
   protected String getGcsCredentialsFilePath(ClusterContext context) {
-    return ClusterStatefulSetPath.REPLICATE_SECRET_PATH.path(context)
+    return ClusterPath.REPLICATE_SECRET_PATH.path(context)
         + "/" + BackupEnvVarFactory.GCS_CREDENTIALS_FILE_NAME;
   }
 
   @Inject
-  public void setLabelFactory(LabelFactoryForCluster<StackGresCluster> labelFactory) {
+  public void setLabelFactory(LabelFactoryForCluster labelFactory) {
     this.labelFactory = labelFactory;
   }
 }

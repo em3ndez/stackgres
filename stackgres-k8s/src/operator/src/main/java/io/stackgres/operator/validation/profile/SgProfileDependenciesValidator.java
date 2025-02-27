@@ -7,25 +7,24 @@ package io.stackgres.operator.validation.profile;
 
 import java.util.Objects;
 
-import javax.inject.Singleton;
-
 import io.stackgres.common.ErrorType;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
-import io.stackgres.operator.common.SgProfileReview;
+import io.stackgres.operator.common.StackGresInstanceProfileReview;
 import io.stackgres.operator.validation.DependenciesValidator;
 import io.stackgres.operator.validation.ValidationType;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.inject.Singleton;
 
 @Singleton
 @ValidationType(ErrorType.FORBIDDEN_CR_DELETION)
 public class SgProfileDependenciesValidator
-    extends DependenciesValidator<SgProfileReview, StackGresCluster>
+    extends DependenciesValidator<StackGresInstanceProfileReview, StackGresCluster>
     implements SgProfileValidator {
 
   @Override
-  protected void validate(SgProfileReview review, StackGresCluster resource)
+  protected void validate(StackGresInstanceProfileReview review, StackGresCluster resource)
       throws ValidationFailed {
-    if (Objects.equals(resource.getSpec().getResourceProfile(), review.getRequest().getName())) {
+    if (Objects.equals(resource.getSpec().getSgInstanceProfile(), review.getRequest().getName())) {
       fail(review, resource);
     }
   }

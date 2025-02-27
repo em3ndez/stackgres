@@ -1,5 +1,5 @@
 .build:
-  image: $CI_REGISTRY/$CI_PROJECT_PATH/$SG_CI_IMAGE_NAME
+  image: $CI_REGISTRY/$SG_CI_PROJECT_PATH/$SG_CI_IMAGE_NAME
   stage: build 1
   tags:
     - stackgres-runner-v2
@@ -8,16 +8,14 @@
   script:
     - |
       sh stackgres-k8s/ci/build/build-gitlab.sh build \
-        --copy stackgres-k8s/ci/build/target/junit-build.hashes.xml \
-        --copy .m2 \
         --extract operator-framework-java-test:'stackgres-k8s/src/operator-framework/target/surefire-reports/TEST-*.xml' \
         --extract common-java-test:'stackgres-k8s/src/common/target/surefire-reports/TEST-*.xml' \
         --extract operator-java-test:'stackgres-k8s/src/operator/target/surefire-reports/TEST-*.xml' \
-        --extract restapi-java-test:'stackgres-k8s/src/api-web/target/surefire-reports/TEST-*.xml' \
+        --extract restapi-java-test:'stackgres-k8s/src/restapi/target/surefire-reports/TEST-*.xml' \
         --extract jobs-java-test:'stackgres-k8s/src/jobs/target/surefire-reports/TEST-*.xml' \
         --extract cluster-controller-java-test:'stackgres-k8s/src/cluster-controller/target/surefire-reports/TEST-*.xml' \
-        --extract distributedlogs-controller-java-test:'stackgres-k8s/src/distributedlogs-controller/target/surefire-reports/TEST-*.xml' \
-        --extract restapi-java:'stackgres-k8s/src/api-web/target/swagger*' \
+        --extract stream-java-test:'stackgres-k8s/src/stream/target/surefire-reports/TEST-*.xml' \
+        --extract restapi-java:'stackgres-k8s/src/restapi/target/swagger*' \
         parent-java \
         operator-framework-java operator-framework-java-test \
         test-util-java \
@@ -26,7 +24,8 @@
         restapi-java restapi-java-test \
         jobs-java jobs-java-test \
         cluster-controller-java cluster-controller-java-test \
-        distributedlogs-controller-java distributedlogs-controller-java-test
+        stream-java stream-java-test
+      cp stackgres-k8s/ci/build/target/junit-build.hashes.xml."$(cat stackgres-k8s/ci/build/target/build_hash)" stackgres-k8s/ci/build/target/junit-build.hashes.xml
   retry:
     max: 2
     when: [ unknown_failure, api_failure, stuck_or_timeout_failure, runner_system_failure, runner_unsupported,
@@ -47,7 +46,7 @@
         - stackgres-k8s/src/*/target/surefire-reports/TEST-*.xml
     paths:
         - stackgres-k8s/ci/build/target/*
-        - stackgres-k8s/src/api-web/target/swagger*
+        - stackgres-k8s/src/restapi/target/swagger*
         - stackgres-k8s/ci/build/target
 
 build amd64:
@@ -63,20 +62,22 @@ build arm64:
     - stackgres-runner-v2
     - stackgres-maven-runner
     - linux-arm64
-  only:
-    variables:
-      - $SKIP_ARM != "true" && $CI_COMMIT_TAG && $CI_COMMIT_TAG !~ /^latest-.*$/
-      - $DO_ARM
+  rules:
+  - if: |
+     ( ( $CI_PIPELINE_SOURCE =~ /^(push|schedule|trigger)$/ || $CI_COMMIT_TAG
+       || ( $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_SHA == null ) )
+       && (
+        ( $SKIP_ARM != "true" && $CI_COMMIT_TAG )
+        || $DO_ARM ) )
 
 .build ui:
-  image: $CI_REGISTRY/$CI_PROJECT_PATH/$SG_CI_IMAGE_NAME
+  image: $CI_REGISTRY/$SG_CI_PROJECT_PATH/$SG_CI_IMAGE_NAME
   stage: build 2
   tags:
     - stackgres-runner
   script:
     - |
       sh stackgres-k8s/ci/build/build-gitlab.sh build \
-        --copy stackgres-k8s/src/admin-ui/node_modules \
         admin-ui
   retry: 2
   cache:
@@ -100,13 +101,16 @@ build ui arm64:
   tags:
     - stackgres-runner
     - linux-arm64
-  only:
-    variables:
-      - $SKIP_ARM != "true" && $CI_COMMIT_TAG && $CI_COMMIT_TAG !~ /^latest-.*$/
-      - $DO_ARM
+  rules:
+  - if: |
+     ( ( $CI_PIPELINE_SOURCE =~ /^(push|schedule|trigger)$/ || $CI_COMMIT_TAG
+       || ( $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_SHA == null ) )
+       && (
+        ( $SKIP_ARM != "true" && $CI_COMMIT_TAG )
+        ||  $DO_ARM ) )
 
 build documentation:
-  image: $CI_REGISTRY/$CI_PROJECT_PATH/$SG_CI_IMAGE_NAME
+  image: $CI_REGISTRY/$SG_CI_PROJECT_PATH/$SG_CI_IMAGE_NAME
   stage: build 2
   tags:
     - stackgres-runner
@@ -117,10 +121,10 @@ build documentation:
       [ "$DEBUG" != true ] || set -x
       export DOCUMENTATION_BASE_URL="https://stackgres.io/doc"
       export DOCUMENTATION_EXTRA_PATH=""
-      if [ -z "$CI_COMMIT_TAG" ] || echo "$CI_COMMIT_TAG" | grep -q '^latest-.*$'
+      if [ -z "$CI_COMMIT_TAG" ]
       then
         DOCUMENTATION_BASE_URL="https://ongresinc.gitlab.io/stackgres"
-        if [ "${CI_COMMIT_REF_NAME%%-*}" != "main" ] && [ "${CI_COMMIT_REF_NAME%%-*}" != "current" ]
+        if [ "${CI_COMMIT_REF_NAME%%-*}" != "main" ]
         then
           DOCUMENTATION_EXTRA_PATH="$CI_COMMIT_REF_NAME/"
         fi
@@ -136,7 +140,7 @@ build documentation:
     - doc/public
 
 build helm packages:
-  image: $CI_REGISTRY/$CI_PROJECT_PATH/$SG_CI_IMAGE_NAME
+  image: $CI_REGISTRY/$SG_CI_PROJECT_PATH/$SG_CI_IMAGE_NAME
   stage: build 2
   tags:
     - stackgres-runner
@@ -146,7 +150,7 @@ build helm packages:
     - |
       sh stackgres-k8s/ci/build/build-gitlab.sh build \
         --extract helm-packages:stackgres-k8s/install/helm/target/packages \
-        helm-packages helm-operator-bundle helm-operator-openshift-bundle
+        helm-packages operator-bundle operator-openshift-bundle
   retry: 2
   artifacts:
     expire_in: 1 week
@@ -155,7 +159,7 @@ build helm packages:
       - stackgres-k8s/install/helm/target/packages
 
 build helm templates:
-  image: $CI_REGISTRY/$CI_PROJECT_PATH/$SG_CI_IMAGE_NAME
+  image: $CI_REGISTRY/$SG_CI_PROJECT_PATH/$SG_CI_IMAGE_NAME
   stage: build 2
   tags:
     - stackgres-runner
@@ -174,7 +178,7 @@ build helm templates:
       - stackgres-k8s/install/helm/target/templates
 
 build helm release packages:
-  image: $CI_REGISTRY/$CI_PROJECT_PATH/$SG_CI_IMAGE_NAME
+  image: $CI_REGISTRY/$SG_CI_PROJECT_PATH/$SG_CI_IMAGE_NAME
   stage: build 2
   tags:
     - stackgres-runner
@@ -184,7 +188,7 @@ build helm release packages:
     - |
       sh stackgres-k8s/ci/build/build-gitlab.sh build \
         --extract helm-packages:stackgres-k8s/install/helm/target/packages \
-        helm-release-packages helm-operator-release-bundle helm-operator-release-openshift-bundle
+        helm-release-packages operator-release-bundle operator-release-openshift-bundle
   retry: 2
   artifacts:
     expire_in: 1 week
@@ -193,7 +197,7 @@ build helm release packages:
       - stackgres-k8s/install/helm/target/packages
 
 build helm release templates:
-  image: $CI_REGISTRY/$CI_PROJECT_PATH/$SG_CI_IMAGE_NAME
+  image: $CI_REGISTRY/$SG_CI_PROJECT_PATH/$SG_CI_IMAGE_NAME
   stage: build 2
   tags:
     - stackgres-runner

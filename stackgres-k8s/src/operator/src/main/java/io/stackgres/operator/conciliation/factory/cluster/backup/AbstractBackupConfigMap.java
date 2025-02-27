@@ -6,15 +6,22 @@
 package io.stackgres.operator.conciliation.factory.cluster.backup;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import com.google.common.base.Predicates;
 import com.google.common.collect.ImmutableMap;
 import io.stackgres.common.BackupStorageUtil;
 import io.stackgres.common.ClusterContext;
-import io.stackgres.common.ClusterStatefulSetPath;
+import io.stackgres.common.ClusterPath;
 import io.stackgres.common.EnvoyUtil;
 import io.stackgres.common.StackGresUtil;
+import io.stackgres.common.crd.sgbackup.StackGresBackupConfigSpec;
+import io.stackgres.common.crd.sgbackup.StackGresBaseBackupConfig;
+import io.stackgres.common.crd.sgcluster.StackGresClusterBackupConfiguration;
+import io.stackgres.common.crd.sgcluster.StackGresClusterConfigurations;
+import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
 import io.stackgres.common.crd.storages.AwsCredentials;
 import io.stackgres.common.crd.storages.AwsS3CompatibleStorage;
 import io.stackgres.common.crd.storages.AwsS3Storage;
@@ -25,6 +32,7 @@ import io.stackgres.common.crd.storages.GoogleCloudCredentials;
 import io.stackgres.common.crd.storages.GoogleCloudStorage;
 import io.stackgres.operator.conciliation.backup.BackupConfiguration;
 import io.stackgres.operator.conciliation.backup.BackupPerformance;
+import io.stackgres.operator.conciliation.cluster.StackGresClusterContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,14 +41,17 @@ public abstract class AbstractBackupConfigMap {
   private static final Logger WAL_G_LOGGER = LoggerFactory.getLogger("io.stackgres.wal-g");
 
   protected ImmutableMap<String, String> getBackupEnvVars(
+      StackGresClusterContext context,
       BackupConfiguration backupConfiguration) {
     ImmutableMap.Builder<String, String> backupEnvVars = ImmutableMap.builder();
 
-    backupEnvVars.put("PGDATA", ClusterStatefulSetPath.PG_DATA_PATH.path());
+    context.getPodDataPersistentVolumeNames().forEach((podName, pvDataName) -> backupEnvVars
+        .put("POD_" + podName.replace("-", "_") + "_DATA_PV_NAME", pvDataName));
+    backupEnvVars.put("PGDATA", ClusterPath.PG_DATA_PATH.path());
     backupEnvVars.put("PGPORT", String.valueOf(EnvoyUtil.PG_PORT));
     backupEnvVars.put("PGUSER", "postgres");
     backupEnvVars.put("PGDATABASE", "postgres");
-    backupEnvVars.put("PGHOST", ClusterStatefulSetPath.PG_RUN_PATH.path());
+    backupEnvVars.put("PGHOST", ClusterPath.PG_RUN_PATH.path());
 
     Optional.ofNullable(backupConfiguration)
         .map(BackupConfiguration::compression)
@@ -79,6 +90,64 @@ public abstract class AbstractBackupConfigMap {
     }
 
     return backupEnvVars.build();
+  }
+
+  protected Map<String, String> getBackupEnvVars(
+      StackGresClusterContext context,
+      String path,
+      StackGresBackupConfigSpec backupConfig) {
+    Map<String, String> result = new HashMap<>(
+        getBackupEnvVars(context,
+            path,
+            backupConfig.getStorage())
+    );
+    if (backupConfig.getBaseBackups() != null) {
+      result.putAll(
+          getBackupEnvVars(
+              context,
+              new BackupConfiguration(
+              backupConfig.getBaseBackups().getRetention(),
+              backupConfig.getBaseBackups().getCronSchedule(),
+              backupConfig.getBaseBackups().getCompression(),
+              path,
+              Optional.of(backupConfig.getBaseBackups())
+              .map(StackGresBaseBackupConfig::getPerformance)
+              .map(p -> new BackupPerformance(
+                  p.getMaxNetworkBandwidth(),
+                  p.getMaxDiskBandwidth(),
+                  p.getUploadDiskConcurrency(),
+                  p.getUploadConcurrency(),
+                  p.getDownloadConcurrency()))
+              .orElse(null),
+              Optional.of(context.getCluster().getSpec())
+              .map(StackGresClusterSpec::getConfigurations)
+              .map(StackGresClusterConfigurations::getBackups)
+              .filter(Predicates.not(List::isEmpty))
+              .map(backups -> backups.get(0))
+              .map(StackGresClusterBackupConfiguration::getUseVolumeSnapshot)
+              .orElse(false),
+              null,
+              null,
+              null,
+              null,
+              Optional.of(context.getCluster().getSpec())
+              .map(StackGresClusterSpec::getConfigurations)
+              .map(StackGresClusterConfigurations::getBackups)
+              .filter(Predicates.not(List::isEmpty))
+              .map(backups -> backups.get(0))
+              .map(StackGresClusterBackupConfiguration::getMaxRetries)
+              .orElse(null),
+              Optional.of(context.getCluster().getSpec())
+              .map(StackGresClusterSpec::getConfigurations)
+              .map(StackGresClusterConfigurations::getBackups)
+              .filter(Predicates.not(List::isEmpty))
+              .map(backups -> backups.get(0))
+              .map(StackGresClusterBackupConfiguration::getRetainWalsForUnmanagedLifecycle)
+              .orElse(null)
+          ))
+      );
+    }
+    return Map.copyOf(result);
   }
 
   protected Map<String, String> getBackupEnvVars(ClusterContext context,
@@ -140,7 +209,7 @@ public abstract class AbstractBackupConfigMap {
             storageForS3Compatible, AwsS3CompatibleStorage::getEndpoint,
             StackGresUtil::getPortFromUrl),
         "AWS_S3_FORCE_PATH_STYLE", BackupStorageUtil.getFromS3Compatible(
-            storageForS3Compatible, AwsS3CompatibleStorage::isForcePathStyle),
+            storageForS3Compatible, AwsS3CompatibleStorage::isEnablePathStyleAddressing),
         "WALG_S3_STORAGE_CLASS", BackupStorageUtil.getFromS3Compatible(
             storageForS3Compatible, AwsS3CompatibleStorage::getStorageClass)));
     if (Optional.of(storageForS3Compatible)
@@ -154,7 +223,7 @@ public abstract class AbstractBackupConfigMap {
   }
 
   protected String getAwsS3CompatibleCaCertificateFilePath(ClusterContext context) {
-    return ClusterStatefulSetPath.BACKUP_SECRET_PATH.path(context)
+    return ClusterPath.BACKUP_SECRET_PATH.path(context)
         + "/" + BackupEnvVarFactory.AWS_S3_COMPATIBLE_CA_CERTIFICATE_FILE_NAME;
   }
 
@@ -167,7 +236,7 @@ public abstract class AbstractBackupConfigMap {
     backupEnvVars.put("WALG_GS_PREFIX", BackupStorageUtil.getPrefixForGcs(
         path, storageForGcs));
     if (!Optional.of(storageForGcs)
-        .map(GoogleCloudStorage::getCredentials)
+        .map(GoogleCloudStorage::getGcpCredentials)
         .map(GoogleCloudCredentials::isFetchCredentialsFromMetadataService)
         .orElse(false)) {
       backupEnvVars.put("GOOGLE_APPLICATION_CREDENTIALS", getGcsCredentialsFilePath(context));
@@ -176,7 +245,7 @@ public abstract class AbstractBackupConfigMap {
   }
 
   protected String getGcsCredentialsFilePath(ClusterContext context) {
-    return ClusterStatefulSetPath.BACKUP_SECRET_PATH.path(context)
+    return ClusterPath.BACKUP_SECRET_PATH.path(context)
         + "/" + BackupEnvVarFactory.GCS_CREDENTIALS_FILE_NAME;
   }
 

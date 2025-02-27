@@ -8,10 +8,6 @@ package io.stackgres.common.crd.sgshardedcluster;
 import java.util.List;
 import java.util.Objects;
 
-import javax.validation.Valid;
-import javax.validation.constraints.AssertTrue;
-import javax.validation.constraints.Positive;
-
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -21,6 +17,10 @@ import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
 import io.stackgres.common.validation.FieldReference;
 import io.stackgres.common.validation.FieldReference.ReferencedField;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -33,19 +33,18 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresShardedClusterShards extends StackGresClusterSpec {
 
-  @JsonProperty("clusters")
-  @Positive(message = "You need at least 1 cluster in the shards")
-  private int clusters;
+  @NotNull
+  @PositiveOrZero(message = "clusters can not be negative")
+  private Integer clusters;
 
-  @JsonProperty("instancesPerCluster")
-  @Positive(message = "You need at least 1 instance in each cluster")
-  private int instancesPerCluster;
+  @NotNull
+  @PositiveOrZero(message = "instances can not be negative")
+  private Integer instancesPerCluster;
 
   @JsonProperty("replication")
   @Valid
   private StackGresShardedClusterReplication replicationForShards;
 
-  @JsonProperty("overrides")
   @Valid
   private List<StackGresShardedClusterShard> overrides;
 
@@ -78,6 +77,11 @@ public class StackGresShardedClusterShards extends StackGresClusterSpec {
   }
 
   @Override
+  public boolean isSupportingMinInstancesForMinInstancesInReplicationGroups() {
+    return true;
+  }
+
+  @Override
   public boolean isSupportingRequiredSynchronousReplicas() {
     return true;
   }
@@ -93,19 +97,19 @@ public class StackGresShardedClusterShards extends StackGresClusterSpec {
         || getInstancesPerCluster() > replicationForShards.getSyncInstances();
   }
 
-  public int getClusters() {
+  public Integer getClusters() {
     return clusters;
   }
 
-  public void setClusters(int clusters) {
+  public void setClusters(Integer clusters) {
     this.clusters = clusters;
   }
 
-  public int getInstancesPerCluster() {
+  public Integer getInstancesPerCluster() {
     return instancesPerCluster;
   }
 
-  public void setInstancesPerCluster(int instancesPerCluster) {
+  public void setInstancesPerCluster(Integer instancesPerCluster) {
     this.instancesPerCluster = instancesPerCluster;
   }
 
@@ -129,8 +133,8 @@ public class StackGresShardedClusterShards extends StackGresClusterSpec {
   public int hashCode() {
     final int prime = 31;
     int result = super.hashCode();
-    result = prime * result + Objects.hash(clusters, instancesPerCluster,
-        overrides, replicationForShards);
+    result = prime * result + Objects.hash(clusters, instancesPerCluster, overrides,
+        replicationForShards);
     return result;
   }
 
@@ -146,7 +150,8 @@ public class StackGresShardedClusterShards extends StackGresClusterSpec {
       return false;
     }
     StackGresShardedClusterShards other = (StackGresShardedClusterShards) obj;
-    return clusters == other.clusters && instancesPerCluster == other.instancesPerCluster
+    return Objects.equals(clusters, other.clusters)
+        && Objects.equals(instancesPerCluster, other.instancesPerCluster)
         && Objects.equals(overrides, other.overrides)
         && Objects.equals(replicationForShards, other.replicationForShards);
   }

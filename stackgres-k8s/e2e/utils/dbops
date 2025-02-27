@@ -100,50 +100,35 @@ traceable_assert_dbops_completion() {
 
   OP="$(printf '%s' "$OP" | sed 's/\([A-Z]\)/ \1/g' | tr '[A-Z]' '[a-z]')"
 
-  local START
-  START="$(date +%s)"
-  while true
-  do
-    if kubectl wait --timeout 1s -n "$CLUSTER_NAMESPACE" sgdbops "$DBOPS_NAME" \
-      --for condition=Completed 2>/dev/null
-    then
-      echo "SUCCESS. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME completed."
-      return
-    fi
-    if kubectl wait --timeout 1s -n "$CLUSTER_NAMESPACE" sgdbops "$DBOPS_NAME" \
-      --for condition=Failed 2>/dev/null
-    then
-      OP_RETRIES="$(kubectl get sgdbops -n "$CLUSTER_NAMESPACE" "$DBOPS_NAME" \
-        --template '{{ if .status.opRetries }}{{ .status.opRetries }}{{ else }}0{{ end }}' || echo 0)"
-      if [ "$MAX_RETRIES" -le "$OP_RETRIES" ] \
-        && kubectl wait --timeout 1s -n "$CLUSTER_NAMESPACE" sgdbops "$DBOPS_NAME" \
-          --for condition=Failed 2>/dev/null
-      then
-        echo "FAILED. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME failed."
-        echo
-        echo "Job logs:"
-        echo
-        kubectl logs -n "$CLUSTER_NAMESPACE" \
-          -l "app=StackGresDbOps,stackgres.io/dbops-name=$DBOPS_NAME,stackgres.io/db-ops=true" \
-          --all-containers --ignore-errors --tail=-1
-        echo
-        return 1
-      fi
-    fi
-    if [ "$((START + E2E_TIMEOUT))" -le "$(date +%s)" ]
-    then
-      echo
-      echo "FAILED. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME did not complete after $E2E_TIMEOUT seconds"
-      echo
-      echo "Job logs:"
-      echo
-      kubectl logs -n "$CLUSTER_NAMESPACE" \
-        -l "app=StackGresDbOps,stackgres.io/dbops-name=$DBOPS_NAME,stackgres.io/db-ops=true" \
-        --all-containers --ignore-errors --tail=-1
-      echo
-      return 1
-    fi
-  done
+  if ! kubectl wait --timeout "${E2E_TIMEOUT}s" -n "$CLUSTER_NAMESPACE" sgdbops "$DBOPS_NAME" \
+    --for condition=Completed 2>/dev/null
+  then
+    echo
+    echo "FAILED. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME did not complete after $E2E_TIMEOUT seconds"
+    echo
+    echo "Job logs:"
+    echo
+    kubectl logs -n "$CLUSTER_NAMESPACE" \
+      -l "app=StackGresDbOps,stackgres.io/dbops-name=$DBOPS_NAME,stackgres.io/db-ops=true" \
+      --all-containers --ignore-errors --tail=-1
+    echo
+    return 1
+  fi
+  if ! kubectl wait --timeout 0s -n "$CLUSTER_NAMESPACE" sgdbops "$DBOPS_NAME" \
+    --for condition=Failed 2>/dev/null
+  then
+    echo "SUCCESS. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME completed."
+    return
+  fi
+  echo "FAILED. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME failed."
+  echo
+  echo "Job logs:"
+  echo
+  kubectl logs -n "$CLUSTER_NAMESPACE" \
+    -l "app=StackGresDbOps,stackgres.io/dbops-name=$DBOPS_NAME,stackgres.io/db-ops=true" \
+    --all-containers --ignore-errors --tail=-1
+  echo
+  return 1
 }
 
 assert_dbops_failure() {
@@ -170,40 +155,157 @@ traceable_assert_dbops_failure() {
 
   OP="$(printf '%s' "$OP" | sed 's/\([A-Z]\)/ \1/g' | tr '[A-Z]' '[a-z]')"
 
+  if ! kubectl wait --timeout "${E2E_TIMEOUT}s" -n "$CLUSTER_NAMESPACE" sgdbops "$DBOPS_NAME" \
+    --for condition=Completed 2>/dev/null
+  then
+    echo "SUCCESS. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME did not complete after $E2E_TIMEOUT seconds"
+    return
+  fi
+  if ! kubectl wait --timeout 1s -n "$CLUSTER_NAMESPACE" sgdbops "$DBOPS_NAME" \
+    --for condition=Failed 2>/dev/null
+  then
+    echo "FAILED. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME successfully."
+    return 1
+  fi
+  echo "SUCCESS. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME failed."
+  return
+}
+
+assert_sharded_dbops_running() {
+  notrace_function traceable_assert_sharded_dbops_running "$@"
+}
+
+traceable_assert_sharded_dbops_running() {
+  local DBOPS_NAME="$1"
+  local CLUSTER_NAMESPACE="${2:-$CLUSTER_NAMESPACE}"
+  local E2E_TIMEOUT="${3:-$E2E_TIMEOUT}"
+  local OP MAX_RETRIES OP_RETRIES
+  OP="$(kubectl get sgshardeddbops -n "$CLUSTER_NAMESPACE" "$DBOPS_NAME" \
+    --template '{{ .spec.op }}' || echo unknown)"
+  MAX_RETRIES="$(kubectl get sgshardeddbops -n "$CLUSTER_NAMESPACE" "$DBOPS_NAME" \
+    --template '{{ if .spec.maxRetries }}{{ .spec.maxRetries }}{{ else }}0{{ end }}' || echo 0)"
+
+  if [ "$OP" = unknown ]
+  then
+    echo
+    echo "SGShardedDbOps $CLUSTER_NAMESPACE.$DBOPS_NAME not found"
+    echo
+    return 1
+  fi
+
+  OP="$(printf '%s' "$OP" | sed 's/\([A-Z]\)/ \1/g' | tr '[A-Z]' '[a-z]')"
+
   local START
   START="$(date +%s)"
   while true
   do
-    if kubectl wait --timeout 1s -n "$CLUSTER_NAMESPACE" sgdbops "$DBOPS_NAME" \
+    if kubectl wait --timeout 1s -n "$CLUSTER_NAMESPACE" sgshardeddbops "$DBOPS_NAME" \
+      --for condition=Running 2>/dev/null
+    then
+      echo "SUCCESS. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME running."
+      return
+    fi
+    if kubectl wait --timeout 1s -n "$CLUSTER_NAMESPACE" sgshardeddbops "$DBOPS_NAME" \
       --for condition=Completed 2>/dev/null
     then
-      echo "FAILED. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME completed."
+      if kubectl wait --timeout 0s -n "$CLUSTER_NAMESPACE" sgshardeddbops "$DBOPS_NAME" \
+        --for condition=Failed 2>/dev/null
+      then
+        echo "FAILED. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME failed."
+        echo
+        echo "Job logs:"
+        echo
+        kubectl logs -n "$CLUSTER_NAMESPACE" \
+          -l "app=StackGresShardedDbOps,stackgres.io/sgsharded-dbops-name=$DBOPS_NAME,stackgres.io/sgsharded-db-ops=true" \
+          --all-containers --ignore-errors --tail=-1
+        echo
+        return 1
+      fi
+      echo "SUCCESS. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME completed."
+      return
+    fi
+    if [ "$((START + E2E_TIMEOUT))" -le "$(date +%s)" ]
+    then
+      echo
+      echo "FAILED. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME was not running after $E2E_TIMEOUT seconds"
       echo
       echo "Job logs:"
       echo
       kubectl logs -n "$CLUSTER_NAMESPACE" \
-        -l "app=StackGresDbOps,stackgres.io/dbops-name=$DBOPS_NAME,stackgres.io/db-ops=true" \
+        -l "app=StackGresShardedDbOps,stackgres.io/sgsharded-dbops-name=$DBOPS_NAME,stackgres.io/sgsharded-db-ops=true" \
         --all-containers --ignore-errors --tail=-1
       echo
       return 1
     fi
-    if kubectl wait --timeout 1s -n "$CLUSTER_NAMESPACE" sgdbops "$DBOPS_NAME" \
+  done
+}
+
+assert_sharded_dbops_completion() {
+  notrace_function traceable_assert_sharded_dbops_completion "$@"
+}
+
+traceable_assert_sharded_dbops_completion() {
+  local DBOPS_NAME="$1"
+  local CLUSTER_NAMESPACE="${2:-$CLUSTER_NAMESPACE}"
+  local E2E_TIMEOUT="${3:-$E2E_TIMEOUT}"
+  local OP MAX_RETRIES OP_RETRIES
+  OP="$(kubectl get sgshardeddbops -n "$CLUSTER_NAMESPACE" "$DBOPS_NAME" \
+    --template '{{ .spec.op }}' || echo unknown)"
+  MAX_RETRIES="$(kubectl get sgshardeddbops -n "$CLUSTER_NAMESPACE" "$DBOPS_NAME" \
+    --template '{{ if .spec.maxRetries }}{{ .spec.maxRetries }}{{ else }}0{{ end }}' || echo 0)"
+
+  if [ "$OP" = unknown ]
+  then
+    echo
+    echo "SGShardedDbOps $CLUSTER_NAMESPACE.$DBOPS_NAME not found"
+    echo
+    return 1
+  fi
+
+  OP="$(printf '%s' "$OP" | sed 's/\([A-Z]\)/ \1/g' | tr '[A-Z]' '[a-z]')"
+
+  local START
+  START="$(date +%s)"
+  while true
+  do
+    if kubectl wait --timeout 1s -n "$CLUSTER_NAMESPACE" sgshardeddbops "$DBOPS_NAME" \
+      --for condition=Completed 2>/dev/null
+    then
+      echo "SUCCESS. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME completed."
+      return
+    fi
+    if kubectl wait --timeout 1s -n "$CLUSTER_NAMESPACE" sgshardeddbops "$DBOPS_NAME" \
       --for condition=Failed 2>/dev/null
     then
-      OP_RETRIES="$(kubectl get sgdbops -n "$CLUSTER_NAMESPACE" "$DBOPS_NAME" \
+      OP_RETRIES="$(kubectl get sgshardeddbops -n "$CLUSTER_NAMESPACE" "$DBOPS_NAME" \
         --template '{{ if .status.opRetries }}{{ .status.opRetries }}{{ else }}0{{ end }}' || echo 0)"
       if [ "$MAX_RETRIES" -le "$OP_RETRIES" ] \
-        && kubectl wait --timeout 1s -n "$CLUSTER_NAMESPACE" sgdbops "$DBOPS_NAME" \
+        && kubectl wait --timeout 1s -n "$CLUSTER_NAMESPACE" sgshardeddbops "$DBOPS_NAME" \
           --for condition=Failed 2>/dev/null
       then
-        echo "SUCCESS. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME failed."
-        return
+        echo "FAILED. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME failed."
+        echo
+        echo "Job logs:"
+        echo
+        kubectl logs -n "$CLUSTER_NAMESPACE" \
+          -l "app=StackGresShardedDbOps,stackgres.io/sharded-dbops-name=$DBOPS_NAME,stackgres.io/sharded-db-ops=true" \
+          --all-containers --ignore-errors --tail=-1
+        echo
+        return 1
       fi
     fi
     if [ "$((START + E2E_TIMEOUT))" -le "$(date +%s)" ]
     then
-      echo "SUCCESS. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME did not complete after $E2E_TIMEOUT seconds"
-      return
+      echo
+      echo "FAILED. $OP operation $CLUSTER_NAMESPACE.$DBOPS_NAME did not complete after $E2E_TIMEOUT seconds"
+      echo
+      echo "Job logs:"
+      echo
+      kubectl logs -n "$CLUSTER_NAMESPACE" \
+        -l "app=StackGresShardedDbOps,stackgres.io/sharded-dbops-name=$DBOPS_NAME,stackgres.io/sharded-db-ops=true" \
+        --all-containers --ignore-errors --tail=-1
+      echo
+      return 1
     fi
   done
 }

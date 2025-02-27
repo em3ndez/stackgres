@@ -5,18 +5,17 @@
 
 package io.stackgres.operator.mutation.profile;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.inject.Any;
-import javax.enterprise.inject.Instance;
-import javax.inject.Inject;
-
 import io.stackgres.common.crd.sgprofile.StackGresProfile;
-import io.stackgres.operator.common.SgProfileReview;
+import io.stackgres.operator.common.StackGresInstanceProfileReview;
 import io.stackgres.operator.mutation.AbstractMutationPipeline;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Any;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class ProfilePipeline
-    extends AbstractMutationPipeline<StackGresProfile, SgProfileReview> {
+    extends AbstractMutationPipeline<StackGresProfile, StackGresInstanceProfileReview> {
 
   @Inject
   public ProfilePipeline(

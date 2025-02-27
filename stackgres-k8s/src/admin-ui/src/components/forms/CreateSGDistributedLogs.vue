@@ -2,6 +2,12 @@
     <div id="create-logs-server" v-if="iCanLoad">
         <!-- Vue reactivity hack -->
         <template v-if="Object.keys(cluster).length > 0"></template>
+       
+        <template v-if="editMode && !editReady">
+            <span class="warningText">
+                Loading data...
+            </span>
+        </template>
 
         <form id="createLogsServer" class="form logsForm" @submit.prevent v-if="!editMode || editReady">
             <div class="header stickyHeader">
@@ -45,9 +51,28 @@
                             <input v-model="name" :disabled="(editMode)" required data-field="metadata.name" autocomplete="off">
                             <span class="helpTooltip" :data-tooltip="getTooltip( 'sgdistributedlogs.metadata.name')"></span>
 
-                            <span class="warning" v-if="nameColission && !editMode">
+                            <span class="warning topAnchor" v-if="nameCollision && !editMode">
                                 There's already a <strong>SGDistributedLogs</strong> with the same name on this namespace. Please specify a different name or create the server on another namespace.
                             </span>
+                        </div>
+
+                        <div class="col">
+                            <label for="spec.profile">Profile</label>
+                            <select v-model="profile" data-field="spec.profile" class="capitalize">
+                                <option v-for="profile in clusterProfiles">{{ profile }}</option>
+                            </select>
+                            <span class="helpTooltip" :data-tooltip="getTooltip('sgdistributedlogs.spec.profile')"></span>
+
+                            <div class="warning topAnchor" v-if="profile != 'production'">
+                                By choosing this Profile, the following defaults are overwritten:
+                                <ul>
+                                    <li><strong>Cluster Pod Anti Affinity</strong> is set to <strong>Disable</strong>.</li>
+                                    <template v-if="profile == 'development'">
+                                        <li><strong>Patroni Resource Requirements</strong> is set to <strong>Disable</strong>.</li>
+                                        <li><strong>Cluster Resource Requirements</strong> is set to <strong>Disable</strong>.</li>
+                                    </template>
+                                </ul>     
+                            </div>
                         </div>
                     </div>
 
@@ -75,10 +100,16 @@
 
                         <div class="col" v-if="hasStorageClass">
                             <label for="spec.persistentVolume.storageClass">Storage Class</label>
-                            <select v-model="storageClass" :disabled="(editMode)" data-field="spec.persistentVolume.storageClass">
-                                <option value="">Select Storage Class</option>
-                                <option v-for="sClass in storageClasses">{{ sClass }}</option>
-                            </select>
+
+                            <template v-if="storageClasses === null">
+                                <input v-model="storageClass" data-field="spec.pods.persistentVolume.storageClass" autocomplete="off">
+                            </template>
+                            <template v-else>
+                                <select v-model="storageClass" data-field="spec.pods.persistentVolume.storageClass" :disabled="!storageClasses.length">
+                                    <option value=""> {{ storageClasses.length ? 'Select Storage Class' : 'No storage classes available' }}</option>
+                                    <option v-for="sClass in storageClasses">{{ sClass }}</option>
+                                </select>
+                            </template>
                             <span class="helpTooltip" :data-tooltip="getTooltip( 'sgdistributedlogs.spec.persistentVolume.storageClass')"></span>
                         </div>
                     </div>
@@ -87,7 +118,6 @@
 
                     <div class="row-50">
                         <h3>Pods Resources</h3>
-                        <p>Please keep in mind that at the moment Postgres 12 is the only Postgres version supported by SGDistributedLogs.</p>
 
                         <div class="col">
                             <label for="spec.sgInstanceProfile">Instance Profile</label>  
@@ -106,7 +136,7 @@
                             <label for="spec.configurations.sgPostgresConfig">Postgres Configuration</label>
                             <select v-model="pgConfig" class="pgConfig" data-field="spec.configurations.sgPostgresConfig" @change="(pgConfig == 'createNewResource') && createNewResource('sgpgconfigs')" :set="( (pgConfig == 'createNewResource') && (pgConfig = '') )">
                                 <option value="" selected>Default</option>
-                                <option v-for="conf in pgConf" v-if="( (conf.data.metadata.namespace == namespace) && (conf.data.spec.postgresVersion == '12') )">{{ conf.name }}</option>
+                                <option v-for="conf in pgConf" v-if="( (conf.data.metadata.namespace == namespace) )">{{ conf.name }}</option>
                                 <template v-if="iCan('create', 'sgpgconfigs', $route.params.namespace)">
                                     <option value="" disabled>– OR –</option>
                                     <option value="createNewResource">Create new configuration</option>
@@ -455,11 +485,32 @@
                         <div class="row-50">
                             <div class="col">
                                 <label for="spec.nonProductionOptions.disableClusterPodAntiAffinity">Cluster Pod Anti Affinity</label>  
-                                <label for="disableClusterPodAntiAffinity" class="switch yes-no">
-                                    Enable 
-                                    <input type="checkbox" id="disableClusterPodAntiAffinity" v-model="enableClusterPodAntiAffinity" data-switch="NO" data-field="spec.nonProductionOptions.disableClusterPodAntiAffinity">
-                                </label>
+                                <select v-model="clusterPodAntiAffinity" data-field="spec.nonProductionOptions.disableClusterPodAntiAffinity">
+                                    <option selected :value="null">Default</option>
+                                    <option :value="false">Enable</option>
+                                    <option :value="true">Disable</option>
+                                </select>
                                 <span class="helpTooltip"  :data-tooltip="getTooltip('sgdistributedlogs.spec.nonProductionOptions.disableClusterPodAntiAffinity').replace('If set to `true` it will','Disable this property to')"></span>
+                            </div>
+
+                            <div class="col">
+                                <label for="spec.nonProductionOptions.disablePatroniResourceRequirements">Patroni Resource Requirements</label>  
+                                <select v-model="patroniResourceRequirements" data-field="spec.nonProductionOptions.disablePatroniResourceRequirements">
+                                    <option selected :value="null">Default</option>
+                                    <option :value="false">Enable</option>
+                                    <option :value="true">Disable</option>
+                                </select>
+                                <span class="helpTooltip"  :data-tooltip="getTooltip('sgdistributedlogs.spec.nonProductionOptions.disablePatroniResourceRequirements').replace('Set this property to true to','Disable this property to')"></span>
+                            </div>
+
+                            <div class="col">
+                                <label for="spec.nonProductionOptions.disableClusterResourceRequirements">Cluster Resource Requirements</label>  
+                                <select v-model="clusterResourceRequirements" data-field="spec.nonProductionOptions.disableClusterResourceRequirements">
+                                    <option selected :value="null">Default</option>
+                                    <option :value="false">Enable</option>
+                                    <option :value="true">Disable</option>
+                                </select>
+                                <span class="helpTooltip"  :data-tooltip="getTooltip('sgdistributedlogs.spec.nonProductionOptions.disableClusterResourceRequirements').replace('Set this property to true to','Disable this property to')"></span>
                             </div>
                         </div>
                     </div>
@@ -479,9 +530,32 @@
             <button @click="cancel()" class="btn border">Cancel</button>
 
             <button type="button" class="btn floatRight" @click="createCluster(true)">View Summary</button>
+            <button
+                data-field="dryRun"
+                type="button"
+                class="btn border floatRight"
+                title="Dry run mode helps to evaluate a request through the typical request stages without any storage persistance or resource allocation."
+                @click="
+                    dryRun = true;
+                    createCluster();
+                "
+            >
+                Dry Run
+            </button>
+
         </form>
 
-        <CRDSummary :crd="previewCRD" kind="SGDistributedLogs" v-if="showSummary" @closeSummary="showSummary = false"></CRDSummary>
+        <CRDSummary
+            v-if="showSummary"
+            :crd="previewCRD"
+            :dryRun="dryRun"
+            kind="SGDistributedLogs"
+            @closeSummary="
+                showSummary = false;
+                dryRun = false;
+                previewCRD = {};
+            "
+        ></CRDSummary>
     </div>
 </template>
 
@@ -508,6 +582,7 @@
             return {
                 editMode: (vm.$route.name === 'EditLogsServer'),
                 editReady: false,
+                dryRun: false,
                 previewCRD: {},
                 showSummary: false,
                 nullVal: null,
@@ -517,12 +592,16 @@
                 errorStep: [],
                 name: vm.$route.params.hasOwnProperty('name') ? vm.$route.params.name : '',
                 namespace: vm.$route.params.hasOwnProperty('namespace') ? vm.$route.params.namespace : '',
+                clusterProfiles: ['production', 'testing', 'development'],
+                profile: 'production',
                 storageClass: '',
                 volumeSize: '1',
                 volumeUnit: 'Gi',
                 resourceProfile: '',
                 pgConfig: '',
-                enableClusterPodAntiAffinity: true,
+                clusterPodAntiAffinity: null,
+                patroniResourceRequirements: null,
+                clusterResourceRequirements: null,
                 hasStorageClass: true,
                 nodeSelector: [ { label: '', value: ''} ],
                 tolerations: [ { key: '', operator: 'Equal', value: null, effect: null, tolerationSeconds: null } ],
@@ -565,17 +644,21 @@
             },
 
             
-            nameColission() {
+            nameCollision() {
 
-                const vc = this;
-                var nameColission = false;
-                
-                store.state.sgdistributedlogs.forEach(function(item, index){
-                    if( (item.name == vc.name) && (item.data.metadata.namespace == vc.$route.params.namespace ) )
-                        nameColission = true
-                })
+                if(store.state.sgdistributedlogs !== null) {
+                    const vc = this;
+                    var nameCollision = false;
+                    
+                    store.state.sgdistributedlogs.forEach(function(item, index){
+                        if( (item.name == vc.name) && (item.data.metadata.namespace == vc.$route.params.namespace ) )
+                            nameCollision = true
+                    })
 
-                return nameColission
+                    return nameCollision
+                } else {
+                    return false;
+                }
             },
             
             isReady() {
@@ -587,7 +670,7 @@
                 var vm = this;
                 var cluster = {};
                 
-                if( vm.editMode && !vm.editReady ) {
+                if( vm.editMode && !vm.editReady && (store.state.sgdistributedlogs !== null) ) {
                     vm.advancedMode = true;
                     store.state.sgdistributedlogs.forEach(function( c ){
                         if( (c.data.metadata.name === vm.$route.params.name) && (c.data.metadata.namespace === vm.$route.params.namespace) ) {
@@ -601,9 +684,12 @@
 
                             vm.volumeSize = volumeSize;
                             vm.volumeUnit = ''+volumeUnit;
+                            vm.profile = c.data.spec.hasOwnProperty('profile') ? c.data.spec.profile : 'production' ;
                             vm.resourceProfile = c.data.spec.sgInstanceProfile;
                             vm.pgConfig = c.data.spec.configurations.sgPostgresConfig;
-                            vm.enableClusterPodAntiAffinity = vm.hasProp(c, 'data.spec.nonProductionOptions.disableClusterPodAntiAffinity') ? !c.data.spec.nonProductionOptions.disableClusterPodAntiAffinity : true;
+                            vm.clusterPodAntiAffinity = vm.hasProp(c, 'data.spec.nonProductionOptions.disableClusterPodAntiAffinity') ? c.data.spec.nonProductionOptions.disableClusterPodAntiAffinity : null;
+                            vm.patroniResourceRequirements = vm.hasProp(c, 'data.spec.nonProductionOptions.disablePatroniResourceRequirements') ? c.data.spec.nonProductionOptions.disablePatroniResourceRequirements : null;
+                            vm.clusterResourceRequirements = vm.hasProp(c, 'data.spec.nonProductionOptions.disableClusterResourceRequirements') ? c.data.spec.nonProductionOptions.disableClusterResourceRequirements : null;
                             vm.nodeSelector = vm.hasProp(c, 'data.spec.scheduling.nodeSelector') ? vm.unparseProps(c.data.spec.scheduling.nodeSelector, 'label') : [];
                             vm.tolerations = vm.hasProp(c, 'data.spec.scheduling.tolerations') ? c.data.spec.scheduling.tolerations : [];
                             vm.annotationsAll = vm.hasProp(c, 'data.spec.metadata.annotations.allResources') ? vm.unparseProps(c.data.spec.metadata.annotations.allResources) : [];
@@ -646,8 +732,12 @@
                 const vc = this;
 
                 if(!vc.checkRequired()) {
+                    vc.dryRun = false;
+                    vc.showSummary = false;
                     return
                 }
+
+                store.commit('loading', true);
 
                 if (!previous) {
                     sgApi
@@ -674,6 +764,7 @@
                     },
                     "spec": {
                         ...(this.hasProp(previous, 'spec') && previous.spec),
+                        "profile": this.profile,
                         "persistentVolume": {
                             "size": this.volumeSize+this.volumeUnit,
                             ...( ( (this.storageClass !== undefined) && (this.storageClass.length ) ) && ( {"storageClass": this.storageClass }) )
@@ -685,10 +776,12 @@
                                 ...(this.pgConfig.length && { "sgPostgresConfig": this.pgConfig } || { "sgPostgresConfig": null } )
                             }
                         }) ),
-                        ...((this.hasProp(previous, 'spec.nonProductionOptions') || !this.enableClusterPodAntiAffinity) && ( {
+                        ...((this.hasProp(previous, 'spec.nonProductionOptions') || (this.clusterPodAntiAffinity != null) || (this.patroniResourceRequirements != null) || (this.clusterResourceRequirements != null)) && ( {
                             "nonProductionOptions": { 
                                 ...(this.hasProp(previous, 'spec.nonProductionOptions') && previous.spec.nonProductionOptions),
-                                ...(!this.enableClusterPodAntiAffinity && {"disableClusterPodAntiAffinity": !this.enableClusterPodAntiAffinity} || {"disableClusterPodAntiAffinity": null} )
+                                ...((this.clusterPodAntiAffinity != null) && {"disableClusterPodAntiAffinity": this.clusterPodAntiAffinity} || {"disableClusterPodAntiAffinity": null} ),
+                                ...((this.patroniResourceRequirements != null) && {"disablePatroniResourceRequirements": this.patroniResourceRequirements} || {"disablePatroniResourceRequirements": null} ),
+                                ...((this.clusterResourceRequirements != null) && {"disableClusterResourceRequirements": this.clusterResourceRequirements} || {"disableClusterResourceRequirements": null} )
                                 } 
                             }) ),
                         ...( (this.hasProp(previous, 'spec.scheduling') || !$.isEmptyObject(this.parseProps(this.nodeSelector, 'label')) || this.hasTolerations() ) && ({
@@ -744,47 +837,61 @@
                     vc.previewCRD = {};
                     vc.previewCRD['data'] = cluster;
                     vc.showSummary = true;
+                    store.commit('loading', false);
 
                 } else {
                 
                     if(this.editMode) {
                         sgApi
-                        .update('sgdistributedlogs', cluster)
+                        .update('sgdistributedlogs', cluster, vc.dryRun)
                         .then(function (response) {
-                            vc.notify('Logs server <strong>"'+cluster.metadata.name+'"</strong> updated successfully', 'message', 'sgdistributedlogs');
 
-                            vc.fetchAPI('sgdistributedlogs');
-                            router.push('/' + cluster.metadata.namespace + '/sgdistributedlog/' + cluster.metadata.name);
+                            if(vc.dryRun) {
+                                vc.showSummary = true;
+                                vc.validateDryRun(response.data);
+                            } else {
+                                vc.notify('Logs server <strong>"'+cluster.metadata.name+'"</strong> updated successfully', 'message', 'sgdistributedlogs');
+
+                                vc.fetchAPI('sgdistributedlogs');
+                                router.push('/' + cluster.metadata.namespace + '/sgdistributedlog/' + cluster.metadata.name);
+                            }
+                            store.commit('loading', false);
                             
                         })
                         .catch(function (error) {
                             console.log(error.response);
                             vc.notify(error.response.data,'error', 'sgdistributedlogs');
-
-                            vc.checkValidSteps(vc._data, 'submit')
+                            vc.checkValidSteps(vc._data, 'submit');
+                            store.commit('loading', false);
                         });
                     } else {
                         sgApi
-                        .create('sgdistributedlogs', cluster)
+                        .create('sgdistributedlogs', cluster, vc.dryRun)
                         .then(function (response) {
                             
-                            var urlParams = new URLSearchParams(window.location.search);
-                            if(urlParams.has('newtab')) {
-                                opener.fetchParentAPI('sgdistributedlogs');
-                                vc.notify('Logs server <strong>"'+cluster.metadata.name+'"</strong> created successfully.<br/><br/> You may now close this window and choose your server from the list.', 'message','sgdistributedlogs');
+                            if(vc.dryRun) {
+                                vc.showSummary = true;
+                                vc.validateDryRun(response.data);
                             } else {
-                                vc.notify('Logs server <strong>"'+cluster.metadata.name+'"</strong> created successfully', 'message', 'sgdistributedlogs');
-                            }
+                                var urlParams = new URLSearchParams(window.location.search);
+                                if(urlParams.has('newtab')) {
+                                    opener.fetchParentAPI('sgdistributedlogs');
+                                    vc.notify('Logs server <strong>"'+cluster.metadata.name+'"</strong> created successfully.<br/><br/> You may now close this window and choose your server from the list.', 'message','sgdistributedlogs');
+                                } else {
+                                    vc.notify('Logs server <strong>"'+cluster.metadata.name+'"</strong> created successfully', 'message', 'sgdistributedlogs');
+                                }
 
-                            vc.fetchAPI('sgdistributedlogs');
-                            router.push('/' + cluster.metadata.namespace + '/sgdistributedlogs')
+                                vc.fetchAPI('sgdistributedlogs');
+                                router.push('/' + cluster.metadata.namespace + '/sgdistributedlogs')
+                            }
+                            store.commit('loading', false);
                             
                         })
                         .catch(function (error) {
                             console.log(error);
                             vc.notify(error.response.data,'error','sgdistributedlogs');
-
                             vc.checkValidSteps(vc._data, 'submit')
+                            store.commit('loading', false);
                         });
                     }
 

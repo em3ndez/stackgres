@@ -18,6 +18,7 @@ import io.stackgres.common.EnvoyUtil;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgcluster.StackGresClusterReplicateFrom;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSpecBuilder;
+import io.stackgres.common.crd.sgpgconfig.StackGresPostgresConfig;
 import io.stackgres.common.fixture.Fixtures;
 import io.stackgres.common.patroni.StackGresPasswordKeys;
 import io.stackgres.operator.conciliation.cluster.StackGresClusterContext;
@@ -35,12 +36,15 @@ class PatroniEnvVarFactoryTest {
 
   private StackGresCluster cluster;
 
-  private final PatroniEnvironmentVariablesFactory factory =
-      new PatroniEnvironmentVariablesFactory();
+  private StackGresPostgresConfig postgresConfig;
+
+  private final PatroniEnvironmentVariables factory =
+      new PatroniEnvironmentVariables();
 
   @BeforeEach
   void setUp() {
     cluster = Fixtures.cluster().loadDefault().get();
+    postgresConfig = Fixtures.postgresConfig().loadDefault().get();
   }
 
   @Test
@@ -50,14 +54,8 @@ class PatroniEnvVarFactoryTest {
   }
 
   @Test
-  void patroniNamespaceEnvVar_shouldBeReturned() {
-    EnvVar envVar = getEnvVar("PATRONI_KUBERNETES_NAMESPACE");
-    assertFieldRef(envVar, "metadata.namespace");
-  }
-
-  @Test
   void patroniPodIp_shouldBeReturned() {
-    EnvVar envVar = getEnvVar("PATRONI_KUBERNETES_POD_IP");
+    EnvVar envVar = getEnvVar("POD_IP");
     assertFieldRef(envVar, "status.podIP");
   }
 
@@ -76,7 +74,7 @@ class PatroniEnvVarFactoryTest {
   @Test
   void patroniRestApiConnectAddressEnvVar_shouldBeReturned() {
     EnvVar envVar = getEnvVar("PATRONI_RESTAPI_CONNECT_ADDRESS");
-    assertValue(envVar, "${PATRONI_KUBERNETES_POD_IP}:" + EnvoyUtil.PATRONI_ENTRY_PORT);
+    assertValue(envVar, "${POD_IP}:" + EnvoyUtil.PATRONI_PORT);
   }
 
   @Test
@@ -92,7 +90,7 @@ class PatroniEnvVarFactoryTest {
   @Test
   void patroniRecoveryFromBackupEnvVar_shouldNotBeReturned() {
     cluster.setSpec(new StackGresClusterSpecBuilder(cluster.getSpec())
-        .withInitData(null)
+        .withInitialData(null)
         .build());
     assertNotPresent("RECOVERY_FROM_BACKUP");
   }
@@ -155,13 +153,13 @@ class PatroniEnvVarFactoryTest {
   @Test
   void patroniRecoveryTargetEnvVar_shouldBeReturned() {
     cluster.setSpec(new StackGresClusterSpecBuilder(cluster.getSpec())
-        .withNewInitData()
+        .withNewInitialData()
         .withNewRestore()
         .withNewFromBackup()
         .withTarget("test")
         .endFromBackup()
         .endRestore()
-        .endInitData()
+        .endInitialData()
         .build());
     EnvVar envVar = getEnvVar("RECOVERY_TARGET");
     assertValue(envVar, "test");
@@ -170,13 +168,13 @@ class PatroniEnvVarFactoryTest {
   @Test
   void patroniRecoveryTargetTimelineEnvVar_shouldBeReturned() {
     cluster.setSpec(new StackGresClusterSpecBuilder(cluster.getSpec())
-        .withNewInitData()
+        .withNewInitialData()
         .withNewRestore()
         .withNewFromBackup()
         .withTargetTimeline("test")
         .endFromBackup()
         .endRestore()
-        .endInitData()
+        .endInitialData()
         .build());
     EnvVar envVar = getEnvVar("RECOVERY_TARGET_TIMELINE");
     assertValue(envVar, "test");
@@ -185,13 +183,13 @@ class PatroniEnvVarFactoryTest {
   @Test
   void patroniRecoveryTargetInclusiveEnvVar_shouldBeReturned() {
     cluster.setSpec(new StackGresClusterSpecBuilder(cluster.getSpec())
-        .withNewInitData()
+        .withNewInitialData()
         .withNewRestore()
         .withNewFromBackup()
         .withTargetInclusive(true)
         .endFromBackup()
         .endRestore()
-        .endInitData()
+        .endInitialData()
         .build());
     EnvVar envVar = getEnvVar("RECOVERY_TARGET_INCLUSIVE");
     assertValue(envVar, "on");
@@ -200,13 +198,13 @@ class PatroniEnvVarFactoryTest {
   @Test
   void patroniRecoveryTargetNameEnvVar_shouldBeReturned() {
     cluster.setSpec(new StackGresClusterSpecBuilder(cluster.getSpec())
-        .withNewInitData()
+        .withNewInitialData()
         .withNewRestore()
         .withNewFromBackup()
         .withTargetName("test")
         .endFromBackup()
         .endRestore()
-        .endInitData()
+        .endInitialData()
         .build());
     EnvVar envVar = getEnvVar("RECOVERY_TARGET_NAME");
     assertValue(envVar, "test");
@@ -215,13 +213,13 @@ class PatroniEnvVarFactoryTest {
   @Test
   void patroniRecoveryTargetXidEnvVar_shouldBeReturned() {
     cluster.setSpec(new StackGresClusterSpecBuilder(cluster.getSpec())
-        .withNewInitData()
+        .withNewInitialData()
         .withNewRestore()
         .withNewFromBackup()
         .withTargetXid("test")
         .endFromBackup()
         .endRestore()
-        .endInitData()
+        .endInitialData()
         .build());
     EnvVar envVar = getEnvVar("RECOVERY_TARGET_XID");
     assertValue(envVar, "test");
@@ -230,13 +228,13 @@ class PatroniEnvVarFactoryTest {
   @Test
   void patroniRecoveryTargetLsnEnvVar_shouldBeReturned() {
     cluster.setSpec(new StackGresClusterSpecBuilder(cluster.getSpec())
-        .withNewInitData()
+        .withNewInitialData()
         .withNewRestore()
         .withNewFromBackup()
         .withTargetLsn("test")
         .endFromBackup()
         .endRestore()
-        .endInitData()
+        .endInitialData()
         .build());
     EnvVar envVar = getEnvVar("RECOVERY_TARGET_LSN");
     assertValue(envVar, "test");
@@ -247,7 +245,7 @@ class PatroniEnvVarFactoryTest {
     String testTime = "2022-08-25T12:52:00Z";
     String expectedEnvVarValue = "2022-08-25 12:52:00";
     cluster.setSpec(new StackGresClusterSpecBuilder(cluster.getSpec())
-        .withNewInitData()
+        .withNewInitialData()
         .withNewRestore()
         .withNewFromBackup()
         .withNewPointInTimeRecovery()
@@ -255,7 +253,7 @@ class PatroniEnvVarFactoryTest {
         .endPointInTimeRecovery()
         .endFromBackup()
         .endRestore()
-        .endInitData()
+        .endInitialData()
         .build());
     EnvVar envVar = getEnvVar("RECOVERY_TARGET_TIME");
     assertValue(envVar, expectedEnvVarValue);
@@ -269,7 +267,8 @@ class PatroniEnvVarFactoryTest {
 
   private EnvVar getEnvVar(String envVarName) {
     when(context.getSource()).thenReturn(cluster);
-    Stream<EnvVar> envVars = factory.createResource(context).stream();
+    when(context.getPostgresConfig()).thenReturn(postgresConfig);
+    Stream<EnvVar> envVars = factory.getEnvVars(context).stream();
 
     var envVarFound = envVars.filter(envVar -> envVar.getName().equals(envVarName))
         .findFirst();
@@ -279,7 +278,8 @@ class PatroniEnvVarFactoryTest {
 
   private void assertNotPresent(String envVarName) {
     when(context.getSource()).thenReturn(cluster);
-    Stream<EnvVar> envVars = factory.createResource(context).stream();
+    when(context.getPostgresConfig()).thenReturn(postgresConfig);
+    Stream<EnvVar> envVars = factory.getEnvVars(context).stream();
 
     var envVarFound = envVars.filter(envVar -> envVar.getName().equals(envVarName))
         .findFirst();

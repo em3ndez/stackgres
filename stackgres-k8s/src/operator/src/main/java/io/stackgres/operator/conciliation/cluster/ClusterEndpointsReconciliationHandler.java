@@ -9,11 +9,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.fabric8.kubernetes.api.model.Endpoints;
@@ -21,11 +17,14 @@ import io.fabric8.kubernetes.api.model.EndpointsBuilder;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.stackgres.common.CdiUtil;
+import io.stackgres.common.JsonUtil;
 import io.stackgres.common.PatroniUtil;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.kubernetesclient.KubernetesClientUtil;
 import io.stackgres.common.patroni.PatroniConfig;
 import io.stackgres.operator.conciliation.ReconciliationScope;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.jooq.lambda.Seq;
 import org.jooq.lambda.tuple.Tuple2;
 
@@ -103,28 +102,29 @@ public class ClusterEndpointsReconciliationHandler
                     .filter(e -> !Objects.equals(PatroniUtil.CONFIG_KEY, e.v1))
                     .filter(e -> !resource.getMetadata().getAnnotations().containsKey(e.v1)))
                 .append(Seq.seq(Map
-                    .of(PatroniUtil.CONFIG_KEY, mergeConfig(foundResource, resource))))
+                    .of(PatroniUtil.CONFIG_KEY, mergeConfig(resource, foundResource))))
                 .toMap(Tuple2::v1, Tuple2::v2))
             .endMetadata()
             .build())
             .lockResourceVersion(foundResource.getMetadata().getResourceVersion())
-            .replace())
+            .update())
         .orElseGet(() -> client.endpoints().resource((Endpoints) resource).create()));
   }
 
-  private String mergeConfig(HasMetadata foundResource, HasMetadata resource) {
+  private String mergeConfig(HasMetadata resource, HasMetadata foundResource) {
     try {
+      String configString = Optional
+          .ofNullable(resource.getMetadata().getAnnotations())
+          .map(map -> map.get(PatroniUtil.CONFIG_KEY))
+          .orElse("{}");
       String foundConfigString = Optional
           .ofNullable(foundResource.getMetadata().getAnnotations())
           .map(map -> map.get(PatroniUtil.CONFIG_KEY))
           .orElse("{}");
+      ObjectNode config = (ObjectNode) objectMapper.readTree(configString);
       ObjectNode foundConfig = (ObjectNode) objectMapper.readTree(foundConfigString);
-      JsonNode previousConfig = objectMapper.valueToTree(
-          objectMapper.readValue(foundConfigString, PatroniConfig.class));
-      previousConfig.fieldNames().forEachRemaining(foundConfig::remove);
-      JsonNode updatedConfig = objectMapper.readerForUpdating(foundConfig)
-          .readTree(resource.getMetadata().getAnnotations().get(PatroniUtil.CONFIG_KEY));
-      return updatedConfig.toString();
+      return objectMapper.writeValueAsString(
+          JsonUtil.mergeJsonObjectsFilteringByModel(config, foundConfig, PatroniConfig.class));
     } catch (JsonProcessingException ex) {
       throw new RuntimeException(ex);
     }

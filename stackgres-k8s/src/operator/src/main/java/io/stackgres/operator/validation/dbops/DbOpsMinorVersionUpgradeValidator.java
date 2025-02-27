@@ -9,11 +9,11 @@ import static io.stackgres.common.StackGresUtil.getPostgresFlavorComponent;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.OwnerReference;
 import io.stackgres.common.ErrorType;
@@ -21,12 +21,15 @@ import io.stackgres.common.StackGresComponent;
 import io.stackgres.common.StackGresVersion;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgdbops.StackGresDbOps;
+import io.stackgres.common.crd.sgdistributedlogs.StackGresDistributedLogs;
 import io.stackgres.common.resource.CustomResourceFinder;
-import io.stackgres.operator.common.DbOpsReview;
+import io.stackgres.operator.common.StackGresDbOpsReview;
 import io.stackgres.operator.validation.ValidationType;
 import io.stackgres.operator.validation.ValidationUtil;
 import io.stackgres.operator.validation.cluster.PostgresConfigValidator;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jooq.lambda.Seq;
 import org.jooq.lambda.tuple.Tuple2;
 
@@ -57,7 +60,9 @@ public class DbOpsMinorVersionUpgradeValidator implements DbOpsValidator {
   }
 
   @Override
-  public void validate(DbOpsReview review) throws ValidationFailed {
+  @SuppressFBWarnings(value = "SF_SWITCH_NO_DEFAULT",
+      justification = "False positive")
+  public void validate(StackGresDbOpsReview review) throws ValidationFailed {
     switch (review.getRequest().getOperation()) {
       case CREATE:
         StackGresDbOps dbOps = review.getRequest().getObject();
@@ -73,6 +78,9 @@ public class DbOpsMinorVersionUpgradeValidator implements DbOpsValidator {
                 .flatMap(List::stream)
                 .filter(ownerReference -> ownerReference.getController() != null
                     && ownerReference.getController())
+                .filter(ownerReference -> !Objects.equals(
+                    ownerReference.getKind(),
+                    HasMetadata.getKind(StackGresDistributedLogs.class)))
                 .findFirst();
             if (foundOwnerReference.isPresent()) {
               OwnerReference ownerReference = foundOwnerReference.get();

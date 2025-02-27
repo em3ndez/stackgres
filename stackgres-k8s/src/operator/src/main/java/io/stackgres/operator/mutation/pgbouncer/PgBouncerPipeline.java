@@ -5,18 +5,17 @@
 
 package io.stackgres.operator.mutation.pgbouncer;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.inject.Any;
-import javax.enterprise.inject.Instance;
-import javax.inject.Inject;
-
 import io.stackgres.common.crd.sgpooling.StackGresPoolingConfig;
-import io.stackgres.operator.common.PoolingReview;
+import io.stackgres.operator.common.StackGresPoolingConfigReview;
 import io.stackgres.operator.mutation.AbstractMutationPipeline;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Any;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class PgBouncerPipeline
-    extends AbstractMutationPipeline<StackGresPoolingConfig, PoolingReview> {
+    extends AbstractMutationPipeline<StackGresPoolingConfig, StackGresPoolingConfigReview> {
 
   @Inject
   public PgBouncerPipeline(

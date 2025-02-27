@@ -5,12 +5,15 @@
 
 package io.stackgres.common;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 import java.util.function.Function;
 
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.stackgres.common.crd.sgbackup.StackGresBackup;
-import io.stackgres.common.crd.sgbackupconfig.StackGresBackupConfigSpec;
+import io.stackgres.common.crd.sgbackup.StackGresBackupConfigSpec;
 import io.stackgres.common.crd.storages.AwsS3CompatibleStorage;
 import io.stackgres.common.crd.storages.AwsS3Storage;
 import io.stackgres.common.crd.storages.AzureBlobStorage;
@@ -20,6 +23,10 @@ import org.jooq.lambda.Unchecked;
 import org.jooq.lambda.fi.util.function.CheckedFunction;
 
 public interface BackupStorageUtil {
+
+  DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter
+      .ofPattern("yyyy-MM-dd-HH-mm-ss")
+      .withZone(ZoneId.systemDefault());
 
   static String getPrefixForS3(
       String path,
@@ -62,9 +69,13 @@ public interface BackupStorageUtil {
   static String getPath(
       String namespace,
       String name,
+      Instant timestamp,
       String postgresMajorVersion) {
-    return HasMetadata.getFullResourceName(StackGresBackup.class) + "/"
-        + namespace + "/" + name + "/" + postgresMajorVersion;
+    return HasMetadata.getFullResourceName(StackGresBackup.class)
+        + "/" + namespace
+        + "/" + name
+        + "/" + DATE_TIME_FORMATTER.format(timestamp)
+        + "/" + postgresMajorVersion;
   }
 
   static <T> Optional<T> getStorageFor(

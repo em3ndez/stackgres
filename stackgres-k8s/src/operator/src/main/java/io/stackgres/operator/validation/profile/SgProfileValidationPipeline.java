@@ -5,21 +5,20 @@
 
 package io.stackgres.operator.validation.profile;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.inject.Any;
-import javax.enterprise.inject.Instance;
-import javax.inject.Inject;
-
-import io.stackgres.operator.common.SgProfileReview;
+import io.stackgres.operator.common.StackGresInstanceProfileReview;
 import io.stackgres.operator.validation.AbstractValidationPipeline;
 import io.stackgres.operatorframework.admissionwebhook.validating.Validator;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Any;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
-public class SgProfileValidationPipeline extends AbstractValidationPipeline<SgProfileReview> {
+public class SgProfileValidationPipeline extends AbstractValidationPipeline<StackGresInstanceProfileReview> {
 
   @Inject
   public SgProfileValidationPipeline(
-      @Any Instance<Validator<SgProfileReview>> validatorInstances) {
+      @Any Instance<Validator<StackGresInstanceProfileReview>> validatorInstances) {
     super(validatorInstances);
   }
 

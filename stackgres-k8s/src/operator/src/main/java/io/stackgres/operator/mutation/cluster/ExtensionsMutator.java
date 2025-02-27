@@ -11,10 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
-import com.google.common.collect.ImmutableList;
+import io.stackgres.common.ExtensionTuple;
 import io.stackgres.common.StackGresComponent;
 import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.StackGresVersion;
@@ -23,33 +20,32 @@ import io.stackgres.common.crd.sgcluster.StackGresClusterExtension;
 import io.stackgres.common.crd.sgcluster.StackGresClusterInstalledExtension;
 import io.stackgres.common.crd.sgcluster.StackGresClusterPostgres;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
-import io.stackgres.common.extension.StackGresExtensionMetadata;
-import io.stackgres.operator.common.OperatorExtensionMetadataManager;
+import io.stackgres.common.extension.ExtensionMetadataManager;
 import io.stackgres.operator.common.StackGresClusterReview;
 import io.stackgres.operator.mutation.AbstractExtensionsMutator;
 import io.stackgres.operator.validation.ValidationUtil;
 import io.stackgres.operatorframework.admissionwebhook.Operation;
-import org.jooq.lambda.Seq;
-import org.jooq.lambda.Unchecked;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class ExtensionsMutator
     extends AbstractExtensionsMutator<StackGresCluster, StackGresClusterReview>
     implements ClusterMutator {
 
-  private final OperatorExtensionMetadataManager extensionMetadataManager;
+  private final ExtensionMetadataManager extensionMetadataManager;
 
   private final Map<StackGresComponent, Map<StackGresVersion, List<String>>>
       supportedPostgresVersions;
 
   @Inject
   public ExtensionsMutator(
-      OperatorExtensionMetadataManager extensionMetadataManager) {
+      ExtensionMetadataManager extensionMetadataManager) {
     this(extensionMetadataManager, ValidationUtil.SUPPORTED_POSTGRES_VERSIONS);
   }
 
   public ExtensionsMutator(
-      OperatorExtensionMetadataManager extensionMetadataManager,
+      ExtensionMetadataManager extensionMetadataManager,
       Map<StackGresComponent, Map<StackGresVersion, List<String>>> supportedPostgresVersions) {
     this.extensionMetadataManager = extensionMetadataManager;
     this.supportedPostgresVersions = supportedPostgresVersions;
@@ -66,63 +62,19 @@ public class ExtensionsMutator
         .map(StackGresClusterPostgres::getVersion)
         .flatMap(getPostgresFlavorComponent(resource).get(resource)::findVersion)
         .orElse(null);
-    if (postgresVersion != null && supportedPostgresVersions
+    if (postgresVersion != null
+        && supportedPostgresVersions
         .get(getPostgresFlavorComponent(resource))
         .get(StackGresVersion.getStackGresVersion(resource))
         .contains(postgresVersion)) {
-      mutateExtensionChannels(resource);
       return super.mutate(review, resource);
     }
 
     return resource;
   }
 
-  private void mutateExtensionChannels(StackGresCluster resource) {
-    if (resource != null) {
-      Optional.of(resource)
-          .map(StackGresCluster::getSpec)
-          .map(StackGresClusterSpec::getPostgres)
-          .map(StackGresClusterPostgres::getExtensions)
-          .stream()
-          .flatMap(List::stream)
-          .forEach(Unchecked.consumer(extension -> {
-            getToInstallExtensionMetadata(resource, extension)
-                .ifPresent(toInstallExtension -> {
-                  leaveOrAddOrReplaceExtensionVersion(extension, toInstallExtension);
-                });
-          }));
-    }
-  }
-
-  private Optional<StackGresExtensionMetadata> getToInstallExtensionMetadata(
-      StackGresCluster cluster, StackGresClusterExtension extension) {
-    Optional<StackGresExtensionMetadata> exactCandidateExtension =
-        extensionMetadataManager
-        .findExtensionCandidateSameMajorBuild(cluster, extension, false);
-    if (exactCandidateExtension.isEmpty()) {
-      List<StackGresExtensionMetadata> candidateExtensionMetadatas =
-          extensionMetadataManager.getExtensionsAnyVersion(cluster, extension, false);
-      if (candidateExtensionMetadatas.size() == 1) {
-        return Optional.of(candidateExtensionMetadatas.get(0));
-      }
-      return Optional.empty();
-    }
-    return exactCandidateExtension;
-  }
-
-  private void leaveOrAddOrReplaceExtensionVersion(
-      StackGresClusterExtension extension,
-      StackGresExtensionMetadata extensionMetadata) {
-    if (extension.getVersion() == null
-        || Optional.ofNullable(extensionMetadata.getExtension().getChannels())
-        .map(map -> map.containsKey(extension.getVersion()))
-        .orElse(false)) {
-      extension.setVersion(extensionMetadata.getVersion().getVersion());
-    }
-  }
-
   @Override
-  protected OperatorExtensionMetadataManager getExtensionMetadataManager() {
+  protected ExtensionMetadataManager getExtensionMetadataManager() {
     return extensionMetadataManager;
   }
 
@@ -135,13 +87,19 @@ public class ExtensionsMutator
   }
 
   @Override
-  protected StackGresCluster getCluster(StackGresCluster cluster) {
-    return cluster;
+  protected StackGresCluster getCluster(StackGresClusterReview review) {
+    return review.getRequest().getObject();
   }
 
   @Override
-  protected List<StackGresClusterExtension> getExtensions(StackGresCluster cluster) {
-    return Optional.of(cluster)
+  protected StackGresCluster getOldCluster(StackGresClusterReview review) {
+    return review.getRequest().getOldObject();
+  }
+
+  @Override
+  protected List<StackGresClusterExtension> getExtensions(
+      StackGresCluster resource, StackGresCluster cluster) {
+    return Optional.of(resource)
         .map(StackGresCluster::getSpec)
         .map(StackGresClusterSpec::getPostgres)
         .map(StackGresClusterPostgres::getExtensions)
@@ -149,15 +107,9 @@ public class ExtensionsMutator
   }
 
   @Override
-  protected ImmutableList<StackGresClusterInstalledExtension> getDefaultExtensions(
-      StackGresCluster cluster) {
-    return Seq.seq(StackGresUtil.getDefaultClusterExtensions(cluster))
-        .map(t -> t.extensionVersion()
-        .map(version -> getExtension(cluster, t.extensionName(), version))
-            .orElseGet(() -> getExtension(cluster, t.extensionName())))
-        .filter(Optional::isPresent)
-        .map(Optional::get)
-        .collect(ImmutableList.toImmutableList());
+  protected List<ExtensionTuple> getDefaultExtensions(
+      StackGresCluster resource, StackGresCluster cluster) {
+    return StackGresUtil.getDefaultClusterExtensions(resource);
   }
 
   @Override

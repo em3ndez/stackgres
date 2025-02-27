@@ -10,9 +10,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
 
-import io.stackgres.common.ClusterStatefulSetPath;
+import io.stackgres.common.ClusterPath;
 import io.stackgres.common.StackGresVolume;
-import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgprofile.StackGresProfile;
 import io.stackgres.common.crd.sgprofile.StackGresProfileHugePages;
 import io.stackgres.common.fixture.Fixtures;
@@ -34,15 +33,12 @@ class HugePagesMountsTest {
   @Mock
   private StackGresClusterContext clusterContext;
 
-  private StackGresCluster cluster;
-
   private StackGresProfile profile;
 
   @BeforeEach
   void setUp() {
     hugePagesMounts = new HugePagesMounts();
-    profile = Fixtures.instanceProfile().loadSizeS().get();
-    cluster = Fixtures.cluster().loadDefault().get();
+    profile = Fixtures.instanceProfile().loadSizeM().get();
     when(clusterContainerContext.getClusterContext()).thenReturn(clusterContext);
   }
 
@@ -51,7 +47,6 @@ class HugePagesMountsTest {
     profile.getSpec().setHugePages(new StackGresProfileHugePages());
     profile.getSpec().getHugePages().setHugepages2Mi("2Mi");
     profile.getSpec().getHugePages().setHugepages1Gi("1Gi");
-    when(clusterContext.getSource()).thenReturn(cluster);
     when(clusterContext.getProfile()).thenReturn(profile);
 
     var volumeMounts = hugePagesMounts.getVolumeMounts(clusterContainerContext);
@@ -65,7 +60,7 @@ class HugePagesMountsTest {
         .filter(volumeMount -> volumeMount.getName()
             .equals(StackGresVolume.HUGEPAGES_2M.getName()))
         .anyMatch(volumeMount -> volumeMount.getMountPath()
-            .equals(ClusterStatefulSetPath.HUGEPAGES_2M_PATH.path())));
+            .equals(ClusterPath.HUGEPAGES_2M_PATH.path())));
     assertTrue(volumeMounts.stream()
         .anyMatch(volumeMount -> volumeMount.getName()
             .equals(StackGresVolume.HUGEPAGES_1G.getName())));
@@ -73,21 +68,20 @@ class HugePagesMountsTest {
         .filter(volumeMount -> volumeMount.getName()
             .equals(StackGresVolume.HUGEPAGES_1G.getName()))
         .anyMatch(volumeMount -> volumeMount.getMountPath()
-            .equals(ClusterStatefulSetPath.HUGEPAGES_1G_PATH.path())));
+            .equals(ClusterPath.HUGEPAGES_1G_PATH.path())));
 
     var envVars = hugePagesMounts.getDerivedEnvVars(clusterContainerContext);
 
     assertTrue(envVars.stream()
         .anyMatch(envVar -> envVar
-            .equals(ClusterStatefulSetPath.HUGEPAGES_2M_PATH.envVar())));
+            .equals(ClusterPath.HUGEPAGES_2M_PATH.envVar())));
     assertTrue(envVars.stream()
         .anyMatch(envVar -> envVar
-            .equals(ClusterStatefulSetPath.HUGEPAGES_1G_PATH.envVar())));
+            .equals(ClusterPath.HUGEPAGES_1G_PATH.envVar())));
   }
 
   @Test
   void givenAClusterWithoutAProfileWithHugePages_itShouldNotCreateTheMountsWithHugePages() {
-    when(clusterContext.getSource()).thenReturn(cluster);
     when(clusterContext.getProfile()).thenReturn(profile);
 
     var volumeMounts = hugePagesMounts.getVolumeMounts(clusterContainerContext);
@@ -99,7 +93,7 @@ class HugePagesMountsTest {
         .filter(volumeMount -> volumeMount.getName()
             .equals(StackGresVolume.HUGEPAGES_2M.getName()))
         .anyMatch(volumeMount -> volumeMount.getMountPath()
-            .equals(ClusterStatefulSetPath.HUGEPAGES_2M_PATH.path())));
+            .equals(ClusterPath.HUGEPAGES_2M_PATH.path())));
     assertFalse(volumeMounts.stream()
         .anyMatch(volumeMount -> volumeMount.getName()
             .equals(StackGresVolume.HUGEPAGES_1G.getName())));
@@ -107,16 +101,16 @@ class HugePagesMountsTest {
         .filter(volumeMount -> volumeMount.getName()
             .equals(StackGresVolume.HUGEPAGES_1G.getName()))
         .anyMatch(volumeMount -> volumeMount.getMountPath()
-            .equals(ClusterStatefulSetPath.HUGEPAGES_1G_PATH.path())));
+            .equals(ClusterPath.HUGEPAGES_1G_PATH.path())));
 
     var envVars = hugePagesMounts.getDerivedEnvVars(clusterContainerContext);
 
     assertTrue(envVars.stream()
         .anyMatch(envVar -> envVar
-            .equals(ClusterStatefulSetPath.HUGEPAGES_2M_PATH.envVar())));
+            .equals(ClusterPath.HUGEPAGES_2M_PATH.envVar())));
     assertTrue(envVars.stream()
         .anyMatch(envVar -> envVar
-            .equals(ClusterStatefulSetPath.HUGEPAGES_1G_PATH.envVar())));
+            .equals(ClusterPath.HUGEPAGES_1G_PATH.envVar())));
   }
 
 }

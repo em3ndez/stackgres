@@ -5,18 +5,17 @@
 
 package io.stackgres.common.crd;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 
-import javax.validation.constraints.NotBlank;
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.constraints.NotBlank;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -28,21 +27,15 @@ import io.sundr.builder.annotations.Buildable;
     justification = "Intentional name shadowing")
 public class Condition implements io.stackgres.operatorframework.resource.Condition {
 
-  @JsonProperty("lastTransitionTime")
   private String lastTransitionTime;
 
-  @JsonProperty("message")
   private String message;
 
-  @JsonProperty("reason")
-  @NotBlank(message = "The condition reason is required")
   private String reason;
 
-  @JsonProperty("status")
   @NotBlank(message = "The condition status is required")
   private String status;
 
-  @JsonProperty("type")
   @NotBlank(message = "The condition type is required")
   private String type;
 
@@ -74,6 +67,11 @@ public class Condition implements io.stackgres.operatorframework.resource.Condit
   @Override
   public void setLastTransitionTime(String lastTransitionTime) {
     this.lastTransitionTime = lastTransitionTime;
+  }
+
+  public Condition setLastTransitionTime() {
+    this.lastTransitionTime = Instant.now().toString();
+    return this;
   }
 
   @Override

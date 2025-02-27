@@ -1,8 +1,8 @@
 #!/bin/sh
 
 export E2E_DISABLE_RESOURCE_REQUIREMENTS="${E2E_DISABLE_RESOURCE_REQUIREMENTS:-true}"
-export E2E_POSTGRES_VERSION="${E2E_POSTGRES_VERSION:-15.2}"
-export E2E_POSTGRES_BABELFISH_VERSION="${E2E_POSTGRES_BABELFISH_VERSION:-14.6}"
+export E2E_POSTGRES_VERSION="${E2E_POSTGRES_VERSION:-16.4}"
+export E2E_POSTGRES_BABELFISH_VERSION="${E2E_POSTGRES_BABELFISH_VERSION:-16.4}"
 
 create_or_replace_cluster_without_defaults() {
   local RELEASE="$1"
@@ -21,7 +21,14 @@ create_or_replace_cluster() {
   shift 3
 
   create_or_replace_cluster_only "$RELEASE" "$NAMESPACE" "$INSTANCES" \
-    -f "$SPEC_VALUES_FILE" --set cluster.postgres.version="$E2E_POSTGRES_VERSION" \
+    -f "$SPEC_VALUES_FILE" \
+    --set-string cluster.postgres.version="$E2E_POSTGRES_VERSION" \
+    $(
+    if ! printf %s " $* " | tr -s '\n' ' ' | grep -qF ' --set credentials=null '
+    then
+      printf '%s %s' --set-string credentials.users.superuser.username="${E2E_SUPERUSER_USERNAME:-postgres}"
+    fi
+    ) \
     "$@"
 }
 
@@ -70,17 +77,84 @@ wait_cluster() {
     --template="{{ range .subsets }}{{ range .addresses }}{{ printf \"%s\n\" .ip }}{{ end }}{{ end }}" 2>/dev/null \
     | wc -l)" -ge 1 ]'
 
+  wait_until eval 'kubectl exec -n "$NAMESPACE" "$RELEASE-0" -c patroni -- \
+      psql -t -A -c "\du" \
+      | grep -q "^authenticator|"'
+}
+
+switch_cluster_to_first() {
+  local RELEASE="$1"
+  local NAMESPACE="$2"
+  local LEADER
+
+  wait_until eval 'kubectl get endpoints --namespace "$NAMESPACE" "$RELEASE" \
+    --template="{{ .metadata.annotations.leader }}" | grep -q "^$RELEASE-[0-9]\+"'
   LEADER="$(kubectl get endpoints --namespace "$NAMESPACE" "$RELEASE" \
     --template="{{ .metadata.annotations.leader }}")"
   if [ "$LEADER" != "$RELEASE-0" ]
   then
     wait_until eval '[ "$(kubectl get pod -n "$NAMESPACE" "$RELEASE-0" \
       --template="{{ .metadata.labels.role }}" 2>/dev/null)" = replica ]'
+    PATRONI_MAJOR_VERSION="$(kubectl exec -n "$NAMESPACE" "$RELEASE-0" -c patroni -- \
+      patronictl version 2>/dev/null | sed -n 's/^patronictl version \([0-9]\+\)\..*$/\1/p')"
     wait_until eval '! kubectl exec -n "$NAMESPACE" "$RELEASE-0" -c patroni -- \
-      patronictl switchover "$RELEASE" --master "$LEADER" --candidate "$RELEASE-0" --force \
+      patronictl switchover "$RELEASE" \
+      $([ "$PATRONI_MAJOR_VERSION" -lt 4 ] && printf %s --master || printf %s --primary) "$LEADER" \
+      --candidate "$RELEASE-0" --force \
       | grep -q "^Switchover failed"'
     wait_until eval '[ "$(kubectl get pod -n "$NAMESPACE" "$LEADER" \
       --template="{{ .metadata.labels.role }}" 2>/dev/null)" = replica ]'
+    wait_until eval 'kubectl get endpoints --namespace "$NAMESPACE" "$RELEASE" \
+      --template="{{ .metadata.annotations.leader }}" | grep -q "^$RELEASE-[0-9]\+"'
+  fi
+}
+
+wait_cluster_external_dcs() {
+  local RELEASE="$1"
+  local NAMESPACE="$2"
+  local SCOPE="$3"
+  local SWITCHOVER_TO_FIRST="${4:-true}"
+  local LEADER
+
+  echo "Wait release $RELEASE with scope $SCOPE"
+  wait_until eval 'kubectl exec --namespace "$NAMESPACE" "$RELEASE-0" -c patroni \
+    -- sh -c "patronictl list -f json 2>/dev/null" \
+      | jq -r ".[]|select(.Role == \"Leader\").Member" \
+      | grep -q .'
+  LEADER="$(kubectl exec --namespace "$NAMESPACE" "$RELEASE-0" -c patroni \
+    -- sh -c 'patronictl list -f json 2>/dev/null' \
+      | jq -r '.[]|select(.Role == "Leader").Member')"
+
+  if [ "${LEADER%-*}" = "$RELEASE" ]
+  then
+    wait_until eval '[ "$(kubectl get endpoints --namespace "$NAMESPACE" "$SCOPE" \
+      --template="{{ range .subsets }}{{ range .addresses }}{{ printf \"%s\n\" .ip }}{{ end }}{{ end }}" 2>/dev/null \
+      | wc -l)" -ge 1 ]'
+  fi
+
+  if [ "$LEADER" != "$RELEASE-0" ]
+  then
+    wait_until eval '[ "$(kubectl get pod -n "$NAMESPACE" "$RELEASE-0" \
+      --template="{{ .metadata.labels.role }}" 2>/dev/null)" = replica ]'
+  fi
+
+  if [ "$SWITCHOVER_TO_FIRST" = true ] && [ "$LEADER" != "$RELEASE-0" ]
+  then
+    PATRONI_MAJOR_VERSION="$(kubectl exec -n "$NAMESPACE" "$RELEASE-0" -c patroni -- \
+      patronictl version 2>/dev/null | sed -n 's/^patronictl version \([0-9]\+\)\..*$/\1/p')"
+    wait_until eval '! kubectl exec -n "$NAMESPACE" "$RELEASE-0" -c patroni -- \
+      patronictl switchover "$SCOPE" \
+      $([ "$PATRONI_MAJOR_VERSION" -lt 4 ] && printf %s --master || printf %s --primary) "$LEADER" \
+      --candidate "$RELEASE-0" --force \
+      | grep -q "^Switchover failed"'
+    if [ "${LEADER%-*}" = "$RELEASE" ]
+    then
+      wait_until eval '[ "$(kubectl get pod -n "$NAMESPACE" "$LEADER" \
+        --template="{{ .metadata.labels.role }}" 2>/dev/null)" = replica ]'
+      wait_until eval '[ "$(kubectl get endpoints --namespace "$NAMESPACE" "$SCOPE" \
+        --template="{{ range .subsets }}{{ range .addresses }}{{ printf \"%s\n\" .ip }}{{ end }}{{ end }}" 2>/dev/null \
+        | wc -l)" -ge 1 ]'
+    fi
   fi
 }
 
@@ -175,7 +249,14 @@ create_or_replace_sharded_cluster() {
   shift 4
 
   create_or_replace_sharded_cluster_only "$RELEASE" "$NAMESPACE" "$CLUSTERS" "$INSTANCES" \
-    -f "$SPEC_VALUES_FILE" --set cluster.postgres.version="$E2E_POSTGRES_VERSION" \
+    -f "$SPEC_VALUES_FILE" \
+    --set-string cluster.postgres.version="$E2E_POSTGRES_VERSION" \
+    $(
+    if ! printf %s " $* " | tr -s '\n' ' ' | grep -qF ' --set credentials=null '
+    then
+      printf '%s %s' --set-string credentials.users.superuser.username="${E2E_SUPERUSER_USERNAME:-postgres}"
+    fi
+    ) \
     "$@"
 }
 
@@ -226,6 +307,119 @@ wait_sharded_cluster() {
   wait_until eval '[ "$(kubectl get endpoints --namespace "$NAMESPACE" "$RELEASE" \
     --template="{{ range .subsets }}{{ range .addresses }}{{ printf \"%s\n\" .ip }}{{ end }}{{ end }}" 2>/dev/null \
     | wc -l)" -ge 1 ]'
+
+  local SHARDED_RELEASE="$RELEASE"
+  local INDEX=0
+  local ENDPOINTS
+  local CLUSTER_SCOPE
+  local PATRONICTL_OPTS=""
+  local SHARDING_TYPE
+  SHARDING_TYPE="$(kubectl get sgshardedcluster -n "$NAMESPACE" "$SHARDED_RELEASE" --template '{{ .spec.type }}')"
+  for RELEASE in \
+    $(
+    if [ "$SHARDING_TYPE" != shardingsphere ]
+    then
+      printf '%s-coord' "$SHARDED_RELEASE"
+    fi) \
+    $(
+      seq 0 "$(( -1 + $(kubectl get sgshardedcluster -n "$NAMESPACE" "$SHARDED_RELEASE" --template '{{ .spec.shards.clusters }}') ))" \
+        | while read INDEX
+          do
+            printf '%s-shard%s ' "$SHARDED_RELEASE" "$INDEX"
+          done)
+  do
+    RELEASE="$RELEASE"
+    if [ "$SHARDING_TYPE" = citus ]
+    then
+      PATRONICTL_OPTS="--group $INDEX"
+      CLUSTER_SCOPE="$SHARDED_RELEASE"
+      ENDPOINTS="$SHARDED_RELEASE-$INDEX"
+    else
+      CLUSTER_SCOPE="$RELEASE"
+      ENDPOINTS="$RELEASE"
+    fi
+    wait_until eval '[ "$(kubectl get endpoints --namespace "$NAMESPACE" "$ENDPOINTS" \
+      --template="{{ range .subsets }}{{ range .addresses }}{{ printf \"%s\n\" .ip }}{{ end }}{{ end }}" 2>/dev/null \
+      | wc -l)" -ge 1 ]'
+
+    wait_until eval 'kubectl get endpoints --namespace "$NAMESPACE" "$ENDPOINTS" \
+      --template="{{ .metadata.annotations.leader }}" | grep -q "^$RELEASE-[0-9]\+"'
+
+    wait_until eval 'kubectl exec -n "$NAMESPACE" "$RELEASE-0" -c patroni -- \
+        psql -t -A -c "\du" \
+        | grep -q "^authenticator|"'
+
+    INDEX="$((INDEX + 1))"
+  done
+}
+
+switch_sharded_cluster_to_first() {
+  local RELEASE="$1"
+  local NAMESPACE="$2"
+  local LEADER
+
+  wait_until eval '[ "$(kubectl get endpoints --namespace "$NAMESPACE" "$RELEASE" \
+    --template="{{ range .subsets }}{{ range .addresses }}{{ printf \"%s\n\" .ip }}{{ end }}{{ end }}" 2>/dev/null \
+    | wc -l)" -ge 1 ]'
+
+  local SHARDED_RELEASE="$RELEASE"
+  local INDEX=0
+  local ENDPOINTS
+  local CLUSTER_SCOPE
+  local PATRONICTL_OPTS=""
+  local SHARDING_TYPE
+  SHARDING_TYPE="$(kubectl get sgshardedcluster -n "$NAMESPACE" "$SHARDED_RELEASE" --template '{{ .spec.type }}')"
+  for RELEASE in \
+    $(
+    if [ "$SHARDING_TYPE" != shardingsphere ]
+    then
+      printf '%s-coord' "$SHARDED_RELEASE"
+    fi) \
+    $(
+      seq 0 "$(( -1 + $(kubectl get sgshardedcluster -n "$NAMESPACE" "$SHARDED_RELEASE" --template '{{ .spec.shards.clusters }}') ))" \
+        | while read INDEX
+          do
+            printf '%s-shard%s ' "$SHARDED_RELEASE" "$INDEX"
+          done)
+  do
+    RELEASE="$RELEASE"
+    if [ "$SHARDING_TYPE" = citus ]
+    then
+      PATRONICTL_OPTS="--group $INDEX"
+      CLUSTER_SCOPE="$SHARDED_RELEASE"
+      ENDPOINTS="$SHARDED_RELEASE-$INDEX"
+    else
+      CLUSTER_SCOPE="$RELEASE"
+      ENDPOINTS="$RELEASE"
+    fi
+    wait_until eval '[ "$(kubectl get endpoints --namespace "$NAMESPACE" "$ENDPOINTS" \
+      --template="{{ range .subsets }}{{ range .addresses }}{{ printf \"%s\n\" .ip }}{{ end }}{{ end }}" 2>/dev/null \
+      | wc -l)" -ge 1 ]'
+
+    wait_until eval 'kubectl get endpoints --namespace "$NAMESPACE" "$ENDPOINTS" \
+      --template="{{ .metadata.annotations.leader }}" | grep -q "^$RELEASE-[0-9]\+"'
+    LEADER="$(kubectl get endpoints --namespace "$NAMESPACE" "$ENDPOINTS" \
+      --template="{{ .metadata.annotations.leader }}")"
+    if [ "$LEADER" != "$RELEASE-0" ]
+    then
+      wait_until eval '[ "$(kubectl get pod -n "$NAMESPACE" "$RELEASE-0" \
+        --template="{{ .metadata.labels.role }}" 2>/dev/null)" = replica ]'
+      PATRONI_MAJOR_VERSION="$(kubectl exec -n "$NAMESPACE" "$RELEASE-0" -c patroni -- \
+        patronictl version 2>/dev/null | sed -n 's/^patronictl version \([0-9]\+\)\..*$/\1/p')"
+      wait_until eval '! kubectl exec -n "$NAMESPACE" "$RELEASE-0" -c patroni -- \
+        patronictl switchover "$CLUSTER_SCOPE" $PATRONICTL_OPTS \
+        $([ "$PATRONI_MAJOR_VERSION" -lt 4 ] && printf %s --master || printf %s --primary) "$LEADER" \
+        --candidate "$RELEASE-0" --force \
+        | grep -q "^Switchover failed"'
+      wait_until eval '[ "$(kubectl get pod -n "$NAMESPACE" "$LEADER" \
+        --template="{{ .metadata.labels.role }}" 2>/dev/null)" = replica ]'
+      wait_until eval '[ "$(kubectl get endpoints --namespace "$NAMESPACE" "$ENDPOINTS" \
+        --template="{{ range .subsets }}{{ range .addresses }}{{ printf \"%s\n\" .ip }}{{ end }}{{ end }}" 2>/dev/null \
+        | wc -l)" -ge 1 ]'
+    fi
+
+    INDEX="$((INDEX + 1))"
+  done
 }
 
 create_or_replace_sharded_cluster_for_version() {
@@ -397,14 +591,6 @@ remove_cluster() {
   helm get hooks "$RELEASE" --namespace "$NAMESPACE" 2>/dev/null \
     | kubectl delete --namespace "$NAMESPACE" --ignore-not-found -f -
   helm uninstall "$RELEASE" --namespace "$NAMESPACE" 2>/dev/null || true
-  kubectl wait sts --namespace "$NAMESPACE" -l "cluster-name=$RELEASE" --for=delete --timeout="${E2E_TIMEOUT}s" 2>/dev/null || true
-  kubectl wait pvc --namespace "$NAMESPACE" -l "cluster-name=$RELEASE" --for=delete --timeout="${E2E_TIMEOUT}s" 2>/dev/null || true
-  kubectl wait pod --namespace "$NAMESPACE" -l "cluster-name=$RELEASE" --for=delete --timeout="${E2E_TIMEOUT}s" 2>/dev/null || true
-  kubectl delete endpoints --namespace "$NAMESPACE" -l "cluster-name=$RELEASE" --ignore-not-found 2>/dev/null || true
-  kubectl wait sts --namespace "$NAMESPACE" -l "stackgres.io/cluster-name=$RELEASE" --for=delete --timeout="${E2E_TIMEOUT}s" 2>/dev/null || true
-  kubectl wait pvc --namespace "$NAMESPACE" -l "stackgres.io/cluster-name=$RELEASE" --for=delete --timeout="${E2E_TIMEOUT}s" 2>/dev/null || true
-  kubectl wait pod --namespace "$NAMESPACE" -l "stackgres.io/cluster-name=$RELEASE" --for=delete --timeout="${E2E_TIMEOUT}s" 2>/dev/null || true
-  kubectl delete endpoints --namespace "$NAMESPACE" -l "stackgres.io/cluster-name=$RELEASE" --ignore-not-found 2>/dev/null || true
 }
 
 remove_cluster_if_exists() {
@@ -414,5 +600,30 @@ remove_cluster_if_exists() {
   if helm get values "$RELEASE"  --namespace "$NAMESPACE" > /dev/null 2>&1
   then
     remove_cluster "$RELEASE" "$NAMESPACE"
+  fi
+}
+
+remove_sharded_cluster() {
+  local RELEASE="$1"
+  local NAMESPACE="$2"
+
+  echo "Deleting release $RELEASE" 
+  helm get manifest "$RELEASE" --namespace "$NAMESPACE" 2>/dev/null \
+    | yq 'select(.kind == "SGShardedCluster")' \
+    | kubectl delete --namespace "$NAMESPACE" --ignore-not-found --wait=true -f -
+  helm get manifest "$RELEASE" --namespace "$NAMESPACE" 2>/dev/null \
+    | kubectl delete --namespace "$NAMESPACE" --ignore-not-found -f -
+  wait_until eval 'helm get hooks "$RELEASE" --namespace "$NAMESPACE" 2>/dev/null \
+    | kubectl delete --namespace "$NAMESPACE" --ignore-not-found -f -'
+  helm uninstall "$RELEASE" --namespace "$NAMESPACE" 2>/dev/null || true
+}
+
+remove_sharded_cluster_if_exists() {
+  local RELEASE="$1"
+  local NAMESPACE="$2"
+
+  if helm get values "$RELEASE"  --namespace "$NAMESPACE" > /dev/null 2>&1
+  then
+    remove_sharded_cluster "$RELEASE" "$NAMESPACE"
   fi
 }

@@ -7,7 +7,28 @@ package io.stackgres.operator.conciliation.factory.cluster;
 
 import java.util.List;
 
-public interface ClusterEnvironmentVariablesFactoryDiscoverer<T> {
+import io.stackgres.common.ClusterContext;
+import io.stackgres.common.StackGresVersion;
+import io.stackgres.operator.conciliation.AbstractDiscoverer;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Any;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
 
-  List<ClusterEnvironmentVariablesFactory<T>> discoverFactories(T context);
+@ApplicationScoped
+public class ClusterEnvironmentVariablesFactoryDiscoverer
+    extends AbstractDiscoverer<ClusterEnvironmentVariablesFactory> {
+
+  @Inject
+  public ClusterEnvironmentVariablesFactoryDiscoverer(
+      @Any Instance<ClusterEnvironmentVariablesFactory> instance) {
+    super(instance);
+  }
+
+  public List<ClusterEnvironmentVariablesFactory> discoverFactories(
+      ClusterContext context) {
+    StackGresVersion clusterVersion = StackGresVersion.getStackGresVersion(context.getCluster());
+    return hub.get(clusterVersion).stream().toList();
+  }
+
 }

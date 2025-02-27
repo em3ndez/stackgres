@@ -1,0 +1,13 @@
+specDescriptors:
+  source.sgCluster.username:
+    x-descriptors:
+    - 'urn:alm:descriptor:com.tectonic.ui:selector:core:v1:Secret'
+  source.sgCluster.password:
+    x-descriptors:
+    - 'urn:alm:descriptor:com.tectonic.ui:selector:core:v1:Secret'
+    source.postgres.username:
+      x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:selector:core:v1:Secret'
+    source.postgres.password:
+      x-descriptors:
+      - 'urn:alm:descriptor:com.tectonic.ui:selector:core:v1:Secret'

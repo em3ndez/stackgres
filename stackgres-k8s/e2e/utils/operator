@@ -4,7 +4,8 @@
 # shellcheck disable=SC2164
 
 export IMAGE_TAG="${IMAGE_TAG:-main-jvm}"
-export ADMINUI_IMAGE_TAG="${IMAGE_TAG%-jvm}"
+export NATIVE_IMAGE_TAG="${IMAGE_TAG%-jvm}"
+export ADMINUI_IMAGE_TAG="$NATIVE_IMAGE_TAG"
 export OPERATOR_PUBLIC_REGISTRY="${OPERATOR_PUBLIC_REGISTRY:-quay.io}"
 export OPERATOR_PUBLIC_REGISTRY_PATH="${OPERATOR_PUBLIC_REGISTRY_PATH:-/stackgres}"
 export COMPONENT_PUBLIC_REGISTRY="${COMPONENT_PUBLIC_REGISTRY:-quay.io}"
@@ -14,7 +15,9 @@ export RESTAPI_IMAGE_NAME="${OPERATOR_PUBLIC_REGISTRY}${OPERATOR_PUBLIC_REGISTRY
 export JOBS_IMAGE_NAME="${OPERATOR_PUBLIC_REGISTRY}${OPERATOR_PUBLIC_REGISTRY_PATH}/jobs:$IMAGE_TAG"
 export CLUSTER_CONTROLLER_IMAGE_NAME="${OPERATOR_PUBLIC_REGISTRY}${OPERATOR_PUBLIC_REGISTRY_PATH}/cluster-controller:$IMAGE_TAG"
 export DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME="${OPERATOR_PUBLIC_REGISTRY}${OPERATOR_PUBLIC_REGISTRY_PATH}/distributedlogs-controller:$IMAGE_TAG"
+export STREAM_IMAGE_NAME="${OPERATOR_PUBLIC_REGISTRY}${OPERATOR_PUBLIC_REGISTRY_PATH}/stream:${NATIVE_IMAGE_TAG}-jvm"
 export ADMINUI_IMAGE_NAME="${OPERATOR_PUBLIC_REGISTRY}${OPERATOR_PUBLIC_REGISTRY_PATH}/admin-ui:$ADMINUI_IMAGE_TAG"
+export PGLAMBDA_JAVASCRIPT_IMAGE_NAME="${OPERATOR_PUBLIC_REGISTRY}${OPERATOR_PUBLIC_REGISTRY_PATH}/pglambda:${NATIVE_IMAGE_TAG}-javascript"
 
 export STACKGRES_PATH="${STACKGRES_PATH:-$E2E_PATH/..}"
 export STACKGRES_IMAGE_BUILDER="${STACKGRES_IMAGE_BUILDER:-docker}"
@@ -31,9 +34,9 @@ export E2E_BUILD_IMAGES="${E2E_BUILD_IMAGES:-true}"
 export E2E_SKIP_OPERATOR_LOAD="${E2E_SKIP_OPERATOR_LOAD:-false}"
 export E2E_WAIT_OPERATOR="${E2E_WAIT_OPERATOR:-true}"
 
-export E2E_INCLUDE_ONLY_POSTGRES_VERSIONS="12.9 12.12 13.4 13.5 14.3 14.4 ${E2E_POSTGRES_VERSION:-15.2} $E2E_UI_POSTGRES_VERSOIN"
+export E2E_INCLUDE_ONLY_POSTGRES_VERSIONS="12.16 12.18 13.9 13.12 14.9 14.10 15.3 15.5 16.1 16.2 ${E2E_POSTGRES_VERSION:-15.3} $E2E_UI_POSTGRES_VERSOIN"
 
-export STACKGRES_PREVIOUS_VERSION="${STACKGRES_PREVIOUS_VERSION:-1.4.3}"
+export STACKGRES_PREVIOUS_VERSION="${STACKGRES_PREVIOUS_VERSION:-1.14.3}"
 
 export E2E_LOCAL_OPERATOR_IP="${E2E_LOCAL_OPERATOR_IP:-172.20.0.1}"
 export E2E_LOCAL_OPERATOR_PORT="${E2E_LOCAL_OPERATOR_PORT:-9080}"
@@ -46,11 +49,14 @@ generate_operator_namespace() {
 export OPERATOR_NAMESPACE="${OPERATOR_NAMESPACE:-$(generate_operator_namespace)}"
 
 setup_images() {
-  if [ "$E2E_BUILD_IMAGES" = true ] \
-    && (
+  if {
+      [ "$E2E_BUILD_IMAGES" = true ] \
+        || [ "$E2E_BUILD_ONLY_MODULES" = true ] 
+    } \
+    && {
       [ "$E2E_REUSE_OPERATOR_PODS" != true ] \
-      || ! is_operator_installed
-    )
+        || ! is_operator_installed
+    }
   then
     build_all
   fi
@@ -62,33 +68,80 @@ setup_images() {
 }
 
 build_all() {
-  echo "Building all..."
-  "$SHELL" $SHELL_XTRACE "$PROJECT_PATH"/stackgres-k8s/ci/build/build.sh parent-java operator-framework-java test-util-java common-java \
-    operator-java restapi-java jobs-java cluster-controller-java distributedlogs-controller-java admin-ui \
-    operator-jvm-image restapi-jvm-image jobs-jvm-image cluster-controller-jvm-image distributedlogs-controller-jvm-image \
-    admin-ui-image helm-packages helm-templates helm-operator-bundle helm-operator-image helm-operator-bundle-image
-  docker inspect "$(sh stackgres-k8s/ci/build/build-functions.sh image_name operator-jvm-image)" >/dev/null 2>&1 \
-    || docker pull "$(sh stackgres-k8s/ci/build/build-functions.sh image_name operator-jvm-image)"
-  docker inspect "$(sh stackgres-k8s/ci/build/build-functions.sh image_name restapi-jvm-image)" >/dev/null 2>&1 \
-    || docker pull "$(sh stackgres-k8s/ci/build/build-functions.sh image_name restapi-jvm-image)"
-  docker inspect "$(sh stackgres-k8s/ci/build/build-functions.sh image_name jobs-jvm-image)" >/dev/null 2>&1 \
-    || docker pull "$(sh stackgres-k8s/ci/build/build-functions.sh image_name jobs-jvm-image)"
-  docker inspect "$(sh stackgres-k8s/ci/build/build-functions.sh image_name cluster-controller-jvm-image)" >/dev/null 2>&1 \
-    || docker pull "$(sh stackgres-k8s/ci/build/build-functions.sh image_name cluster-controller-jvm-image)"
-  docker inspect "$(sh stackgres-k8s/ci/build/build-functions.sh image_name distributedlogs-controller-jvm-image)" >/dev/null 2>&1 \
-    || docker pull "$(sh stackgres-k8s/ci/build/build-functions.sh image_name distributedlogs-controller-jvm-image)"
-  docker inspect "$(sh stackgres-k8s/ci/build/build-functions.sh image_name admin-ui-image)" >/dev/null 2>&1 \
-    || docker pull "$(sh stackgres-k8s/ci/build/build-functions.sh image_name admin-ui-image)"
-  docker inspect "$(sh stackgres-k8s/ci/build/build-functions.sh image_name helm-operator-image)" >/dev/null 2>&1 \
-    || docker pull "$(sh stackgres-k8s/ci/build/build-functions.sh image_name helm-operator-image)"
-  docker inspect "$(sh stackgres-k8s/ci/build/build-functions.sh image_name helm-operator-bundle-image)" >/dev/null 2>&1 \
-    || docker pull "$(sh stackgres-k8s/ci/build/build-functions.sh image_name helm-operator-bundle-image)"
-  docker tag "$(sh stackgres-k8s/ci/build/build-functions.sh image_name operator-jvm-image)" "$OPERATOR_IMAGE_NAME"
-  docker tag "$(sh stackgres-k8s/ci/build/build-functions.sh image_name restapi-jvm-image)" "$RESTAPI_IMAGE_NAME"
-  docker tag "$(sh stackgres-k8s/ci/build/build-functions.sh image_name jobs-jvm-image)" "$JOBS_IMAGE_NAME"
-  docker tag "$(sh stackgres-k8s/ci/build/build-functions.sh image_name cluster-controller-jvm-image)" "$CLUSTER_CONTROLLER_IMAGE_NAME"
-  docker tag "$(sh stackgres-k8s/ci/build/build-functions.sh image_name distributedlogs-controller-jvm-image)" "$DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME"
-  docker tag "$(sh stackgres-k8s/ci/build/build-functions.sh image_name admin-ui-image)" "$ADMINUI_IMAGE_NAME"
+  echo "Building project..."
+  "$SHELL" $SHELL_XTRACE "$PROJECT_PATH"/stackgres-k8s/ci/build/build.sh \
+    parent-java \
+    operator-framework-java \
+    test-util-java \
+    common-java \
+    operator-java \
+    restapi-java \
+    jobs-java \
+    cluster-controller-java \
+    stream-java \
+    admin-ui \
+    helm-packages \
+    helm-templates \
+    operator-bundle \
+    $(
+    if [ "$E2E_BUILD_ONLY_MODULES" != true ]
+    then
+    cat << EOF
+    operator-jvm-image \
+    restapi-jvm-image \
+    jobs-jvm-image \
+    cluster-controller-jvm-image \
+    stream-jvm-image \
+    admin-ui-image \
+    operator-bundle-image \
+    pglambda-javascript-image
+EOF
+    fi
+    )
+  if [ -n "$E2E_EXTRA_MOUNT_BUILD_PATH" ]
+  then
+    "$SHELL" $SHELL_XTRACE "$PROJECT_PATH"/stackgres-k8s/ci/build/build-functions.sh extract_all \
+      parent-java \
+      operator-framework-java \
+      test-util-java \
+      common-java \
+      operator-java \
+      restapi-java \
+      jobs-java \
+      cluster-controller-java \
+      stream-java \
+      admin-ui \
+      helm-packages \
+      helm-templates \
+      operator-bundle
+    k8s_copy_to_extra_mount_build_path
+  fi
+  if [ "$E2E_BUILD_ONLY_MODULES" != true ]
+  then
+    docker inspect "$(sh stackgres-k8s/ci/build/build-functions.sh image_name operator-jvm-image)" >/dev/null 2>&1 \
+      || docker pull "$(sh stackgres-k8s/ci/build/build-functions.sh image_name operator-jvm-image)"
+    docker inspect "$(sh stackgres-k8s/ci/build/build-functions.sh image_name restapi-jvm-image)" >/dev/null 2>&1 \
+      || docker pull "$(sh stackgres-k8s/ci/build/build-functions.sh image_name restapi-jvm-image)"
+    docker inspect "$(sh stackgres-k8s/ci/build/build-functions.sh image_name jobs-jvm-image)" >/dev/null 2>&1 \
+      || docker pull "$(sh stackgres-k8s/ci/build/build-functions.sh image_name jobs-jvm-image)"
+    docker inspect "$(sh stackgres-k8s/ci/build/build-functions.sh image_name cluster-controller-jvm-image)" >/dev/null 2>&1 \
+      || docker pull "$(sh stackgres-k8s/ci/build/build-functions.sh image_name cluster-controller-jvm-image)"
+    docker inspect "$(sh stackgres-k8s/ci/build/build-functions.sh image_name stream-jvm-image)" >/dev/null 2>&1 \
+      || docker pull "$(sh stackgres-k8s/ci/build/build-functions.sh image_name stream-jvm-image)"
+    docker inspect "$(sh stackgres-k8s/ci/build/build-functions.sh image_name admin-ui-image)" >/dev/null 2>&1 \
+      || docker pull "$(sh stackgres-k8s/ci/build/build-functions.sh image_name admin-ui-image)"
+    docker inspect "$(sh stackgres-k8s/ci/build/build-functions.sh image_name operator-bundle-image)" >/dev/null 2>&1 \
+      || docker pull "$(sh stackgres-k8s/ci/build/build-functions.sh image_name operator-bundle-image)"
+    docker inspect "$(sh stackgres-k8s/ci/build/build-functions.sh image_name pglambda-javascript-image)" >/dev/null 2>&1 \
+      || docker pull "$(sh stackgres-k8s/ci/build/build-functions.sh image_name pglambda-javascript-image)"
+    docker tag "$(sh stackgres-k8s/ci/build/build-functions.sh image_name operator-jvm-image)" "$OPERATOR_IMAGE_NAME"
+    docker tag "$(sh stackgres-k8s/ci/build/build-functions.sh image_name restapi-jvm-image)" "$RESTAPI_IMAGE_NAME"
+    docker tag "$(sh stackgres-k8s/ci/build/build-functions.sh image_name jobs-jvm-image)" "$JOBS_IMAGE_NAME"
+    docker tag "$(sh stackgres-k8s/ci/build/build-functions.sh image_name cluster-controller-jvm-image)" "$CLUSTER_CONTROLLER_IMAGE_NAME"
+    docker tag "$(sh stackgres-k8s/ci/build/build-functions.sh image_name stream-jvm-image)" "$STREAM_IMAGE_NAME"
+    docker tag "$(sh stackgres-k8s/ci/build/build-functions.sh image_name admin-ui-image)" "$ADMINUI_IMAGE_NAME"
+    docker tag "$(sh stackgres-k8s/ci/build/build-functions.sh image_name pglambda-javascript-image)" "$PGLAMBDA_JAVASCRIPT_IMAGE_NAME"
+  fi
 }
 
 create_operator_certificate() {
@@ -219,45 +272,50 @@ setup_operator() {
     E2E_BEFORE_RUN_TEST_FUNCTION="$E2E_BEFORE_RUN_TEST_FUNCTION e2e_before_run_test_upgrade_k8s"
   fi
 
-  if ! is_operator_installed \
-    || {
-      [ "$E2E_USE_EXTERNAL_OPERATOR" != true ] \
-      && [ "$E2E_REUSE_OPERATOR_PODS" != true ]
-    } \
-    || [ "$(get_operator_namespace)" != "$OPERATOR_NAMESPACE" ]
+  if [ "$E2E_SKIP_CLEANUP" != true ]
   then
-    if [ "$E2E_USE_INTERMIDIATE_PRIVATE_REPO" != true ] \
-        && [ "$E2E_SKIP_OPERATOR_LOAD" != true ]
+    if ! is_operator_installed \
+      || {
+        [ "$E2E_USE_EXTERNAL_OPERATOR" != true ] \
+        && [ "$E2E_REUSE_OPERATOR_PODS" != true ]
+      } \
+      || [ "$(get_operator_namespace)" != "$OPERATOR_NAMESPACE" ]
     then
-      load_operator_k8s
-    fi
+      if [ "$E2E_USE_INTERMIDIATE_PRIVATE_REPO" != true ] \
+          && [ "$E2E_SKIP_OPERATOR_LOAD" != true ]
+      then
+        load_operator_k8s
+      fi
 
-    echo "Performing full cleanup"
-    k8s_webhook_cleanup
-    helm_cleanup
-    k8s_async_cleanup
-    echo "Full cleanup completed"
+      echo "Performing full cleanup"
+      k8s_webhook_cleanup
+      helm_cleanup
+      k8s_async_cleanup
+      echo "Full cleanup completed"
 
-    if [ "$E2E_SKIP_OPERATOR_INSTALL" != true ]
-    then
-      install_operator
-      store_operator_values
+      if [ "$E2E_SKIP_OPERATOR_INSTALL" != true ]
+      then
+        install_operator
+        store_operator_values
+      fi
+    else
+      echo "Performing cleanup skipping operator"
+      k8s_webhook_cleanup_but_operator
+      helm_cleanup_but_operator
+      k8s_async_cleanup_but_operator
+      echo "Cleanup skipping operator completed"
     fi
-  else
-    echo "Performing cleanup skipping operator"
-    helm_cleanup_but_operator
-    k8s_async_cleanup_but_operator
-    echo "Cleanup skipping operator completed"
   fi
 }
 
 is_operator_installed() {
-  helm list -A | grep -q '^stackgres-operator[[:space:]]'
+  helm list -A | tail -n +2 | tr -s '\t ' ' ' \
+    | grep -q '^stackgres-operator stackgres-[^ ]\+ '
 }
 
 get_operator_namespace() {
-  helm list -A | grep '^stackgres-operator[[:space:]]' \
-    | sed 's/[[:space:]]\+/ /g' | cut -d ' ' -f 2
+  helm list -A | tail -n +2 | tr -s '\t ' ' ' \
+    | grep '^stackgres-operator stackgres-[^ ]\+ ' | cut -d ' ' -f 2
 }
 
 load_operator_k8s() {
@@ -292,8 +350,9 @@ load_operator_k8s() {
     local ORIGINAL_RESTAPI_IMAGE_NAME="$RESTAPI_IMAGE_NAME"
     local ORIGINAL_JOBS_IMAGE_NAME="$JOBS_IMAGE_NAME"
     local ORIGINAL_CLUSTER_CONTROLLER_IMAGE_NAME="$CLUSTER_CONTROLLER_IMAGE_NAME"
-    local ORIGINAL_DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME="$DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME"
+    local ORIGINAL_STREAM_IMAGE_NAME="$STREAM_IMAGE_NAME"
     local ORIGINAL_ADMINUI_IMAGE_NAME="$ADMINUI_IMAGE_NAME"
+    local ORIGINAL_PGLAMBDA_JAVASCRIPT_IMAGE_NAME="$PGLAMBDA_JAVASCRIPT_IMAGE_NAME"
     local IMAGE_TAG="$1"
     local ADMINUI_IMAGE_TAG="${IMAGE_TAG%-jvm}"
     local OPERATOR_IMAGE_NAME="${OPERATOR_IMAGE_NAME%:*}:$IMAGE_TAG"
@@ -301,13 +360,16 @@ load_operator_k8s() {
     local JOBS_IMAGE_NAME="${JOBS_IMAGE_NAME%:*}:$IMAGE_TAG"
     local CLUSTER_CONTROLLER_IMAGE_NAME="${CLUSTER_CONTROLLER_IMAGE_NAME%:*}:$IMAGE_TAG"
     local DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME="${DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME%:*}:$IMAGE_TAG"
+    local STREAM_IMAGE_NAME="${STREAM_IMAGE_NAME%:*}:$IMAGE_TAG"
     local ADMINUI_IMAGE_NAME="${ADMINUI_IMAGE_NAME%:*}:$ADMINUI_IMAGE_TAG"
+    local PGLAMBDA_JAVASCRIPT_IMAGE_NAME="${PGLAMBDA_JAVASCRIPT_IMAGE_NAME%:*}:${NATIVE_IMAGE_TAG}-javascript"
     docker_tag "$ORIGINAL_OPERATOR_IMAGE_NAME" "$OPERATOR_IMAGE_NAME"
     docker_tag "$ORIGINAL_RESTAPI_IMAGE_NAME" "$RESTAPI_IMAGE_NAME"
     docker_tag "$ORIGINAL_JOBS_IMAGE_NAME" "$JOBS_IMAGE_NAME"
     docker_tag "$ORIGINAL_CLUSTER_CONTROLLER_IMAGE_NAME" "$CLUSTER_CONTROLLER_IMAGE_NAME"
-    docker_tag "$ORIGINAL_DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME" "$DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME"
+    docker_tag "$ORIGINAL_STREAM_IMAGE_NAME" "$STREAM_IMAGE_NAME"
     docker_tag "$ORIGINAL_ADMINUI_IMAGE_NAME" "$ADMINUI_IMAGE_NAME"
+    docker_tag "$ORIGINAL_PGLAMBDA_JAVASCRIPT_IMAGE_NAME" "$PGLAMBDA_JAVASCRIPT_IMAGE_NAME"
     load_operator_k8s_only
   else
     load_operator_k8s_only
@@ -322,8 +384,9 @@ load_operator_k8s_only() {
     "$RESTAPI_IMAGE_NAME" \
     "$JOBS_IMAGE_NAME" \
     "$CLUSTER_CONTROLLER_IMAGE_NAME" \
-    "$DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME" \
-    "$ADMINUI_IMAGE_NAME"
+    "$STREAM_IMAGE_NAME" \
+    "$ADMINUI_IMAGE_NAME" \
+    "$PGLAMBDA_JAVASCRIPT_IMAGE_NAME"
   do
     echo "$IMAGE_NAME"
   done | xargs_parallel_shell % "$E2E_PATH/e2e" load_image_k8s '%'
@@ -349,8 +412,9 @@ push_operator_images() {
     "$RESTAPI_IMAGE_NAME" \
     "$JOBS_IMAGE_NAME" \
     "$CLUSTER_CONTROLLER_IMAGE_NAME" \
-    "$DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME" \
-    "$ADMINUI_IMAGE_NAME"
+    "$STREAM_IMAGE_NAME" \
+    "$ADMINUI_IMAGE_NAME" \
+    "$PGLAMBDA_JAVASCRIPT_IMAGE_NAME"
   do
     echo "$IMAGE_NAME"
   done | xargs_shell % "$E2E_PATH/e2e" \
@@ -359,7 +423,7 @@ push_operator_images() {
 }
 
 push_image_to() {
-  [ -n "$1" -a -n "$2" -a -n "$3" ]
+  [ -n "$1" ] && [ -n "$2" ] && [ -n "$3" ]
   local REPOSITORY="$1"
   local IMAGE_PATH="$2"
   local IMAGE="$3"
@@ -426,7 +490,11 @@ e2e_before_run_test_upgrade_k8s() {
 }
 
 get_installed_operator_version() {
-  helm list -n "$OPERATOR_NAMESPACE" -o json | jq -r '.[] | select(.name == "stackgres-operator").app_version'
+  kubectl get sgconfig -n "$OPERATOR_NAMESPACE" stackgres-operator -o name >/dev/null 2>&1 \
+    && kubectl get sgconfig -n "$OPERATOR_NAMESPACE" stackgres-operator -o json \
+      | jq -r '.status.version | select(. != null)' | grep . \
+    || helm list -n "$OPERATOR_NAMESPACE" -o json \
+      | jq -r '.[] | select(.name == "stackgres-operator").app_version'
 }
 
 install_operator_only() {
@@ -454,21 +522,6 @@ install_operator_only() {
     --set-string adminui.image.name="${ADMINUI_IMAGE_NAME%:*}" --set-string adminui.image.tag="${ADMINUI_IMAGE_NAME#*:}" \
     --set-string "adminui.image.pullPolicy=$E2E_OPERATOR_PULL_POLICY" \
     --set-string "extensions.repositoryUrls[0]=$EXTENSIONS_REPOSITORY_URL" \
-    --set-string developer.extraEnv.SG_IMAGE_CLUSTER_CONTROLLER="${CLUSTER_CONTROLLER_IMAGE_NAME}" \
-    --set-string developer.extraEnv.SG_IMAGE_DISTRIBUTEDLOGS_CONTROLLER="${DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME}" \
-    --set-string developer.extraOpts[0]='-Dquarkus.log.category."io.stackgres".level=DEBUG' \
-    --set-string developer.extraOpts[1]='-Dquarkus.log.category."io.quarkus".level=INFO' \
-    --set-string developer.extraOpts[2]='-Dquarkus.log.category."io.stackgres.dbops".level=TRACE' \
-    --set-string developer.extraOpts[3]='-Dquarkus.log.category."io.stackgres.backup".level=TRACE' \
-    --set-string developer.extraOpts[4]='-Dquarkus.log.category."io.stackgres.wal-g".level=INFO' \
-    --set-string developer.extraOpts[5]='-Dquarkus.log.category."io.stackgres.patroni".level=TRACE' \
-    --set-string developer.extraOpts[6]='-Dquarkus.log.category."io.stackgres.fluent-bit".level=TRACE' \
-    --set-string developer.extraOpts[7]='-Dquarkus.log.category."io.stackgres.fluentd".level=TRACE' \
-    --set-string developer.extraOpts[8]='-Dquarkus.log.category."io.stackgres.prometheus-postgres-exporter".level=TRACE' \
-    --set-string developer.extraOpts[9]='-Dquarkus.log.category."okhttp3.logging.HttpLoggingInterceptor".level='"$(
-      # shellcheck disable=SC2015
-      [ "$E2E_LOG_OPERATOR_HTTP" = true ] && echo TRACE || echo INFO)" \
-    --set-string developer.extraOpts[10]='-Dquarkus.log.category."stackgres-extensions-cache".level=DEBUG' \
     --set extensions.cache.enabled="$(
       # shellcheck disable=SC2015
       [ "$EXTENSIONS_CACHE_ENABLED" = true ] && echo true || echo false)" \
@@ -482,6 +535,7 @@ install_operator_only() {
       [ "$EXTENSIONS_CACHE_ENABLED" = true ] && [ -n "$EXTENSIONS_CACHE_HOST_PATH" ] \
         && printf '%s' "$EXTENSIONS_CACHE_HOST_PATH" \
         || printf null)" \
+    $(set_helm_values_for_developer) \
     $E2E_OPERATOR_OPTS "$@"
   fi
 }
@@ -496,6 +550,7 @@ can_install_operator_version() {
   VERSION_1_3_0_RC1="$(get_version_as_number 1.3.0-RC1)"
   VERSION_1_4_0_RC1="$(get_version_as_number 1.4.0-RC1)"
   VERSION_1_5_0_RC1="$(get_version_as_number 1.5.0-RC1)"
+  VERSION_1_6_0_RC1="$(get_version_as_number 1.6.0-RC1)"
   if [ "$VERSION_AS_NUMBER" -lt "$VERSION_0_9_5" ]
   then
     if {
@@ -550,6 +605,14 @@ can_install_operator_version() {
       return 1
     fi
   fi
+  if [ "$VERSION_AS_NUMBER" -lt "$VERSION_1_6_0_RC1" ]
+  then
+    if [ "$KUBERNETES_VERSION_NUMBER" -gt 127 ] \
+      || [ "$KUBERNETES_VERSION_NUMBER" -lt 118 ]
+    then
+      return 1
+    fi
+  fi
   return
 }
 
@@ -568,8 +631,23 @@ install_operator_vanilla() {
 }
 
 install_operator_vanilla_from() {
+  local OPERATOR_FROM=true
   before_operator_install_or_upgrade
   helm install stackgres-operator --namespace "$OPERATOR_NAMESPACE" \
+    $(
+      if [ "x$E2E_ALLOWED_NAMESPACES" != x ]
+      then
+        printf ' --set allowedNamespaces={%s}' "$(printf %s "$E2E_ALLOWED_NAMESPACES" | tr ' ' ',')"
+      fi
+      if [ "x$E2E_DISABLE_CLUSTER_ROLE" = xtrue ]
+      then
+        printf ' --set disableClusterRole=true'
+      fi
+      if [ "x$E2E_ALLOW_IMPERSONATION_FOR_REST_API" = xtrue ]
+      then
+        printf ' --set allowImpersonationForRestApi=true'
+      fi
+    ) \
     "$@"
   after_operator_install_or_upgrade
 }
@@ -597,21 +675,6 @@ upgrade_operator() {
     --set-string adminui.image.name="${ADMINUI_IMAGE_NAME%:*}" --set-string adminui.image.tag="${ADMINUI_IMAGE_NAME#*:}" \
     --set-string "adminui.image.pullPolicy=$E2E_OPERATOR_PULL_POLICY" \
     --set-string "extensions.repositoryUrls[0]=$EXTENSIONS_REPOSITORY_URL" \
-    --set-string developer.extraEnv.SG_IMAGE_CLUSTER_CONTROLLER="${CLUSTER_CONTROLLER_IMAGE_NAME}" \
-    --set-string developer.extraEnv.SG_IMAGE_DISTRIBUTEDLOGS_CONTROLLER="${DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME}" \
-    --set-string developer.extraOpts[0]='-Dquarkus.log.category."io.stackgres".level=DEBUG' \
-    --set-string developer.extraOpts[1]='-Dquarkus.log.category."io.quarkus".level=INFO' \
-    --set-string developer.extraOpts[2]='-Dquarkus.log.category."io.stackgres.dbops".level=TRACE' \
-    --set-string developer.extraOpts[3]='-Dquarkus.log.category."io.stackgres.backup".level=TRACE' \
-    --set-string developer.extraOpts[4]='-Dquarkus.log.category."io.stackgres.wal-g".level=INFO' \
-    --set-string developer.extraOpts[5]='-Dquarkus.log.category."io.stackgres.patroni".level=TRACE' \
-    --set-string developer.extraOpts[6]='-Dquarkus.log.category."io.stackgres.fluent-bit".level=TRACE' \
-    --set-string developer.extraOpts[7]='-Dquarkus.log.category."io.stackgres.fluentd".level=TRACE' \
-    --set-string developer.extraOpts[8]='-Dquarkus.log.category."io.stackgres.prometheus-postgres-exporter".level=TRACE' \
-    --set-string developer.extraOpts[9]='-Dquarkus.log.category."okhttp3.logging.HttpLoggingInterceptor".level='"$(
-      # shellcheck disable=SC2015
-      [ "$E2E_LOG_OPERATOR_HTTP" = true ] && echo TRACE || echo INFO)" \
-    --set-string developer.extraOpts[10]='-Dquarkus.log.category."stackgres-extensions-cache".level=DEBUG' \
     --set extensions.cache.enabled="$(
       # shellcheck disable=SC2015
       [ "$EXTENSIONS_CACHE_ENABLED" = true ] && echo true || echo false)" \
@@ -626,6 +689,7 @@ upgrade_operator() {
         && printf '%s' "$EXTENSIONS_CACHE_HOST_PATH" \
         || printf null)" \
     --reuse-values \
+    $(set_helm_values_for_developer) \
     $E2E_OPERATOR_OPTS "$@"
 }
 
@@ -640,9 +704,37 @@ upgrade_operator_vanilla() {
       --set cert.createForOperator=false \
       --set developer.externalOperatorIp="$E2E_LOCAL_OPERATOR_IP" \
       --set developer.externalOperatorPort="$E2E_LOCAL_OPERATOR_SSL_PORT" \
+      $(
+        if [ "x$E2E_ALLOWED_NAMESPACES" != x ]
+        then
+          printf ' --set allowedNamespaces={%s}' "$(printf %s "$E2E_ALLOWED_NAMESPACES" | tr ' ' ',')"
+        fi
+        if [ "x$E2E_DISABLE_CLUSTER_ROLE" = xtrue ]
+        then
+          printf ' --set disableClusterRole=true'
+        fi
+        if [ "x$E2E_ALLOW_IMPERSONATION_FOR_REST_API" = xtrue ]
+        then
+          printf ' --set allowImpersonationForRestApi=true'
+        fi
+      ) \
       "$@"
   else
     helm upgrade stackgres-operator --namespace "$OPERATOR_NAMESPACE" "$OPERATOR_VERSION_HELM_URL" \
+      $(
+        if [ "x$E2E_ALLOWED_NAMESPACES" != x ]
+        then
+          printf ' --set allowedNamespaces={%s}' "$(printf %s "$E2E_ALLOWED_NAMESPACES" | tr ' ' ',')"
+        fi
+        if [ "x$E2E_DISABLE_CLUSTER_ROLE" = xtrue ]
+        then
+          printf ' --set disableClusterRole=true'
+        fi
+        if [ "x$E2E_ALLOW_IMPERSONATION_FOR_REST_API" = xtrue ]
+        then
+          printf ' --set allowImpersonationForRestApi=true'
+        fi
+      ) \
       "$@"
   fi
   after_operator_install_or_upgrade
@@ -691,9 +783,9 @@ upgrade_operator_from_private_repository() {
   export PRIVATE_OPERATOR_IMAGE_NAME="$PRIVATE_REPO_URI/stackgres/operator"
   export PRIVATE_RESTAPI_IMAGE_NAME="$PRIVATE_REPO_URI/stackgres/restapi"
   export PRIVATE_JOBS_IMAGE_NAME="$PRIVATE_REPO_URI/stackgres/jobs"
-  export PRIVATE_ADMINUI_IMAGE_NAME="$PRIVATE_REPO_URI/stackgres/admin-ui"
   export PRIVATE_CLUSTER_CONTROLLER_IMAGE_NAME="$PRIVATE_REPO_URI/stackgres/cluster-controller"
-  export PRIVATE_DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME="$PRIVATE_REPO_URI/stackgres/distributedlogs-controller"
+  export PRIVATE_STREAM_IMAGE_NAME="$PRIVATE_REPO_URI/stackgres/stream"
+  export PRIVATE_ADMINUI_IMAGE_NAME="$PRIVATE_REPO_URI/stackgres/admin-ui"
   upgrade_operator_vanilla \
       --set-string developer.version="$STACKGRES_VERSION" \
       --set-string operator.image.name="$PRIVATE_OPERATOR_IMAGE_NAME" --set-string operator.image.tag="$IMAGE_TAG" \
@@ -708,20 +800,21 @@ upgrade_operator_from_private_repository() {
       --set serviceAccount.repoCredentials[0]=regcred \
       --set-string "extensions.repositoryUrls[0]=$EXTENSIONS_REPOSITORY_URL" \
       --set-string developer.extraEnv.SG_IMAGE_CLUSTER_CONTROLLER="${PRIVATE_CLUSTER_CONTROLLER_IMAGE_NAME}:$IMAGE_TAG" \
-      --set-string developer.extraEnv.SG_IMAGE_DISTRIBUTEDLOGS_CONTROLLER="${PRIVATE_DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME}:$IMAGE_TAG" \
       --set-string developer.extraOpts[0]='-Dquarkus.log.category."io.stackgres".level=DEBUG' \
       --set-string developer.extraOpts[1]='-Dquarkus.log.category."io.quarkus".level=INFO' \
-      --set-string developer.extraOpts[2]='-Dquarkus.log.category."io.stackgres.dbops".level=TRACE' \
-      --set-string developer.extraOpts[3]='-Dquarkus.log.category."io.stackgres.backup".level=TRACE' \
-      --set-string developer.extraOpts[4]='-Dquarkus.log.category."io.stackgres.wal-g".level=INFO' \
-      --set-string developer.extraOpts[5]='-Dquarkus.log.category."io.stackgres.patroni".level=TRACE' \
-      --set-string developer.extraOpts[6]='-Dquarkus.log.category."io.stackgres.fluent-bit".level=TRACE' \
-      --set-string developer.extraOpts[7]='-Dquarkus.log.category."io.stackgres.fluentd".level=TRACE' \
-      --set-string developer.extraOpts[8]='-Dquarkus.log.category."io.stackgres.prometheus-postgres-exporter".level=TRACE' \
-      --set-string developer.extraOpts[9]='-Dquarkus.log.category."okhttp3.logging.HttpLoggingInterceptor".level='"$(
+      --set-string developer.extraOpts[2]='-Dquarkus.log.category."io.stackgres.collector".level=TRACE' \ 
+      --set-string developer.extraOpts[3]='-Dquarkus.log.category."io.stackgres.dbops".level=TRACE' \
+      --set-string developer.extraOpts[4]='-Dquarkus.log.category."io.stackgres.backup".level=TRACE' \
+      --set-string developer.extraOpts[5]='-Dquarkus.log.category."io.stackgres.wal-g".level=INFO' \
+      --set-string developer.extraOpts[6]='-Dquarkus.log.category."io.stackgres.patroni".level=TRACE' \
+      --set-string developer.extraOpts[7]='-Dquarkus.log.category."io.stackgres.fluent-bit".level=TRACE' \
+      --set-string developer.extraOpts[8]='-Dquarkus.log.category."io.stackgres.fluentd".level=TRACE' \
+      --set-string developer.extraOpts[9]='-Dquarkus.log.category."io.stackgres.prometheus-postgres-exporter".level=TRACE' \
+      --set-string developer.extraOpts[10]='-Dquarkus.log.category."okhttp3.logging.HttpLoggingInterceptor".level='"$(
         # shellcheck disable=SC2015
         [ "$E2E_LOG_OPERATOR_HTTP" = true ] && echo TRACE || echo INFO)" \
-      --set-string developer.extraOpts[10]='-Dquarkus.log.category."stackgres-extensions-cache".level=DEBUG' \
+      --set-string developer.extraOpts[11]='-Dquarkus.log.category."stackgres-extensions-cache".level=DEBUG' \
+      --set-string developer.extraOpts[12]='-Dquarkus.log.category."io.stackgres.operator.conciliation".level=TRACE' \
       --set extensions.cache.enabled="$(
         # shellcheck disable=SC2015
         [ "$EXTENSIONS_CACHE_ENABLED" = true ] && echo true || echo false)" \
@@ -739,10 +832,30 @@ upgrade_operator_from_private_repository() {
 }
 
 before_operator_install_or_upgrade() {
+  if [ "x$E2E_ALLOWED_NAMESPACES" != x ]
+  then
+    printf %s "$E2E_ALLOWED_NAMESPACES" | tr ' ' '\n' | xargs -I @ALLOWED_NAMESPACE "$SHELL" $SHELL_XTRACE -c \
+      "kubectl create ns '@ALLOWED_NAMESPACE' 2>/dev/null || kubectl get ns '@ALLOWED_NAMESPACE'" >/dev/null
+    K8S_EXCLUDED_NAMESPACES="$K8S_EXCLUDED_NAMESPACES $E2E_ALLOWED_NAMESPACES"
+  fi
   setup_extensions_secrets
 }
 
 after_operator_install_or_upgrade() {
+  kubectl label namespace "$OPERATOR_NAMESPACE" --overwrite monitoring=true
+  wait_services_available "$OPERATOR_NAMESPACE" 1 '^stackgres-operator$'
+  wait_until eval 'kubectl get validatingwebhookconfigurations.admissionregistration.k8s.io stackgres-operator -o json \
+    | jq ".webhooks|any(.clientConfig.caBundle == null)" \
+    | grep -qxF false'
+  wait_until eval 'kubectl get mutatingwebhookconfigurations.admissionregistration.k8s.io stackgres-operator -o json \
+    | jq ".webhooks|any(.clientConfig.caBundle == null)" \
+    | grep -qxF false'
+  wait_services_available "$OPERATOR_NAMESPACE" 1 '^stackgres-restapi$'
+  wait_until eval 'kubectl get job -n "$OPERATOR_NAMESPACE" -l "app=StackGresConfig" -o name | wc -l | grep -qxF 0'
+  if [ "$OPERATOR_FROM" != true ] && [ "$EXTENSIONS_CACHE_ENABLED" = true ]
+  then
+    wait_services_available "$OPERATOR_NAMESPACE" 1 '^stackgres-operator-extensions-cache$'
+  fi
   set_max_length
   update_ui_clear_password
 }
@@ -753,7 +866,20 @@ update_ui_clear_password() {
     | jq -r '.authentication.password | select(. != null)' | tr -d '\n')"
   if [ -n "$PASSWORD" ]
   then
-    kubectl patch secret -n "$OPERATOR_NAMESPACE" stackgres-restapi -p '{"data":{"clearPassword":"'"$(printf '%s' "$PASSWORD" | base64)"'"}}'
+    local OPERATOR_VERSION
+    OPERATOR_VERSION="$(get_installed_operator_version)"
+    if [ -n "$OPERATOR_VERSION" ] && [ "$OPERATOR_VERSION" != "$STACKGRES_VERSION" ]
+    then
+      local VERSION_AS_NUMBER VERSION_1_6_0_BETA_1_AS_NUMBER
+      VERSION_AS_NUMBER="$(get_version_as_number "$OPERATOR_VERSION")"
+      VERSION_1_6_0_BETA_1_AS_NUMBER="$(get_version_as_number 1.6.0-beta1)"
+      if [ "$VERSION_AS_NUMBER" -lt "$VERSION_1_6_0_BETA_1_AS_NUMBER" ]
+      then
+        kubectl patch secret -n "$OPERATOR_NAMESPACE" stackgres-restapi -p '{"data":{"clearPassword":"'"$(printf '%s' "$PASSWORD" | base64)"'"}}'
+        return
+      fi
+    fi
+    kubectl patch secret -n "$OPERATOR_NAMESPACE" stackgres-restapi-admin -p '{"data":{"clearPassword":"'"$(printf '%s' "$PASSWORD" | base64)"'"}}'
   fi
 }
 
@@ -782,7 +908,10 @@ reinstall_operator_if_not_as_expected() {
     return
   fi
   if ! helm get notes stackgres-operator --namespace "$OPERATOR_NAMESPACE" > /dev/null 2>&1 \
-    || [ "$(get_installed_operator_values)" != "$(cat "$TARGET_PATH/operator-values.json")" ]
+    || {
+      [ "$(get_installed_operator_values)" != "$(cat "$TARGET_PATH/operator-values.json")" ] \
+      && [ "$E2E_FORCE_REUSE_OPERATOR" != true ]
+    }
   then
     if ! helm get notes stackgres-operator --namespace "$OPERATOR_NAMESPACE" > /dev/null 2>&1
     then
@@ -808,8 +937,10 @@ reinstall_operator_if_not_as_expected() {
     if [ -f "$TARGET_PATH/operator-values.json" ]
     then
       install_operator_only -f "$TARGET_PATH/operator-values.json"
+      store_operator_values
     else
       install_operator_only
+      store_operator_values
     fi
   fi
 }
@@ -828,10 +959,13 @@ load_operator_images_from() {
 get_operator_images() {
   [ -n "$1" ]
   local VERSION="$1"
-  local VERSION_AS_NUMBER VERSION_1_0_0_ALPHA1 VERSION_1_0_0_ALPHA2
+  local VERSION_AS_NUMBER VERSION_1_0_0_ALPHA1 VERSION_1_0_0_ALPHA2 VERSION_1_12_0_ALPHA1 VERSION_1_13_0_ALPHA1 VERSION_1_14_0_ALPHA1
   VERSION_AS_NUMBER="$(get_version_as_number "$VERSION")"
   VERSION_1_0_0_ALPHA1="$(get_version_as_number 1.0.0-alpha1)"
   VERSION_1_0_0_ALPHA2="$(get_version_as_number 1.0.0-alpha2)"
+  VERSION_1_12_0_ALPHA1="$(get_version_as_number 1.12.0-alpha1)"
+  VERSION_1_13_0_ALPHA1="$(get_version_as_number 1.13.0-alpha1)"
+  VERSION_1_14_0_ALPHA1="$(get_version_as_number 1.14.0-alpha1)"
   if [ "$VERSION_AS_NUMBER" -lt "$VERSION_1_0_0_ALPHA1" ]
   then
     get_operator_images_pre_1_0_0_alpha1 "$VERSION"
@@ -839,6 +973,18 @@ get_operator_images() {
   elif [ "$VERSION_AS_NUMBER" -lt "$VERSION_1_0_0_ALPHA2" ]
   then
     get_operator_images_pre_1_0_0_alpha2 "$VERSION"
+    return
+  elif [ "$VERSION_AS_NUMBER" -lt "$VERSION_1_12_0_ALPHA1" ]
+  then
+    get_operator_images_pre_1_12_0_alpha1 "$VERSION"
+    return
+  elif [ "$VERSION_AS_NUMBER" -lt "$VERSION_1_13_0_ALPHA1" ]
+  then
+    get_operator_images_pre_1_13_0_alpha1 "$VERSION"
+    return
+  elif [ "$VERSION_AS_NUMBER" -lt "$VERSION_1_14_0_ALPHA1" ]
+  then
+    get_operator_images_pre_1_14_0_alpha1 "$VERSION"
     return
   fi
   local NATIVE_TAG="$VERSION"
@@ -856,8 +1002,45 @@ get_operator_images() {
   echo "${RESTAPI_IMAGE_NAME%:*}:$TAG"
   echo "${JOBS_IMAGE_NAME%:*}:$TAG"
   echo "${CLUSTER_CONTROLLER_IMAGE_NAME%:*}:$TAG"
-  echo "${DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME%:*}:$TAG"
+  echo "${STREAM_IMAGE_NAME%:*}:${NATIVE_TAG}-jvm"
   echo "${ADMINUI_IMAGE_NAME%:*}:$NATIVE_TAG"
+  echo "${PGLAMBDA_JAVASCRIPT_IMAGE_NAME%:*}:${NATIVE_TAG}-javascript"
+}
+
+get_operator_images_pre_1_14_0_alpha1() {
+  [ -n "$1" ]
+  local VERSION="$1"
+  echo "${OPERATOR_IMAGE_NAME%:*}:$VERSION"
+  echo "${RESTAPI_IMAGE_NAME%:*}:$VERSION"
+  echo "${JOBS_IMAGE_NAME%:*}:$VERSION"
+  echo "${CLUSTER_CONTROLLER_IMAGE_NAME%:*}:$VERSION"
+  echo "${DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME%:*}:$VERSION"
+  echo "${STREAM_IMAGE_NAME%:*}:$VERSION-jvm"
+  echo "${ADMINUI_IMAGE_NAME%:*}:$VERSION"
+  echo "${PGLAMBDA_JAVASCRIPT_IMAGE_NAME%:*}:${VERSION}-javascript"
+}
+
+get_operator_images_pre_1_13_0_alpha1() {
+  [ -n "$1" ]
+  local VERSION="$1"
+  echo "${OPERATOR_IMAGE_NAME%:*}:$VERSION"
+  echo "${RESTAPI_IMAGE_NAME%:*}:$VERSION"
+  echo "${JOBS_IMAGE_NAME%:*}:$VERSION"
+  echo "${CLUSTER_CONTROLLER_IMAGE_NAME%:*}:$VERSION"
+  echo "${DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME%:*}:$VERSION"
+  echo "${STREAM_IMAGE_NAME%:*}:$VERSION-jvm"
+  echo "${ADMINUI_IMAGE_NAME%:*}:$VERSION"
+}
+
+get_operator_images_pre_1_12_0_alpha1() {
+  [ -n "$1" ]
+  local VERSION="$1"
+  echo "${OPERATOR_IMAGE_NAME%:*}:$VERSION"
+  echo "${RESTAPI_IMAGE_NAME%:*}:$VERSION"
+  echo "${JOBS_IMAGE_NAME%:*}:$VERSION"
+  echo "${CLUSTER_CONTROLLER_IMAGE_NAME%:*}:$VERSION"
+  echo "${DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME%:*}:$VERSION"
+  echo "${ADMINUI_IMAGE_NAME%:*}:$VERSION"
 }
 
 get_operator_images_pre_1_0_0_alpha2() {
@@ -866,6 +1049,7 @@ get_operator_images_pre_1_0_0_alpha2() {
   echo "${OPERATOR_IMAGE_NAME%:*}:$VERSION"
   echo "${RESTAPI_IMAGE_NAME%:*}:$VERSION"
   echo "${JOBS_IMAGE_NAME%:*}:$VERSION"
+  echo "${CLUSTER_CONTROLLER_IMAGE_NAME%:*}:$VERSION"
   echo "${DISTRIBUTEDLOGS_CONTROLLER_IMAGE_NAME%:*}:$VERSION"
   echo "${ADMINUI_IMAGE_NAME%:*}:$VERSION"
 }
@@ -969,6 +1153,7 @@ traceable_get_component_images() {
   COMPONENT_FLUENTD_VERSIONS="$(get_component_versions "$VERSION" fluentd)"
   COMPONENT_KUBECTL_VERSIONS="$(get_component_versions "$VERSION" kubectl)"
   COMPONENT_BABELFISH_COMPASS_VERSIONS="$(get_component_versions "$VERSION" babelfish-compass)"
+  COMPONENT_OTEL_COLLECTOR_VERSIONS="$(get_component_versions "$VERSION" otel-collector)"
   local VERSION
   local SUBVERSION
   for VERSION in $COMPONENT_PATRONI_VERSIONS
@@ -1020,6 +1205,10 @@ traceable_get_component_images() {
   do
     echo "quay.io/ongres/babelfish-compass:v$VERSION"
   done
+  for VERSION in $COMPONENT_OTEL_COLLECTOR_VERSIONS
+  do
+    echo "quay.io/ongres/otel-collector:v$VERSION"
+  done
 }
 
 get_pom_url() {
@@ -1047,7 +1236,8 @@ traceable_get_component_versions() {
   else
     curl -f -s "$(get_versions_url "$VERSION")"
   fi
-  ) | grep -F "$COMPONENT=" \
+  ) | tr -d " " | sed -e :a -e '/\\$/N; s/\\\n//; ta' \
+    | grep -F "$COMPONENT=" \
     | cut -d '=' -f 2 | tr ',' '\n' \
     | sort -t ' ' -k 1V,1V
 }
@@ -1272,7 +1462,7 @@ get_operator_image_repository() {
   fi
 
   local VERSION_AS_NUMBER VERSION_1_4_3
-  VERSION_AS_NUMBER="$(get_version_as_number 1.4.3)"
+  VERSION_AS_NUMBER="$(get_version_as_number "$VERSION")"
   VERSION_1_4_3="$(get_version_as_number 1.4.3)"
 
   if [ "$VERSION_AS_NUMBER" -le "$VERSION_1_4_3" ]
@@ -1288,7 +1478,7 @@ get_operator_image_tag() {
   [ -n "$1" ]
   local VERSION="$1"
   local VERSION_AS_NUMBER VERSION_0_9_5 VERSION_1_0_0_ALPHA1 VERSION_1_0_0_ALPHA2
-  VERSION_AS_NUMBER="$(get_version_as_number "$1")"
+  VERSION_AS_NUMBER="$(get_version_as_number "$VERSION")"
   VERSION_0_9_5="$(get_version_as_number 0.9.5)"
   VERSION_1_0_0_ALPHA1="$(get_version_as_number 1.0.0-alpha1)"
   VERSION_1_0_0_ALPHA2="$(get_version_as_number 1.0.0-alpha2)"
@@ -1499,6 +1689,22 @@ get_sgdbops_name() {
   get_cr_name "$1" sgdbops.stackgres.io
 }
 
+get_sgshardedcluster_name() {
+  get_cr_name "$1" sgshardedclusters.stackgres.io
+}
+
+get_sgshardedbackup_name() {
+  get_cr_name "$1" sgshardedbackups.stackgres.io
+}
+
+get_sgshardeddbops_name() {
+  get_cr_name "$1" sgshardeddbops.stackgres.io
+}
+
+get_sgstreams_name() {
+  get_cr_name "$1" sgstreams.stackgres.io
+}
+
 get_cr_name() {
   [ -n "$1" ] && [ -n "$2" ]
   if [ "$E2E_SET_MAX_LENGTH_NAMES" = true ]
@@ -1537,5 +1743,105 @@ set_max_length() {
 	else . end' \
         | kubectl patch crd "$CRD_NAME" --type merge -p "$(cat)"
     done
+  fi
+}
+
+set_helm_values_for_developer() {
+  cat << EOF
+    --set-string developer.extraEnv.SG_IMAGE_CLUSTER_CONTROLLER=${CLUSTER_CONTROLLER_IMAGE_NAME} 
+    --set-string developer.extraOpts[0]=-Dquarkus.log.category."io.stackgres".level=DEBUG 
+    --set-string developer.extraOpts[1]=-Dquarkus.log.category."io.quarkus".level=INFO 
+    --set-string developer.extraOpts[2]=-Dquarkus.log.category."io.stackgres.collector".level=TRACE 
+    --set-string developer.extraOpts[3]=-Dquarkus.log.category."io.stackgres.dbops".level=TRACE 
+    --set-string developer.extraOpts[4]=-Dquarkus.log.category."io.stackgres.backup".level=TRACE 
+    --set-string developer.extraOpts[5]=-Dquarkus.log.category."io.stackgres.wal-g".level=INFO 
+    --set-string developer.extraOpts[6]=-Dquarkus.log.category."io.stackgres.patroni".level=TRACE 
+    --set-string developer.extraOpts[7]=-Dquarkus.log.category."io.stackgres.fluent-bit".level=TRACE 
+    --set-string developer.extraOpts[8]=-Dquarkus.log.category."io.stackgres.fluentd".level=TRACE 
+    --set-string developer.extraOpts[9]=-Dquarkus.log.category."io.stackgres.prometheus-postgres-exporter".level=TRACE 
+    --set-string developer.extraOpts[10]=-Dquarkus.log.category."okhttp3.logging.HttpLoggingInterceptor".level=$(
+      # shellcheck disable=SC2015
+      [ "$E2E_LOG_OPERATOR_HTTP" = true ] && echo TRACE || echo INFO) 
+    --set-string developer.extraOpts[11]=-Dquarkus.log.category."stackgres-extensions-cache".level=DEBUG 
+    --set-string developer.extraOpts[12]=-Dquarkus.log.category."io.stackgres.operator.conciliation".level=TRACE 
+EOF
+  if [ -n "$E2E_EXTRA_MOUNT_BUILD_PATH" ]
+  then
+    cat << EOF
+    --set-string developer.patches.operator.volumes[0].name=app 
+    --set-string developer.patches.operator.volumes[0].hostPath.path=$(realpath "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/operator/target/quarkus-app) 
+    --set-string developer.patches.operator.volumeMounts[0].name=app 
+    --set-string developer.patches.operator.volumeMounts[0].mountPath=/app/app 
+    --set-string developer.patches.operator.volumeMounts[0].subPath=app 
+    --set-string developer.patches.operator.volumeMounts[1].name=app 
+    --set-string developer.patches.operator.volumeMounts[1].mountPath=/app/lib 
+    --set-string developer.patches.operator.volumeMounts[1].subPath=lib 
+    --set-string developer.patches.operator.volumeMounts[2].name=app 
+    --set-string developer.patches.operator.volumeMounts[2].mountPath=/app/quarkus 
+    --set-string developer.patches.operator.volumeMounts[2].subPath=quarkus 
+    --set-string developer.patches.operator.volumeMounts[3].name=app 
+    --set-string developer.patches.operator.volumeMounts[3].mountPath=/app/quarkus-run.jar 
+    --set-string developer.patches.operator.volumeMounts[3].subPath=quarkus-run.jar 
+    --set-string developer.patches.restapi.volumes[0].name=app 
+    --set-string developer.patches.restapi.volumes[0].hostPath.path=$(realpath "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/restapi/target/quarkus-app) 
+    --set-string developer.patches.restapi.volumeMounts[0].name=app 
+    --set-string developer.patches.restapi.volumeMounts[0].mountPath=/app/app 
+    --set-string developer.patches.restapi.volumeMounts[0].subPath=app 
+    --set-string developer.patches.restapi.volumeMounts[1].name=app 
+    --set-string developer.patches.restapi.volumeMounts[1].mountPath=/app/lib 
+    --set-string developer.patches.restapi.volumeMounts[1].subPath=lib 
+    --set-string developer.patches.restapi.volumeMounts[2].name=app 
+    --set-string developer.patches.restapi.volumeMounts[2].mountPath=/app/quarkus 
+    --set-string developer.patches.restapi.volumeMounts[2].subPath=quarkus 
+    --set-string developer.patches.restapi.volumeMounts[3].name=app 
+    --set-string developer.patches.restapi.volumeMounts[3].mountPath=/app/quarkus-run.jar 
+    --set-string developer.patches.restapi.volumeMounts[3].subPath=quarkus-run.jar 
+    --set-string developer.patches.adminui.volumes[0].name=admin 
+    --set-string developer.patches.adminui.volumes[0].hostPath.path=$(realpath "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/admin-ui/target/public) 
+    --set-string developer.patches.adminui.volumeMounts[0].name=admin 
+    --set-string developer.patches.adminui.volumeMounts[0].mountPath=/opt/app-root/src/admin 
+    --set-string developer.patches.jobs.volumes[0].name=app 
+    --set-string developer.patches.jobs.volumes[0].hostPath.path=$(realpath "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/jobs/target/quarkus-app) 
+    --set-string developer.patches.jobs.volumeMounts[0].name=app 
+    --set-string developer.patches.jobs.volumeMounts[0].mountPath=/app/app 
+    --set-string developer.patches.jobs.volumeMounts[0].subPath=app 
+    --set-string developer.patches.jobs.volumeMounts[1].name=app 
+    --set-string developer.patches.jobs.volumeMounts[1].mountPath=/app/lib 
+    --set-string developer.patches.jobs.volumeMounts[1].subPath=lib 
+    --set-string developer.patches.jobs.volumeMounts[2].name=app 
+    --set-string developer.patches.jobs.volumeMounts[2].mountPath=/app/quarkus 
+    --set-string developer.patches.jobs.volumeMounts[2].subPath=quarkus 
+    --set-string developer.patches.jobs.volumeMounts[3].name=app 
+    --set-string developer.patches.jobs.volumeMounts[3].mountPath=/app/quarkus-run.jar 
+    --set-string developer.patches.jobs.volumeMounts[3].subPath=quarkus-run.jar 
+    --set-string developer.patches.clusterController.volumes[0].name=app 
+    --set-string developer.patches.clusterController.volumes[0].hostPath.path=$(realpath "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/cluster-controller/target/quarkus-app) 
+    --set-string developer.patches.clusterController.volumeMounts[0].name=app 
+    --set-string developer.patches.clusterController.volumeMounts[0].mountPath=/app/app 
+    --set-string developer.patches.clusterController.volumeMounts[0].subPath=app 
+    --set-string developer.patches.clusterController.volumeMounts[1].name=app 
+    --set-string developer.patches.clusterController.volumeMounts[1].mountPath=/app/lib 
+    --set-string developer.patches.clusterController.volumeMounts[1].subPath=lib 
+    --set-string developer.patches.clusterController.volumeMounts[2].name=app 
+    --set-string developer.patches.clusterController.volumeMounts[2].mountPath=/app/quarkus 
+    --set-string developer.patches.clusterController.volumeMounts[2].subPath=quarkus 
+    --set-string developer.patches.clusterController.volumeMounts[3].name=app 
+    --set-string developer.patches.clusterController.volumeMounts[3].mountPath=/app/quarkus-run.jar 
+    --set-string developer.patches.clusterController.volumeMounts[3].subPath=quarkus-run.jar 
+    --set-string developer.patches.stream.volumes[0].name=app 
+    --set-string developer.patches.stream.volumes[0].hostPath.path=$(realpath "$E2E_EXTRA_MOUNT_BUILD_PATH"/stackgres-k8s/src/stream/target/quarkus-app) 
+    --set-string developer.patches.stream.volumeMounts[0].name=app 
+    --set-string developer.patches.stream.volumeMounts[0].mountPath=/app/app 
+    --set-string developer.patches.stream.volumeMounts[0].subPath=app 
+    --set-string developer.patches.stream.volumeMounts[1].name=app 
+    --set-string developer.patches.stream.volumeMounts[1].mountPath=/app/lib 
+    --set-string developer.patches.stream.volumeMounts[1].subPath=lib 
+    --set-string developer.patches.stream.volumeMounts[2].name=app 
+    --set-string developer.patches.stream.volumeMounts[2].mountPath=/app/quarkus 
+    --set-string developer.patches.stream.volumeMounts[2].subPath=quarkus 
+    --set-string developer.patches.stream.volumeMounts[3].name=app 
+    --set-string developer.patches.stream.volumeMounts[3].mountPath=/app/quarkus-run.jar 
+    --set-string developer.patches.stream.volumeMounts[3].subPath=quarkus-run.jar 
+EOF
   fi
 }

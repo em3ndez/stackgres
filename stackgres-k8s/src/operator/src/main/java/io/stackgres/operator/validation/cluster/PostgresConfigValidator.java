@@ -14,31 +14,33 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.stackgres.common.ErrorType;
-import io.stackgres.common.OperatorProperty;
 import io.stackgres.common.StackGresComponent;
 import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.StackGresVersion;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
-import io.stackgres.common.crd.sgcluster.StackGresClusterConfiguration;
+import io.stackgres.common.crd.sgcluster.StackGresClusterConfigurations;
 import io.stackgres.common.crd.sgcluster.StackGresClusterPostgres;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
 import io.stackgres.common.crd.sgpgconfig.StackGresPostgresConfig;
 import io.stackgres.common.resource.CustomResourceFinder;
 import io.stackgres.operator.common.StackGresClusterReview;
-import io.stackgres.operator.configuration.OperatorPropertyContext;
+import io.stackgres.operator.validation.AbstractReferenceValidator;
 import io.stackgres.operator.validation.ValidationType;
 import io.stackgres.operator.validation.ValidationUtil;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jooq.lambda.Seq;
 import org.jooq.lambda.tuple.Tuple2;
 
 @Singleton
 @ValidationType(ErrorType.INVALID_CR_REFERENCE)
-public class PostgresConfigValidator implements ClusterValidator {
+public class PostgresConfigValidator
+    extends AbstractReferenceValidator<
+      StackGresCluster, StackGresClusterReview, StackGresPostgresConfig>
+    implements ClusterValidator {
 
   private static final String PG_14_CREATE_CONCURRENT_INDEX_BUG =
       "Please, use PostgreSQL 14.4 since it fixes an issue"
@@ -60,30 +62,28 @@ public class PostgresConfigValidator implements ClusterValidator {
   private final String errorCrReferencerUri;
   private final String errorPostgresMismatchUri;
   private final String errorForbiddenUpdateUri;
-  private final int timeout;
 
   @Inject
   public PostgresConfigValidator(
-      CustomResourceFinder<StackGresPostgresConfig> configFinder,
-      OperatorPropertyContext operatorPropertyContext) {
-    this(configFinder, ValidationUtil.SUPPORTED_POSTGRES_VERSIONS,
-        operatorPropertyContext);
+      CustomResourceFinder<StackGresPostgresConfig> configFinder) {
+    this(configFinder, ValidationUtil.SUPPORTED_POSTGRES_VERSIONS);
   }
 
   public PostgresConfigValidator(
       CustomResourceFinder<StackGresPostgresConfig> configFinder,
       Map<StackGresComponent, Map<StackGresVersion, List<String>>>
-          orderedSupportedPostgresVersions,
-      OperatorPropertyContext operatorPropertyContext) {
+          orderedSupportedPostgresVersions) {
+    super(configFinder);
     this.configFinder = configFinder;
     this.supportedPostgresVersions = orderedSupportedPostgresVersions;
     this.errorCrReferencerUri = ErrorType.getErrorTypeUri(ErrorType.INVALID_CR_REFERENCE);
     this.errorPostgresMismatchUri = ErrorType.getErrorTypeUri(ErrorType.PG_VERSION_MISMATCH);
     this.errorForbiddenUpdateUri = ErrorType.getErrorTypeUri(ErrorType.FORBIDDEN_CR_UPDATE);
-    this.timeout = operatorPropertyContext.getInt(OperatorProperty.LOCK_TIMEOUT);
   }
 
   @Override
+  @SuppressFBWarnings(value = "SF_SWITCH_NO_DEFAULT",
+      justification = "False positive")
   public void validate(StackGresClusterReview review) throws ValidationFailed {
     StackGresCluster cluster = review.getRequest().getObject();
 
@@ -96,20 +96,23 @@ public class PostgresConfigValidator implements ClusterValidator {
         .map(StackGresClusterPostgres::getVersion)
         .orElse(null);
     String pgConfig = Optional.of(cluster.getSpec())
-        .map(StackGresClusterSpec::getConfiguration)
-        .map(StackGresClusterConfiguration::getPostgresConfig)
+        .map(StackGresClusterSpec::getConfigurations)
+        .map(StackGresClusterConfigurations::getSgPostgresConfig)
         .orElse(null);
 
-    checkIfProvided(givenPgVersion, "postgres version");
-    checkIfProvided(pgConfig, "sgPostgresConfig");
+    if (givenPgVersion == null || pgConfig == null) {
+      return;
+    }
 
-    if (givenPgVersion != null && !isPostgresVersionSupported(cluster, givenPgVersion)) {
+    if (!isPostgresVersionSupported(cluster, givenPgVersion)) {
       final String message = "Unsupported postgres version " + givenPgVersion
           + ".  Supported postgres versions are: "
           + Seq.seq(supportedPostgresVersions.get(getPostgresFlavorComponent(cluster)))
           .toString(", ");
       fail(errorPostgresMismatchUri, message);
     }
+
+    super.validate(review);
 
     String givenMajorVersion = getPostgresFlavorComponent(cluster).get(cluster)
         .getMajorVersion(givenPgVersion);
@@ -134,7 +137,7 @@ public class PostgresConfigValidator implements ClusterValidator {
               "postgres flavor can not be changed");
         }
 
-        String oldPgConfig = oldCluster.getSpec().getConfiguration().getPostgresConfig();
+        String oldPgConfig = oldCluster.getSpec().getConfigurations().getSgPostgresConfig();
         if (!oldPgConfig.equals(pgConfig)) {
           validateAgainstConfiguration(givenMajorVersion, pgConfig, namespace);
         }
@@ -161,7 +164,7 @@ public class PostgresConfigValidator implements ClusterValidator {
 
         if (!oldPgVersion.equals(givenPgVersion)
             && !(
-                StackGresUtil.isLocked(cluster, timeout)
+                StackGresUtil.isLocked(cluster)
                 && username != null
                 && isServiceAccountUsername(username)
                 && Objects.equals(
@@ -189,20 +192,14 @@ public class PostgresConfigValidator implements ClusterValidator {
         .findByNameAndNamespace(pgConfig, namespace);
 
     if (postgresConfigOpt.isPresent()) {
-
       StackGresPostgresConfig postgresConfig = postgresConfigOpt.get();
       String pgVersion = postgresConfig.getSpec().getPostgresVersion();
 
       if (!pgVersion.equals(givenMajorVersion)) {
         final String message = "Invalid postgres version, must be "
-            + pgVersion + " to use sgPostgresConfig " + pgConfig;
+            + pgVersion + " to use SGPostgresConfig " + pgConfig;
         fail(errorPostgresMismatchUri, message);
       }
-
-    } else {
-
-      final String message = "Invalid sgPostgresConfig value " + pgConfig;
-      fail(errorCrReferencerUri, message);
     }
   }
 
@@ -210,6 +207,28 @@ public class PostgresConfigValidator implements ClusterValidator {
     return supportedPostgresVersions.get(getPostgresFlavorComponent(cluster))
         .get(StackGresVersion.getStackGresVersion(cluster))
         .contains(version);
+  }
+
+  @Override
+  protected Class<StackGresPostgresConfig> getReferenceClass() {
+    return StackGresPostgresConfig.class;
+  }
+
+  @Override
+  protected String getReference(StackGresCluster resource) {
+    return Optional.ofNullable(resource.getSpec().getConfigurations())
+        .map(StackGresClusterConfigurations::getSgPostgresConfig)
+        .orElse(null);
+  }
+
+  @Override
+  protected boolean checkReferenceFilter(StackGresClusterReview review) {
+    return !Optional.ofNullable(review.getRequest().getDryRun()).orElse(false);
+  }
+
+  @Override
+  protected void onNotFoundReference(String message) throws ValidationFailed {
+    fail(errorCrReferencerUri, message);
   }
 
 }

@@ -50,7 +50,7 @@
         "type": "citus",
         "database": "citus",
         "postgres": {
-          "version": "13.4",
+          "version": "13.5",
           "flavor": "vanilla"
         },
         "postgresServices": {
@@ -77,21 +77,18 @@
         "coordinator": {
           "managedSql": {
             "scripts": [{
-              "id": 0,
-              "sgScript": "stackgres-default"
-            },{
-              "id": 1,
+              "id": 10,
               "sgScript": "test1"
             },{
-              "id": 2,
+              "id": 11,
               "sgScript": "test2"
             },{
-              "id": 3,
+              "id": 12,
               "sgScript": "test3"
             }]
           },
           "instances": 1,
-          "sgInstanceProfile": "size-xs",
+          "sgInstanceProfile": "size-s",
           "configurations": {
             "sgPostgresConfig": "postgresconf",
             "sgPoolingConfig": "pgbouncerconf"
@@ -106,22 +103,19 @@
         "shards": {
           "managedSql": {
             "scripts": [{
-              "id": 0,
-              "sgScript": "stackgres-default"
-            },{
-              "id": 1,
+              "id": 10,
               "sgScript": "test1"
             },{
-              "id": 2,
+              "id": 11,
               "sgScript": "test2"
             },{
-              "id": 3,
+              "id": 12,
               "sgScript": "test3"
             }]
           },
           "clusters": 2,
           "instancesPerCluster": 1,
-          "sgInstanceProfile": "size-xs",
+          "sgInstanceProfile": "size-s",
           "configurations": {
             "sgPostgresConfig": "postgresconf",
             "sgPoolingConfig": "pgbouncerconf"
@@ -131,7 +125,22 @@
               "size": "5Gi",
               "storageClass": "standard"
             }
-          }
+          },
+          "overrides":[{
+            "index": 1,
+            "managedSql": {
+              "scripts": [{
+                "id": 10,
+                "sgScript": "test1"
+              },{
+                "id": 11,
+                "sgScript": "test2"
+              },{
+                "id": 12,
+                "sgScript": "test3"
+              }]
+            }
+          }]
         },
         "prometheusAutobind": "true"
       },

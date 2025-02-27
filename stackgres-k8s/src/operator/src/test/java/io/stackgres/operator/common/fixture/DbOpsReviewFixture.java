@@ -5,10 +5,10 @@
 
 package io.stackgres.operator.common.fixture;
 
-import io.stackgres.operator.common.DbOpsReview;
-import io.stackgres.operator.common.DbOpsReviewBuilder;
+import io.stackgres.operator.common.StackGresDbOpsReview;
+import io.stackgres.operator.common.StackGresDbOpsReviewBuilder;
 
-public class DbOpsReviewFixture extends VersionedFixture<DbOpsReview> {
+public class DbOpsReviewFixture extends VersionedFixture<StackGresDbOpsReview> {
 
   public static DbOpsReviewFixture fixture() {
     return new DbOpsReviewFixture();
@@ -37,6 +37,12 @@ public class DbOpsReviewFixture extends VersionedFixture<DbOpsReview> {
     return this;
   }
 
+  public DbOpsReviewFixture loadSamplingCreate() {
+    fixture = readFromJson(
+        STACKGRES_DB_OPS_ADMISSION_REVIEW_SAMPLING_CREATE_JSON);
+    return this;
+  }
+
   public DbOpsReviewFixture loadRepackCreate() {
     fixture = readFromJson(
         STACKGRES_DB_OPS_ADMISSION_REVIEW_REPACK_CREATE_JSON);
@@ -55,8 +61,13 @@ public class DbOpsReviewFixture extends VersionedFixture<DbOpsReview> {
     return this;
   }
 
-  public DbOpsReviewBuilder getBuilder() {
-    return new DbOpsReviewBuilder(fixture);
+  public DbOpsReviewFixture loadDelete() {
+    fixture = readFromJson(STACKGRES_DB_OPS_ADMISSION_REVIEW_DELETE_JSON);
+    return this;
+  }
+
+  public StackGresDbOpsReviewBuilder getBuilder() {
+    return new StackGresDbOpsReviewBuilder(fixture);
   }
 
 }

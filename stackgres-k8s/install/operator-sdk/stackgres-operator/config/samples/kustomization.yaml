@@ -5,9 +5,13 @@ resources:
 - SGInstanceProfile.yaml
 - SGPostgresConfig.yaml
 - SGPoolingConfig.yaml
+- SGBackup.yaml
 - SGDistributedLogs.yaml
+- SGDbOps.yaml
 - SGObjectStorage.yaml
 - SGScript.yaml
-- SGBackup.yaml
-- SGDbOps.yaml
+- SGShardedCluster.yaml
+- SGShardedBackup.yaml
+- SGShardedDbOps.yaml
+- SGStream.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

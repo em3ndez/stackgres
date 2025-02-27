@@ -23,7 +23,7 @@ import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgcluster.StackGresClusterBackupConfiguration;
 import io.stackgres.common.fixture.Fixtures;
 import io.stackgres.common.resource.CustomResourceFinder;
-import io.stackgres.operator.common.BackupReview;
+import io.stackgres.operator.common.StackGresBackupReview;
 import io.stackgres.operator.common.fixture.AdmissionReviewFixtures;
 import io.stackgres.operatorframework.admissionwebhook.Operation;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
@@ -57,15 +57,14 @@ class ClusterReferenceValidatorTest {
 
   @Test
   void givenAClusterWithNoBackupConfigReferenceOnCreation_shouldFail() throws ValidationFailed {
-
-    final BackupReview review = AdmissionReviewFixtures.backup().loadCreate().get();
-    review.getRequest().getObject().getStatus().setBackupConfig(null);
+    final StackGresBackupReview review = AdmissionReviewFixtures.backup().loadCreate().get();
+    review.getRequest().getObject().getStatus().setSgBackupConfig(null);
 
     String clusterName =
         review.getRequest().getObject().getSpec().getSgCluster();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
-    cluster.getSpec().getConfiguration().setBackups(null);
+    cluster.getSpec().getConfigurations().setBackups(null);
 
     when(clusterFinder.findByNameAndNamespace(clusterName, namespace))
         .thenReturn(Optional.of(cluster));
@@ -76,19 +75,18 @@ class ClusterReferenceValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Cluster " + clusterName + " has no backup configuration", resultMessage);
+    assertEquals("SGCluster " + clusterName + " has no backup configuration", resultMessage);
   }
 
   @Test
   void givenValidStackGresReferenceOnCreation_shouldNotFail() throws ValidationFailed {
-
-    final BackupReview review = AdmissionReviewFixtures.backup().loadCreate().get();
-    review.getRequest().getObject().getStatus().setBackupConfig(null);
+    final StackGresBackupReview review = AdmissionReviewFixtures.backup().loadCreate().get();
+    review.getRequest().getObject().getStatus().setSgBackupConfig(null);
 
     String clusterName =
         review.getRequest().getObject().getSpec().getSgCluster();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
-    cluster.getSpec().getConfiguration().setBackups(Arrays.asList(backup));
+    cluster.getSpec().getConfigurations().setBackups(Arrays.asList(backup));
 
     when(clusterFinder.findByNameAndNamespace(clusterName, namespace))
         .thenReturn(Optional.of(cluster));
@@ -96,14 +94,12 @@ class ClusterReferenceValidatorTest {
     validator.validate(review);
 
     verify(clusterFinder).findByNameAndNamespace(eq(clusterName), eq(namespace));
-
   }
 
   @Test
   void givenComposedStackGresReferenceOnCreationWithRequiredStatus_shouldNotFail()
       throws ValidationFailed {
-
-    final BackupReview review = AdmissionReviewFixtures.backup().loadCreate().get();
+    final StackGresBackupReview review = AdmissionReviewFixtures.backup().loadCreate().get();
     review.getRequest().getObject().getSpec().setSgCluster(
         StackGresUtil.getRelativeId(
             cluster.getMetadata().getName(),
@@ -121,9 +117,8 @@ class ClusterReferenceValidatorTest {
 
   @Test
   void giveInvalidStackGresReferenceOnCreation_shouldFail() {
-
-    final BackupReview review = AdmissionReviewFixtures.backup().loadCreate().get();
-    review.getRequest().getObject().getStatus().setBackupConfig(null);
+    final StackGresBackupReview review = AdmissionReviewFixtures.backup().loadCreate().get();
+    review.getRequest().getObject().getStatus().setSgBackupConfig(null);
 
     String clusterName =
         review.getRequest().getObject().getSpec().getSgCluster();
@@ -138,7 +133,7 @@ class ClusterReferenceValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Cluster " + clusterName + " not found", resultMessage);
+    assertEquals("SGCluster " + clusterName + " not found", resultMessage);
 
     verify(clusterFinder).findByNameAndNamespace(anyString(), anyString());
   }
@@ -146,8 +141,7 @@ class ClusterReferenceValidatorTest {
   @Test
   void giveInvalidStackGresReferenceOnCreationWithStatusBackupConfig_shouldNotFail()
       throws ValidationFailed {
-
-    final BackupReview review = AdmissionReviewFixtures.backup().loadCreate().get();
+    final StackGresBackupReview review = AdmissionReviewFixtures.backup().loadCreate().get();
 
     String clusterName =
         review.getRequest().getObject().getSpec().getSgCluster();
@@ -160,9 +154,8 @@ class ClusterReferenceValidatorTest {
 
   @Test
   void giveAnAttemptToUpdateReferencedCluster_shouldFail() {
-
-    final BackupReview review = AdmissionReviewFixtures.backup().loadUpdate().get();
-    review.getRequest().getObject().getStatus().setBackupConfig(null);
+    final StackGresBackupReview review = AdmissionReviewFixtures.backup().loadUpdate().get();
+    review.getRequest().getObject().getStatus().setSgBackupConfig(null);
 
     review.getRequest().getObject().getSpec().setSgCluster("test");
 
@@ -172,17 +165,15 @@ class ClusterReferenceValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Backup cluster can not be updated.", resultMessage);
+    assertEquals("Backup sgCluster can not be updated.", resultMessage);
 
     verify(clusterFinder, never()).findByNameAndNamespace(anyString(), anyString());
-
   }
 
   @Test
   void giveAnAttemptToUpdateManagedLifecycle_shouldNotFail() throws ValidationFailed {
-
-    final BackupReview review = AdmissionReviewFixtures.backup().loadUpdate().get();
-    review.getRequest().getObject().getStatus().setBackupConfig(null);
+    final StackGresBackupReview review = AdmissionReviewFixtures.backup().loadUpdate().get();
+    review.getRequest().getObject().getStatus().setSgBackupConfig(null);
 
     review.getRequest().getObject().getSpec().setManagedLifecycle(
         !review.getRequest().getObject().getSpec().getManagedLifecycle());
@@ -190,19 +181,16 @@ class ClusterReferenceValidatorTest {
     validator.validate(review);
 
     verify(clusterFinder, never()).findByNameAndNamespace(anyString(), anyString());
-
   }
 
   @Test
   void giveAnAttemptToDelete_shouldNotFail() throws ValidationFailed {
-
-    final BackupReview review = AdmissionReviewFixtures.backup().loadCreate().get();
+    final StackGresBackupReview review = AdmissionReviewFixtures.backup().loadCreate().get();
     review.getRequest().setOperation(Operation.DELETE);
 
     validator.validate(review);
 
     verify(clusterFinder, never()).findByNameAndNamespace(anyString(), anyString());
-
   }
 
 }

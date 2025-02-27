@@ -7,40 +7,39 @@ package io.stackgres.operator.validation.pooling;
 
 import java.util.Map;
 
-import javax.inject.Inject;
-
 import io.quarkus.test.junit.QuarkusTest;
 import io.stackgres.common.crd.sgpooling.StackGresPoolingConfig;
-import io.stackgres.operator.common.PoolingReview;
+import io.stackgres.operator.common.StackGresPoolingConfigReview;
 import io.stackgres.operator.common.fixture.AdmissionReviewFixtures;
 import io.stackgres.operator.validation.ValidationPipelineTest;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationPipeline;
+import jakarta.inject.Inject;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 @QuarkusTest
 @EnabledIfEnvironmentVariable(named = "QUARKUS_PROFILE", matches = "test")
 public class PoolingValidationPipelineTest
-    extends ValidationPipelineTest<StackGresPoolingConfig, PoolingReview> {
+    extends ValidationPipelineTest<StackGresPoolingConfig, StackGresPoolingConfigReview> {
 
   @Inject
   public PoolingValidationPipeline pipeline;
 
   @Override
-  public PoolingReview getConstraintViolatingReview() {
-    PoolingReview review = getValidReview();
+  public StackGresPoolingConfigReview getConstraintViolatingReview() {
+    StackGresPoolingConfigReview review = getValidReview();
 
     review.getRequest().getObject().getSpec().getPgBouncer().getPgbouncerIni()
-        .setParameters(Map.of());
+        .setPgbouncer(Map.of());
 
     return review;
   }
 
-  private PoolingReview getValidReview() {
+  private StackGresPoolingConfigReview getValidReview() {
     return AdmissionReviewFixtures.poolingConfig().loadCreate().get();
   }
 
   @Override
-  public ValidationPipeline<PoolingReview> getPipeline() {
+  public ValidationPipeline<StackGresPoolingConfigReview> getPipeline() {
     return pipeline;
   }
 }

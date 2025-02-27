@@ -12,19 +12,21 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
 import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.Service;
+import io.fabric8.kubernetes.api.model.ServicePort;
 import io.stackgres.common.PatroniUtil;
 import io.stackgres.common.StringUtil;
 import io.stackgres.common.crd.postgres.service.StackGresPostgresService;
+import io.stackgres.common.crd.postgres.service.StackGresPostgresServiceNodePort;
 import io.stackgres.common.crd.postgres.service.StackGresPostgresServiceType;
+import io.stackgres.common.crd.postgres.service.StackGresPostgresServices;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
-import io.stackgres.common.crd.sgcluster.StackGresClusterPostgresService;
-import io.stackgres.common.crd.sgcluster.StackGresClusterPostgresServices;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSpecAnnotations;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSpecMetadata;
 import io.stackgres.common.fixture.Fixtures;
@@ -39,7 +41,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class PatroniServicesTest {
 
   @Mock
-  private LabelFactoryForCluster<StackGresCluster> labelFactory;
+  private LabelFactoryForCluster labelFactory;
 
   @Mock
   private io.stackgres.operator.conciliation.cluster.StackGresClusterContext context;
@@ -145,6 +147,38 @@ class PatroniServicesTest {
   }
 
   @Test
+  void givenPrimaryServiceHasNodePorts_shouldBeIncluded() {
+    enablePrimaryServiceNodePorts();
+    final Stream<HasMetadata> services = patroniServices.generateResource(context);
+
+    final Service primaryService = getPrimaryService(services);
+
+    final List<Integer> availableNodePorts = primaryService.getSpec()
+            .getPorts()
+            .stream()
+            .map(ServicePort::getNodePort)
+            .toList();
+
+    assertEquals(List.of(30432, 30433), availableNodePorts);
+  }
+
+  @Test
+  void givenReplicaServiceHasNodePorts_shouldBeIncluded() {
+    enableReplicasNodePorts();
+    final Stream<HasMetadata> services = patroniServices.generateResource(context);
+
+    final Service replicaService = getReplicaService(services);
+
+    final List<Integer> availableNodePorts = replicaService.getSpec()
+            .getPorts()
+            .stream()
+            .map(ServicePort::getNodePort)
+            .toList();
+
+    assertEquals(List.of(30432, 30433), availableNodePorts);
+  }
+
+  @Test
   void givenReplicaServiceEnabled_shouldBeIncluded() {
     resetReplicas(true);
 
@@ -224,9 +258,9 @@ class PatroniServicesTest {
   }
 
   private void enablePrimaryService(boolean enabled) {
-    StackGresClusterPostgresServices postgresServices = new StackGresClusterPostgresServices();
-    StackGresClusterPostgresService primaryService = new StackGresClusterPostgresService();
-    StackGresClusterPostgresService replicasService = new StackGresClusterPostgresService();
+    StackGresPostgresServices postgresServices = new StackGresPostgresServices();
+    StackGresPostgresService primaryService = new StackGresPostgresService();
+    StackGresPostgresService replicasService = new StackGresPostgresService();
     primaryService.setEnabled(enabled);
     primaryService.setType("ClusterIP");
     postgresServices.setPrimary(primaryService);
@@ -254,10 +288,25 @@ class PatroniServicesTest {
     defaultCluster.getSpec().getMetadata().getAnnotations().setPrimaryService(annotations);
   }
 
+  private void enablePrimaryServiceNodePorts() {
+    enablePrimaryService(true);
+    final StackGresPostgresService primary = defaultCluster
+            .getSpec()
+            .getPostgresServices()
+            .getPrimary();
+
+    final StackGresPostgresServiceNodePort nodePorts = new StackGresPostgresServiceNodePort();
+    nodePorts.setPgport(30432);
+    nodePorts.setReplicationport(30433);
+    nodePorts.setBabelfish(30434);
+
+    primary.setNodePorts(nodePorts);
+  }
+
   private void resetReplicas(boolean enabled) {
-    StackGresClusterPostgresServices postgresServices = new StackGresClusterPostgresServices();
-    StackGresClusterPostgresService primaryService = new StackGresClusterPostgresService();
-    StackGresClusterPostgresService replicaService = new StackGresClusterPostgresService();
+    StackGresPostgresServices postgresServices = new StackGresPostgresServices();
+    StackGresPostgresService primaryService = new StackGresPostgresService();
+    StackGresPostgresService replicaService = new StackGresPostgresService();
     replicaService.setEnabled(enabled);
     replicaService.setType("ClusterIP");
     postgresServices.setPrimary(primaryService);
@@ -283,6 +332,16 @@ class PatroniServicesTest {
       defaultCluster.getSpec().getMetadata().setAnnotations(new StackGresClusterSpecAnnotations());
     }
     defaultCluster.getSpec().getMetadata().getAnnotations().setReplicasService(annotations);
+  }
+
+  private void enableReplicasNodePorts() {
+    resetReplicas(true);
+    final StackGresPostgresServiceNodePort nodePorts = new StackGresPostgresServiceNodePort();
+    nodePorts.setPgport(30432);
+    nodePorts.setReplicationport(30433);
+    nodePorts.setBabelfish(30434);
+
+    defaultCluster.getSpec().getPostgresServices().getReplicas().setNodePorts(nodePorts);
   }
 
   private Service getPrimaryService(Stream<HasMetadata> services) {

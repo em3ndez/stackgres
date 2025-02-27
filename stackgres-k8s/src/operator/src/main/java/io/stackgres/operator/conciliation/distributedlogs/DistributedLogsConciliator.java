@@ -5,41 +5,29 @@
 
 package io.stackgres.operator.conciliation.distributedlogs;
 
-import java.util.stream.Collectors;
-
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
+import io.fabric8.kubernetes.client.KubernetesClient;
 import io.stackgres.common.crd.sgdistributedlogs.StackGresDistributedLogs;
-import io.stackgres.operator.conciliation.Conciliator;
-import io.stackgres.operator.conciliation.ReconciliationResult;
-import io.stackgres.operator.conciliation.ReconciliationUtil;
+import io.stackgres.common.labels.LabelFactoryForDistributedLogs;
+import io.stackgres.common.resource.CustomResourceFinder;
+import io.stackgres.operator.conciliation.AbstractConciliator;
+import io.stackgres.operator.conciliation.AbstractDeployedResourcesScanner;
+import io.stackgres.operator.conciliation.DeployedResourcesCache;
+import io.stackgres.operator.conciliation.RequiredResourceGenerator;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
-public class DistributedLogsConciliator extends Conciliator<StackGresDistributedLogs> {
-
-  private final DistributedLogsStatusManager distributedLogsStatusManager;
+public class DistributedLogsConciliator extends AbstractConciliator<StackGresDistributedLogs> {
 
   @Inject
-  public DistributedLogsConciliator(DistributedLogsStatusManager distributedLogsStatusManager) {
-    this.distributedLogsStatusManager = distributedLogsStatusManager;
+  public DistributedLogsConciliator(
+      KubernetesClient client,
+      CustomResourceFinder<StackGresDistributedLogs> finder,
+      RequiredResourceGenerator<StackGresDistributedLogs> requiredResourceGenerator,
+      AbstractDeployedResourcesScanner<StackGresDistributedLogs> deployedResourcesScanner,
+      DeployedResourcesCache deployedResourcesCache,
+      LabelFactoryForDistributedLogs labelFactory) {
+    super(client, finder, requiredResourceGenerator, deployedResourcesScanner, deployedResourcesCache);
   }
 
-  @Override
-  public ReconciliationResult evalReconciliationState(StackGresDistributedLogs config) {
-    final ReconciliationResult reconciliationResult = super.evalReconciliationState(config);
-
-    if (distributedLogsStatusManager.isPendingRestart(config)) {
-      reconciliationResult.setDeletions(reconciliationResult.getDeletions().stream()
-          .filter(ReconciliationUtil::isResourceReconciliationNotPausedUntilRestart)
-          .collect(Collectors.toUnmodifiableList()));
-
-      reconciliationResult.setPatches(reconciliationResult.getPatches().stream()
-          .filter(tuple -> ReconciliationUtil
-              .isResourceReconciliationNotPausedUntilRestart(tuple.v2))
-          .collect(Collectors.toUnmodifiableList()));
-    }
-
-    return reconciliationResult;
-  }
 }

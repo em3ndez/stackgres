@@ -96,14 +96,14 @@ class DbOpsStatusManagerTest {
   void completedDbOps_shouldNotUpdateResource() {
     dbOps.setStatus(new StackGresDbOpsStatus());
     dbOps.getStatus().setConditions(List.of(
-        DbOpsStatusCondition.DB_OPS_FALSE_RUNNING.getCondition(),
-        DbOpsStatusCondition.DB_OPS_COMPLETED.getCondition(),
-        DbOpsStatusCondition.DB_OPS_FALSE_FAILED.getCondition()));
+        DbOpsStatusCondition.DBOPS_FALSE_RUNNING.getCondition(),
+        DbOpsStatusCondition.DBOPS_COMPLETED.getCondition(),
+        DbOpsStatusCondition.DBOPS_FALSE_FAILED.getCondition()));
     expectedDbOps.setStatus(new StackGresDbOpsStatus());
     expectedDbOps.getStatus().setConditions(List.of(
-        DbOpsStatusCondition.DB_OPS_FALSE_RUNNING.getCondition(),
-        DbOpsStatusCondition.DB_OPS_COMPLETED.getCondition(),
-        DbOpsStatusCondition.DB_OPS_FALSE_FAILED.getCondition()));
+        DbOpsStatusCondition.DBOPS_FALSE_RUNNING.getCondition(),
+        DbOpsStatusCondition.DBOPS_COMPLETED.getCondition(),
+        DbOpsStatusCondition.DBOPS_FALSE_FAILED.getCondition()));
 
     statusManager.refreshCondition(dbOps);
 
@@ -115,19 +115,45 @@ class DbOpsStatusManagerTest {
   void failedDbOps_shouldNotUpdateResource() {
     dbOps.setStatus(new StackGresDbOpsStatus());
     dbOps.getStatus().setConditions(List.of(
-        DbOpsStatusCondition.DB_OPS_FALSE_RUNNING.getCondition(),
-        DbOpsStatusCondition.DB_OPS_FALSE_COMPLETED.getCondition(),
-        DbOpsStatusCondition.DB_OPS_FAILED.getCondition()));
+        DbOpsStatusCondition.DBOPS_FALSE_RUNNING.getCondition(),
+        DbOpsStatusCondition.DBOPS_FALSE_COMPLETED.getCondition(),
+        DbOpsStatusCondition.DBOPS_FAILED.getCondition()));
     expectedDbOps.setStatus(new StackGresDbOpsStatus());
     expectedDbOps.getStatus().setConditions(List.of(
-        DbOpsStatusCondition.DB_OPS_FALSE_RUNNING.getCondition(),
-        DbOpsStatusCondition.DB_OPS_FALSE_COMPLETED.getCondition(),
-        DbOpsStatusCondition.DB_OPS_FAILED.getCondition()));
+        DbOpsStatusCondition.DBOPS_FALSE_RUNNING.getCondition(),
+        DbOpsStatusCondition.DBOPS_FALSE_COMPLETED.getCondition(),
+        DbOpsStatusCondition.DBOPS_FAILED.getCondition()));
+    expectedDbOps.getStatus().setOpRetries(0);
 
     statusManager.refreshCondition(dbOps);
 
     Assertions.assertEquals(expectedDbOps, dbOps);
-    verify(jobFinder, times(0)).findByNameAndNamespace(any(), any());
+    verify(jobFinder, times(1)).findByNameAndNamespace(any(), any());
+  }
+
+  @Test
+  void failedDbOpsWithCompletedJob_shouldUpdateResource() {
+    dbOps.setStatus(new StackGresDbOpsStatus());
+    dbOps.getStatus().setConditions(List.of(
+        DbOpsStatusCondition.DBOPS_FALSE_RUNNING.getCondition(),
+        DbOpsStatusCondition.DBOPS_FALSE_COMPLETED.getCondition(),
+        DbOpsStatusCondition.DBOPS_FAILED.getCondition().setLastTransitionTime()));
+
+    when(jobFinder.findByNameAndNamespace(any(), any()))
+        .thenReturn(Optional.of(completedJob));
+
+    statusManager.refreshCondition(dbOps);
+
+    assertCondition(
+        DbOpsStatusCondition.DBOPS_FALSE_RUNNING.getCondition(),
+        dbOps.getStatus().getConditions());
+    assertCondition(
+        DbOpsStatusCondition.DBOPS_COMPLETED.getCondition(),
+        dbOps.getStatus().getConditions());
+    assertCondition(
+        DbOpsStatusCondition.DBOPS_FAILED.getCondition(),
+        dbOps.getStatus().getConditions());
+    verify(jobFinder, times(1)).findByNameAndNamespace(any(), any());
   }
 
   @Test
@@ -167,20 +193,20 @@ class DbOpsStatusManagerTest {
 
     Assertions.assertEquals(0, dbOps.getStatus().getOpRetries());
     assertCondition(
-        DbOpsStatusCondition.DB_OPS_FALSE_RUNNING.getCondition(),
+        DbOpsStatusCondition.DBOPS_FALSE_RUNNING.getCondition(),
         dbOps.getStatus().getConditions());
     assertCondition(
-        DbOpsStatusCondition.DB_OPS_FALSE_COMPLETED.getCondition(),
+        DbOpsStatusCondition.DBOPS_COMPLETED.getCondition(),
         dbOps.getStatus().getConditions());
     assertCondition(
-        DbOpsStatusCondition.DB_OPS_FAILED.getCondition(),
+        DbOpsStatusCondition.DBOPS_FAILED.getCondition(),
         dbOps.getStatus().getConditions(),
         "Unexpected failure");
     verify(jobFinder, times(1)).findByNameAndNamespace(any(), any());
   }
 
   @Test
-  void failedJob_shouldUpdateResource() {
+  void failedJob_shouldNotUpdateResource() {
     when(jobFinder.findByNameAndNamespace(any(), any()))
         .thenReturn(Optional.of(failedJob));
 
@@ -188,13 +214,13 @@ class DbOpsStatusManagerTest {
 
     Assertions.assertEquals(0, dbOps.getStatus().getOpRetries());
     assertCondition(
-        DbOpsStatusCondition.DB_OPS_FALSE_RUNNING.getCondition(),
+        DbOpsStatusCondition.DBOPS_FALSE_RUNNING.getCondition(),
         dbOps.getStatus().getConditions());
     assertCondition(
-        DbOpsStatusCondition.DB_OPS_FALSE_COMPLETED.getCondition(),
+        DbOpsStatusCondition.DBOPS_COMPLETED.getCondition(),
         dbOps.getStatus().getConditions());
     assertCondition(
-        DbOpsStatusCondition.DB_OPS_FAILED.getCondition(),
+        DbOpsStatusCondition.DBOPS_FAILED.getCondition(),
         dbOps.getStatus().getConditions(),
         "Unexpected failure");
     verify(jobFinder, times(1)).findByNameAndNamespace(any(), any());
@@ -204,9 +230,9 @@ class DbOpsStatusManagerTest {
   void completedJobWithRunningDbOps_shouldUpdateResource() {
     dbOps.setStatus(new StackGresDbOpsStatus());
     dbOps.getStatus().setConditions(List.of(
-        DbOpsStatusCondition.DB_OPS_RUNNING.getCondition(),
-        DbOpsStatusCondition.DB_OPS_FALSE_COMPLETED.getCondition(),
-        DbOpsStatusCondition.DB_OPS_FALSE_FAILED.getCondition()));
+        DbOpsStatusCondition.DBOPS_RUNNING.getCondition(),
+        DbOpsStatusCondition.DBOPS_FALSE_COMPLETED.getCondition(),
+        DbOpsStatusCondition.DBOPS_FALSE_FAILED.getCondition()));
     Condition.setTransitionTimes(dbOps.getStatus().getConditions());
     dbOps.getStatus().setRestart(new StackGresDbOpsRestartStatus());
     dbOps.getStatus().setOpRetries(0);
@@ -221,13 +247,13 @@ class DbOpsStatusManagerTest {
     Assertions.assertNotNull(dbOps.getStatus().getOpStarted());
     Assertions.assertNotNull(dbOps.getStatus().getRestart());
     assertCondition(
-        DbOpsStatusCondition.DB_OPS_FALSE_RUNNING.getCondition(),
+        DbOpsStatusCondition.DBOPS_FALSE_RUNNING.getCondition(),
         dbOps.getStatus().getConditions());
     assertCondition(
-        DbOpsStatusCondition.DB_OPS_FALSE_COMPLETED.getCondition(),
+        DbOpsStatusCondition.DBOPS_COMPLETED.getCondition(),
         dbOps.getStatus().getConditions());
     assertCondition(
-        DbOpsStatusCondition.DB_OPS_FAILED.getCondition(),
+        DbOpsStatusCondition.DBOPS_FAILED.getCondition(),
         dbOps.getStatus().getConditions(),
         "Unexpected failure");
     verify(jobFinder, times(1)).findByNameAndNamespace(any(), any());
@@ -244,7 +270,7 @@ class DbOpsStatusManagerTest {
         .collect(Collectors.toList());
     Assertions.assertEquals(1, foundConditions.size(),
         "Found more than one condition with type " + expectedCondition.getType());
-    var condition = foundConditions.get(0);
+    var condition = foundConditions.getFirst();
     Assertions.assertEquals(expectedCondition.getStatus(), condition.getStatus(),
         "Condition with type " + expectedCondition.getType() + " has not expected status");
     Assertions.assertEquals(expectedCondition.getReason(), condition.getReason(),

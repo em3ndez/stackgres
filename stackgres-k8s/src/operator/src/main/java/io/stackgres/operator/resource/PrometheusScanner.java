@@ -5,24 +5,23 @@
 
 package io.stackgres.operator.resource;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
 import io.fabric8.kubernetes.client.KubernetesClient;
-import io.stackgres.common.prometheus.PrometheusConfig;
-import io.stackgres.common.prometheus.PrometheusConfigList;
+import io.stackgres.common.crd.external.prometheus.Prometheus;
+import io.stackgres.common.crd.external.prometheus.PrometheusList;
 import io.stackgres.common.resource.AbstractCustomResourceScanner;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class PrometheusScanner
-    extends AbstractCustomResourceScanner<PrometheusConfig, PrometheusConfigList> {
+    extends AbstractCustomResourceScanner<Prometheus, PrometheusList> {
 
   /**
    * Create a {@code PrometheusScanner} instance.
    */
   @Inject
   public PrometheusScanner(KubernetesClient client) {
-    super(client, PrometheusConfig.class, PrometheusConfigList.class);
+    super(client, Prometheus.class, PrometheusList.class);
   }
 
 }

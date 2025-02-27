@@ -10,9 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -26,6 +23,8 @@ import io.stackgres.common.labels.LabelFactoryForCluster;
 import io.stackgres.common.labels.LabelFactoryForDbOps;
 import io.stackgres.testutil.JsonUtil;
 import io.stackgres.testutil.StringUtils;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class PodTestUtil {
@@ -34,7 +33,7 @@ public class PodTestUtil {
   private static final String JOB_NAME_FORMAT = "%s-%s-%d-%s";
 
   @Inject
-  LabelFactoryForCluster<StackGresCluster> labelFactory;
+  LabelFactoryForCluster labelFactory;
 
   @Inject
   LabelFactoryForDbOps labelFactoryForDbOps;
@@ -111,7 +110,7 @@ public class PodTestUtil {
     final Map<String, String> labels = labelFactory.clusterPrimaryLabels(cluster);
     return buildPod(cluster, index, ImmutableMap.<String, String>builder()
         .putAll(labels)
-        .put(labelFactory.labelMapper().disruptibleKey(cluster),
+        .put(labelFactory.labelMapper().disruptableKey(cluster),
             StackGresContext.WRONG_VALUE)
         .build());
   }

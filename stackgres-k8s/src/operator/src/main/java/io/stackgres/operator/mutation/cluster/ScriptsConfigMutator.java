@@ -10,8 +10,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-import javax.enterprise.context.ApplicationScoped;
-
 import io.stackgres.common.ManagedSqlUtil;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgcluster.StackGresClusterManagedScriptEntry;
@@ -22,6 +20,7 @@ import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
 import io.stackgres.common.crd.sgcluster.StackGresClusterStatus;
 import io.stackgres.operator.common.StackGresClusterReview;
 import io.stackgres.operatorframework.admissionwebhook.Operation;
+import jakarta.enterprise.context.ApplicationScoped;
 import org.jooq.lambda.Seq;
 
 @ApplicationScoped
@@ -33,10 +32,22 @@ public class ScriptsConfigMutator implements ClusterMutator {
         && review.getRequest().getOperation() != Operation.UPDATE) {
       return resource;
     }
+    setDefaultScriptIds(resource);
     addDefaultScripts(resource);
     fillRequiredFields(resource);
     updateScriptsStatuses(resource);
     return resource;
+  }
+
+  private void setDefaultScriptIds(StackGresCluster resource) {
+    Optional.of(resource)
+        .map(StackGresCluster::getSpec)
+        .map(StackGresClusterSpec::getManagedSql)
+        .map(StackGresClusterManagedSql::getScripts)
+        .stream()
+        .flatMap(List::stream)
+        .filter(scriptEntry -> Objects.equals(scriptEntry.getId(), -1))
+        .forEach(scriptEntry -> scriptEntry.setId(null));
   }
 
   private void addDefaultScripts(StackGresCluster resource) {
@@ -69,10 +80,10 @@ public class ScriptsConfigMutator implements ClusterMutator {
       resource.getStatus().getManagedSql().setScripts(new ArrayList<>());
     }
     resource.getStatus().getManagedSql().getScripts()
-        .removeIf(entry -> Objects.equals(0, entry.getId()));
+        .removeIf(entry -> Objects.equals(lastId + 1, entry.getId()));
     resource.getStatus().getManagedSql().getScripts()
         .add(0, new StackGresClusterManagedScriptEntryStatus());
-    resource.getStatus().getManagedSql().getScripts().get(0).setId(0);
+    resource.getStatus().getManagedSql().getScripts().get(0).setId(lastId + 1);
   }
 
   private void fillRequiredFields(StackGresCluster resource) {

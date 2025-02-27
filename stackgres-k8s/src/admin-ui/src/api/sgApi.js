@@ -10,6 +10,7 @@ const resources = {
   namespaces: '/namespaces',
   sgclusters: '/sgclusters',
   sgshardedclusters: '/sgshardedclusters',
+  sgstreams: '/sgstreams',
   sginstanceprofiles: '/sginstanceprofiles',
   sgbackups: '/sgbackups',
   sgpgconfigs: '/sgpgconfigs',
@@ -20,7 +21,11 @@ const resources = {
   sgdbops: '/sgdbops',
   storageclasses: '/storageclasses',
   extensions: '/extensions',
-  applications: '/applications'
+  applications: '/applications',
+  sgconfigs: '/sgconfigs',
+  users: '/users',
+  roles: '/roles',
+  clusterroles: '/clusterroles'
 };
 
 export default {
@@ -29,16 +34,16 @@ export default {
     return axios.get(baseURL + resources[resource])
   },
 
-  create(resource, data) {
-    return axios.post(baseURL + resources[resource], data)
+  create(resource, data, dryRun = false) {
+    return axios.post(baseURL + resources[resource] + (dryRun ? '?dryRun=true' : ''), data)
   },
 
-  update(resource, data) {
-    return axios.put(baseURL + resources[resource], data)
+  update(resource, data, dryRun = false) {
+    return axios.put(baseURL + resources[resource] + (dryRun ? '?dryRun=true' : ''), data)
   },
 
-  delete(resource, data) {
-    return axios.delete(baseURL + resources[resource], data)
+  delete(resource, data, dryRun = false) {
+    return axios.delete(baseURL + resources[resource] + (dryRun ? '?dryRun=true' : ''), data)
   },
 
   getResourceDetails(resource, namespace, name, details = '', query = '') {
@@ -49,7 +54,7 @@ export default {
     return axios.get(baseURL + endpoint)
   },
 
-  createCustomResource(endpoint, data) {
+  createCustomResource(endpoint, data = null) {
     return axios.post(baseURL + endpoint, data)
   },
 

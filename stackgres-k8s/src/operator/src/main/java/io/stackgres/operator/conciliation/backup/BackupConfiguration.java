@@ -10,6 +10,13 @@ public record BackupConfiguration(
     String cronSchedule,
     String compression,
     String path,
-    BackupPerformance performance
+    BackupPerformance performance,
+    Boolean useVolumeSnapshot,
+    String volumeSnapshotStorageClass,
+    Boolean fastVolumeSnapshot,
+    Integer timeout,
+    Integer reconciliationTimeout,
+    Integer maxRetries,
+    Boolean retainWalsForUnmanagedLifecycle
 ) {
 }

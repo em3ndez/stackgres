@@ -5,32 +5,37 @@
 
 package io.stackgres.common.labels;
 
-import io.fabric8.kubernetes.client.CustomResource;
+import static io.stackgres.operatorframework.resource.ResourceUtil.labelKey;
+
 import io.stackgres.common.StackGresContext;
-import io.stackgres.common.resource.ResourceUtil;
+import io.stackgres.common.crd.sgcluster.StackGresCluster;
 
-public interface LabelMapperForCluster<T extends CustomResource<?, ?>>
-    extends LabelMapper<T> {
+public interface LabelMapperForCluster
+    extends LabelMapper<StackGresCluster> {
 
-  default String clusterKey(T resource) {
+  default String clusterKey(StackGresCluster resource) {
     return getKeyPrefix(resource) + StackGresContext.CLUSTER_KEY;
   }
 
-  default String disruptibleKey(T resource) {
-    return getKeyPrefix(resource) + StackGresContext.DISRUPTIBLE_KEY;
+  default String disruptableKey(StackGresCluster resource) {
+    return getKeyPrefix(resource) + StackGresContext.DISRUPTABLE_KEY;
   }
 
-  default String scheduledBackupKey(T resource) {
+  default String scheduledBackupKey(StackGresCluster resource) {
     return getKeyPrefix(resource) + StackGresContext.SCHEDULED_BACKUP_KEY;
   }
 
-  default String scheduledBackupJobNameKey(T resource) {
+  default String scheduledBackupJobNameKey(StackGresCluster resource) {
     return getKeyPrefix(resource) + StackGresContext.SCHEDULED_BACKUP_JOB_NAME_KEY;
   }
 
-  default String clusterScopeKey(T resource) {
-    return ResourceUtil.labelKey(resourceScopeKey(resource));
+  default String clusterScopeKey(StackGresCluster resource) {
+    return labelKey(resourceScopeKey(resource));
   }
 
-  String resourceScopeKey(T resource);
+  default String replicationInitializationBackupKey(StackGresCluster resource) {
+    return getKeyPrefix(resource) + StackGresContext.RECONCILIATION_INITIALIZATION_BACKUP_KEY;
+  }
+
+  String resourceScopeKey(StackGresCluster resource);
 }

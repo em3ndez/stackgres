@@ -185,38 +185,52 @@
 						<template v-for="(cluster, index) in sgclusters">
 							<tr v-for="pod in cluster.status.pods">
 								<td>
-									{{ pod.name }}
+									<router-link :to="'/' + $route.params.namespace + '/sgcluster/' + getClusterName(pod.name)" title="Cluster Details" class="noColor">
+										{{ pod.name }}
+									</router-link>
 								</td>
 								<td class="tag" :class="pod.role">
-									<span>
-										{{ pod.role }}
-									</span>
+									<router-link :to="'/' + $route.params.namespace + '/sgcluster/' + getClusterName(pod.name)" title="Cluster Details" class="noColor">
+										<span>
+											{{ pod.role }}
+										</span>
+									</router-link>
 								</td>
 								<td class="tag" :class="pod.status">
-									<span>
-										{{ pod.status }}
-									</span>
+									<router-link :to="'/' + $route.params.namespace + '/sgcluster/' + getClusterName(pod.name)" title="Cluster Details" class="noColor">
+										<span>
+											{{ pod.status }}
+										</span>
+									</router-link>
 								</td>
 								<td>
-									{{ pod.cpuRequested }} 
-									<template v-if="(pod.status !== 'Pending') && ( pod.hasOwnProperty('cpuPsiAvg60') || pod.hasOwnProperty('averageLoad1m') )">
-										(avg. load {{ pod.hasOwnProperty('cpuPsiAvg60') ? pod.cpuPsiAvg60 : pod.averageLoad1m }})
-									</template>
+									<router-link :to="'/' + $route.params.namespace + '/sgcluster/' + getClusterName(pod.name)" title="Cluster Details" class="noColor">
+										{{ pod.cpuRequested }} 
+										<template v-if="(pod.status !== 'Pending') && ( pod.hasOwnProperty('cpuPsiAvg60') || pod.hasOwnProperty('averageLoad1m') )">
+											(avg. load {{ pod.hasOwnProperty('cpuPsiAvg60') ? pod.cpuPsiAvg60 : pod.averageLoad1m }})
+										</template>
+									</router-link>
 								</td>
 								<td class="textRight">
-									{{ pod.hasOwnProperty('memoryPsiAvg60') ? pod.memoryPsiAvg60 : pod.memoryRequested }}
+									<router-link :to="'/' + $route.params.namespace + '/sgcluster/' + getClusterName(pod.name)" title="Cluster Details" class="noColor">
+										{{ pod.hasOwnProperty('memoryPsiAvg60') ? pod.memoryPsiAvg60 : pod.memoryRequested }}
+									</router-link>
 								</td>
 								<td class="textRight">
-									<template v-if="pod.hasOwnProperty('diskUsed')">
-										{{ pod.diskUsed }}
-									</template>
-									<template v-else>
-										-
-									</template>
-									 / {{ pod.diskRequested }} <span v-if="pod.hasOwnProperty('diskPsiAvg60')">(psi avg. {{ pod.diskPsiAvg60 }})</span>
+									<router-link :to="'/' + $route.params.namespace + '/sgcluster/' + getClusterName(pod.name)" title="Cluster Details" class="noColor">
+										<template v-if="pod.hasOwnProperty('diskUsed')">
+											{{ pod.diskUsed }}
+										</template>
+										<template v-else>
+											-
+										</template>
+										/ {{ pod.diskRequested }} <span v-if="pod.hasOwnProperty('diskPsiAvg60')">(psi avg. {{ pod.diskPsiAvg60 }})</span>
+									</router-link>
 								</td>
 								<td class="textRight">
-									{{ pod.containersReady }} / {{ pod.containers }}
+									<router-link :to="'/' + $route.params.namespace + '/sgcluster/' + getClusterName(pod.name)" title="Cluster Details" class="noColor">
+										{{ pod.containersReady }} / {{ pod.containers }}
+									</router-link>
 								</td>
 							</tr>
 						</template>
@@ -245,23 +259,31 @@
 		computed: {
 
 			sgshardedcluster () {
-				return store.state.sgshardedclusters.find( cluster => (cluster.name == this.$route.params.name) && (cluster.data.metadata.namespace == this.$route.params.namespace) )
+				return (
+					(store.state.sgshardedclusters !== null)
+						? store.state.sgshardedclusters.find( cluster => (cluster.name == this.$route.params.name) && (cluster.data.metadata.namespace == this.$route.params.namespace) )
+						: null
+				)
 			},
-
+				
 			sgclusters () {
-				return store.state.sgclusters.filter( cluster => (this.sgshardedcluster.data.status.clusters.includes(cluster.name)) && (cluster.data.metadata.namespace == this.$route.params.namespace) )
+				return (
+					(store.state.sgclusters !== null)
+						? store.state.sgclusters.filter( cluster => (this.sgshardedcluster.data.status.clusters.includes(cluster.name)) && (cluster.data.metadata.namespace == this.$route.params.namespace) )
+						: null
+				)
 			},
 
 			hasClusters() {
-				return (this.hasProp(this.sgshardedcluster, 'data.status.clusters') && this.sgshardedcluster.data.status.clusters.length)
+				return ((this.sgshardedcluster !== null) && this.hasProp(this.sgshardedcluster, 'data.status.clusters') && this.sgshardedcluster.data.status.clusters.length)
 			},
 
 			hasPods() {
-				return ( (this.hasProp(this.sgshardedcluster, 'stats.coordinator.pods') && this.sgshardedcluster.stats.coordinator.pods.length) || ((this.hasProp(this.sgshardedcluster, 'stats.shards.pods') && this.sgshardedcluster.stats.shards.pods.length) ) )
+				return ((this.sgshardedcluster !== null) && (this.hasProp(this.sgshardedcluster, 'stats.coordinator.pods') && this.sgshardedcluster.stats.coordinator.pods.length) || ((this.hasProp(this.sgshardedcluster, 'stats.shards.pods') && this.sgshardedcluster.stats.shards.pods.length) ) )
 			},
 
 			podsReady() {
-				return (this.hasPods && this.hasProp(this.sgshardedcluster, 'stats.coordinator.podsReady') && this.sgshardedcluster.stats.coordinator.podsReady && this.hasProp(this.sgshardedcluster, 'stats.shards.podsReady') && this.sgshardedcluster.stats.shards.podsReady)
+				return ((this.sgshardedcluster !== null) && this.hasPods && this.hasProp(this.sgshardedcluster, 'stats.coordinator.podsReady') && this.sgshardedcluster.stats.coordinator.podsReady && this.hasProp(this.sgshardedcluster, 'stats.shards.podsReady') && this.sgshardedcluster.stats.shards.podsReady)
 			}
 
 		},
@@ -288,6 +310,10 @@
 				}
 
 			},
+
+			getClusterName(pod) {
+				return pod.substring(0, pod.lastIndexOf('-'))
+			}
 		}
 	}
 </script>
@@ -295,6 +321,7 @@
 <style scoped>
 	table.podStatus td {
 		position: relative;
+		padding: 0;
 	}
 
 	.podStatus .helpTooltip.alert {
@@ -314,5 +341,12 @@
 
 	td.tag span:not(.helpTooltip) {
 		width: 90px;
+	}
+
+	.podStatus .noColor {
+		width: 100%;
+		display: inline-block;
+		padding: 10px;
+		height: 100%;
 	}
 </style>	

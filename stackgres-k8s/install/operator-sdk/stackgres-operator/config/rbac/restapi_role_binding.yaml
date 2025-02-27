@@ -1,0 +1,21 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: rolebinding
+    app.kubernetes.io/instance: restapi-rolebinding
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: stackgres
+    app.kubernetes.io/part-of: stackgres
+    app.kubernetes.io/managed-by: kustomize
+  name: restapi
+  namespace: system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: restapi
+subjects:
+- kind: ServiceAccount
+  name: stackgres-restapi
+  namespace: system

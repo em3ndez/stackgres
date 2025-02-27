@@ -13,6 +13,8 @@ import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.storage.StorageClass;
 import io.fabric8.kubernetes.client.CustomResource;
+import io.stackgres.common.OperatorProperty;
+import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.labels.LabelFactoryForCluster;
 import io.stackgres.common.resource.ResourceFinder;
 import io.stackgres.common.resource.ResourceScanner;
@@ -22,34 +24,36 @@ import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFail
 import io.stackgres.operatorframework.admissionwebhook.validating.Validator;
 
 public abstract class PersistentVolumeSizeExpansionValidator<T extends AdmissionReview<R>,
-    R extends CustomResource<?, ?>, S extends CustomResource<?, ?>> implements Validator<T> {
+    R extends CustomResource<?, ?>> implements Validator<T> {
+
+  private final boolean clusterRoleDisabled = OperatorProperty.CLUSTER_ROLE_DISABLED.getBoolean();
 
   @Override
   public void validate(T review) throws ValidationFailed {
     if (isOperationUpdate(review) && compareVolumeSizes(review) != 0) {
-
       if (compareVolumeSizes(review) < 0) {
         // At the moment we can't decrease volume sizes
         throwValidationError("Decrease of persistent volume size is not supported");
       }
 
       //If we are here is because the persistent volume size is being increased
+      if (!clusterRoleDisabled) {
+        List<StorageClass> storageClasses = findClusterStorageClasses(review);
+        if (storageClasses.isEmpty()) {
+          /*
+           * No storage classes means that there are not PVC created, therefore we can't verify if
+           * the storage class support volume expansion
+           */
+          throwValidationError("Cannot increase persistent volume size because we cannot verify if "
+              + "the storage class allows it, try again later");
+        }
 
-      List<StorageClass> storageClasses = findClusterStorageClasses(review);
-      if (storageClasses.isEmpty()) {
-        /*
-         * No storage classes means that there are not PVC created, therefore we can't verify if
-         * the storage class support volume expansion
-         */
-        throwValidationError("Cannot increase persistent volume size because we cannot verify if "
-            + "the storage class allows it, try again later");
-      }
-
-      // We need to be sure that all storage classes used by the cluster support volume expansion
-      for (StorageClass storageClass : storageClasses) {
-        if (!doesStorageClassAllowsExpansion(storageClass)) {
-          throwValidationError("Cannot increase persistent volume size because the storage class "
-              + storageClass.getMetadata().getName() + " doesn't allows it");
+        // We need to be sure that all storage classes used by the cluster support volume expansion
+        for (StorageClass storageClass : storageClasses) {
+          if (!doesStorageClassAllowsExpansion(storageClass)) {
+            throwValidationError("Cannot increase persistent volume size because the storage class "
+                + storageClass.getMetadata().getName() + " doesn't allows it");
+          }
         }
       }
     }
@@ -91,7 +95,7 @@ public abstract class PersistentVolumeSizeExpansionValidator<T extends Admission
    *
    * @return a label factory for cluster.
    */
-  protected abstract LabelFactoryForCluster<S> getLabelFactory();
+  protected abstract LabelFactoryForCluster getLabelFactory();
 
   /**
    * Looks for a PersistentVolumeClaim scanner.
@@ -128,27 +132,26 @@ public abstract class PersistentVolumeSizeExpansionValidator<T extends Admission
            * If we are here, is because there is no storage class configured,
            * therefore we have to look for the cluster PVCs
            */
-          final List<S> clusters = getClusters(review.getRequest().getObject());
+          final List<StackGresCluster> clusters = getClusters(review.getRequest().getObject());
           return clusters.stream()
               .flatMap(cluster -> {
                 String clusterNamespace = cluster.getMetadata().getNamespace();
                 Map<String, String> clusterLabels = getLabelFactory().clusterLabels(cluster);
                 List<PersistentVolumeClaim> pvcs = getPvcScanner()
-                    .findByLabelsAndNamespace(clusterNamespace, clusterLabels);
+                    .getResourcesInNamespaceWithLabels(clusterNamespace, clusterLabels);
                 return pvcs.stream()
                     .map(pvc -> pvc.getSpec().getStorageClassName())
                     .distinct()
                     // Since is very likely that all the storage classes are the same
                     // we should look only for the different ones to avoid unneeded requests
                     .map(getStorageClassFinder()::findByName)
-                    .filter(Optional::isPresent)
-                    .map(Optional::get);
+                    .flatMap(Optional::stream);
               })
               .toList();
         });
   }
 
-  protected abstract List<S> getClusters(R resource);
+  protected abstract List<StackGresCluster> getClusters(R resource);
 
   /**
    * Checks if a storage class allows volume expansion.
@@ -168,7 +171,7 @@ public abstract class PersistentVolumeSizeExpansionValidator<T extends Admission
    * @param review the review to check
    * @return <code>if the operation is update</code>, <code>false</code> otherwise
    */
-  protected boolean isOperationUpdate(T review) {
+  private boolean isOperationUpdate(T review) {
     return review.getRequest().getOperation() == Operation.UPDATE;
   }
 

@@ -11,13 +11,13 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 import java.util.Map;
 
-import io.stackgres.common.StackGresShardedClusterForCitusUtil;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedCluster;
 import io.stackgres.common.labels.LabelFactoryForShardedCluster;
 import io.stackgres.common.resource.CustomResourceScanner;
 import io.stackgres.operator.common.StackGresShardedClusterReview;
 import io.stackgres.operator.common.fixture.AdmissionReviewFixtures;
+import io.stackgres.operator.conciliation.factory.shardedcluster.StackGresShardedClusterForCitusUtil;
 import io.stackgres.operator.validation.PersistentVolumeSizeExpansionValidator;
 import io.stackgres.operator.validation.PersistentVolumeSizeExpansionValidatorTest;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,7 +42,7 @@ class CoordinatorPersistentVolumeSizeExpansionValidatorTest extends
 
   @Override
   protected PersistentVolumeSizeExpansionValidator<StackGresShardedClusterReview,
-      StackGresShardedCluster, StackGresCluster> getValidator() {
+      StackGresShardedCluster> getValidator() {
     return new CoordinatorPersistentVolumeSizeExpansionValidator(
         finder, clusterScanner, shardedClusterLabelFactory, pvcScanner, labelFactory);
   }
@@ -54,18 +54,18 @@ class CoordinatorPersistentVolumeSizeExpansionValidatorTest extends
 
   @Override
   protected void setVolumeSize(StackGresShardedCluster cluster, String size) {
-    cluster.getSpec().getCoordinator().getPod().getPersistentVolume().setSize(size);
+    cluster.getSpec().getCoordinator().getPods().getPersistentVolume().setSize(size);
   }
 
   @Override
   protected void setStorageClassName(StackGresShardedCluster cluster, String storageClassName) {
     cluster.getSpec().getCoordinator()
-        .getPod().getPersistentVolume().setStorageClass(storageClassName);
+        .getPods().getPersistentVolume().setStorageClass(storageClassName);
   }
 
   @Override
   protected String getStorageClassName(StackGresShardedCluster cluster) {
-    return cluster.getSpec().getCoordinator().getPod().getPersistentVolume().getStorageClass();
+    return cluster.getSpec().getCoordinator().getPods().getPersistentVolume().getStorageClass();
   }
 
   @Override

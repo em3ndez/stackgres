@@ -7,16 +7,14 @@ package io.stackgres.common.crd.sgcluster;
 
 import java.util.Objects;
 
-import javax.validation.constraints.NotNull;
-import javax.validation.constraints.Positive;
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.validation.ValidEnum;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -26,18 +24,18 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresClusterReplicationGroup {
 
-  @JsonProperty("name")
   @NotNull
   private String name;
 
-  @JsonProperty("role")
   @ValidEnum(enumClass = StackGresReplicationRole.class, allowNulls = false,
       message = "role must be ha, ha-read, readonly or none")
   private String role;
 
-  @JsonProperty("instances")
+  @NotNull
   @Positive(message = "You need at least 1 instance in the replication group")
-  private int instances;
+  private Integer instances;
+
+  private Integer minInstances;
 
   public String getName() {
     return name;
@@ -55,17 +53,25 @@ public class StackGresClusterReplicationGroup {
     this.role = role;
   }
 
-  public int getInstances() {
+  public Integer getInstances() {
     return instances;
   }
 
-  public void setInstances(int instances) {
+  public void setInstances(Integer instances) {
     this.instances = instances;
+  }
+
+  public Integer getMinInstances() {
+    return minInstances;
+  }
+
+  public void setMinInstances(Integer minInstances) {
+    this.minInstances = minInstances;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(instances, name, role);
+    return Objects.hash(instances, minInstances, name, role);
   }
 
   @Override
@@ -77,8 +83,8 @@ public class StackGresClusterReplicationGroup {
       return false;
     }
     StackGresClusterReplicationGroup other = (StackGresClusterReplicationGroup) obj;
-    return Objects.equals(instances, other.instances) && Objects.equals(name, other.name)
-        && Objects.equals(role, other.role);
+    return Objects.equals(instances, other.instances) && Objects.equals(minInstances, other.minInstances)
+        && Objects.equals(name, other.name) && Objects.equals(role, other.role);
   }
 
   public String toString() {

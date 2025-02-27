@@ -9,7 +9,6 @@ import java.util.Objects;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
 import io.sundr.builder.annotations.Buildable;
@@ -22,10 +21,8 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresDbOpsMinorVersionUpgradeStatus extends DbOpsRestartStatus {
 
-  @JsonProperty("sourcePostgresVersion")
   private String sourcePostgresVersion;
 
-  @JsonProperty("targetPostgresVersion")
   private String targetPostgresVersion;
 
   public String getSourcePostgresVersion() {
@@ -49,24 +46,23 @@ public class StackGresDbOpsMinorVersionUpgradeStatus extends DbOpsRestartStatus 
     if (this == obj) {
       return true;
     }
-    if (!(obj instanceof DbOpsRestartStatus)) {
+    if (!super.equals(obj)) {
       return false;
     }
-    DbOpsRestartStatus other = (DbOpsRestartStatus) obj;
-    return Objects.equals(getFailure(), other.getFailure())
-        && Objects.equals(getInitialInstances(), other.getInitialInstances())
-        && Objects.equals(getPendingToRestartInstances(), other.getPendingToRestartInstances())
-        && Objects.equals(getPrimaryInstance(), other.getPrimaryInstance())
-        && Objects.equals(getRestartedInstances(), other.getRestartedInstances())
-        && Objects.equals(getSwitchoverFinalized(), other.getSwitchoverFinalized())
-        && Objects.equals(getSwitchoverInitiated(), other.getSwitchoverInitiated());
+    if (!(obj instanceof StackGresDbOpsMinorVersionUpgradeStatus)) {
+      return false;
+    }
+    StackGresDbOpsMinorVersionUpgradeStatus other = (StackGresDbOpsMinorVersionUpgradeStatus) obj;
+    return Objects.equals(sourcePostgresVersion, other.sourcePostgresVersion)
+        && Objects.equals(targetPostgresVersion, other.targetPostgresVersion);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(getFailure(), getInitialInstances(), getPendingToRestartInstances(),
-        getPrimaryInstance(), getRestartedInstances(), getSwitchoverFinalized(),
-        getSwitchoverInitiated());
+    final int prime = 31;
+    int result = super.hashCode();
+    result = prime * result + Objects.hash(sourcePostgresVersion, targetPostgresVersion);
+    return result;
   }
 
   @Override

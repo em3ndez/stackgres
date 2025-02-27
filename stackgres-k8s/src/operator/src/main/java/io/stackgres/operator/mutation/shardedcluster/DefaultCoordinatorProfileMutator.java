@@ -5,9 +5,6 @@
 
 package io.stackgres.operator.mutation.shardedcluster;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.inject.Inject;
-
 import io.stackgres.common.crd.sgprofile.StackGresProfile;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedCluster;
 import io.stackgres.common.crd.sgshardedcluster.StackGresShardedClusterCoordinator;
@@ -16,6 +13,8 @@ import io.stackgres.common.resource.CustomResourceScheduler;
 import io.stackgres.operator.common.StackGresShardedClusterReview;
 import io.stackgres.operator.initialization.DefaultCustomResourceFactory;
 import io.stackgres.operator.mutation.AbstractDefaultResourceMutator;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
 public class DefaultCoordinatorProfileMutator
@@ -41,12 +40,12 @@ public class DefaultCoordinatorProfileMutator
 
   @Override
   protected String getTargetPropertyValue(StackGresShardedCluster resource) {
-    return resource.getSpec().getCoordinator().getResourceProfile();
+    return resource.getSpec().getCoordinator().getSgInstanceProfile();
   }
 
   @Override
   protected void setTargetProperty(StackGresShardedCluster resource, String defaultResourceName) {
-    resource.getSpec().getCoordinator().setResourceProfile(defaultResourceName);
+    resource.getSpec().getCoordinator().setSgInstanceProfile(defaultResourceName);
   }
 
 }

@@ -10,7 +10,7 @@
   <parent>
     <groupId>io.stackgres</groupId>
     <artifactId>stackgres-parent</artifactId>
-    <version>1.6.0-SNAPSHOT</version>
+    <version>1.16.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>stackgres-jobs</artifactId>
@@ -101,6 +101,8 @@
           <execution>
             <goals>
               <goal>build</goal>
+              <goal>generate-code</goal>
+              <goal>generate-code-tests</goal>
             </goals>
           </execution>
         </executions>
@@ -111,9 +113,6 @@
   <profiles>
     <profile>
       <id>safer</id>
-      <properties>
-        <check-operator-values>true</check-operator-values>
-      </properties>
     </profile>
     <profile>
       <id>native</id>
@@ -146,7 +145,8 @@
         </plugins>
       </build>
       <properties>
-        <quarkus.package.type>native</quarkus.package.type>
+        <quarkus.native.enabled>true</quarkus.native.enabled>
+        <quarkus.package.jar.enabled>false</quarkus.package.jar.enabled>
       </properties>
     </profile>
     <profile>

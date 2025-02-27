@@ -19,14 +19,13 @@ import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.apps.StatefulSet;
 import io.fabric8.kubernetes.api.model.rbac.Role;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
-import io.stackgres.common.crd.sgcluster.StackGresClusterPod;
+import io.stackgres.common.crd.sgcluster.StackGresClusterPods;
+import io.stackgres.common.crd.sgcluster.StackGresClusterPodsPersistentVolume;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSpecAnnotations;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSpecMetadata;
-import io.stackgres.common.crd.sgcluster.StackGresPodPersistentVolume;
 import io.stackgres.common.crd.sgpgconfig.StackGresPostgresConfig;
 import io.stackgres.common.crd.sgprofile.StackGresProfile;
 import io.stackgres.common.crd.sgprofile.StackGresProfileSpec;
-import io.stackgres.operator.common.Prometheus;
 import io.stackgres.operator.conciliation.cluster.ImmutableStackGresClusterContext;
 import io.stackgres.operator.conciliation.cluster.StackGresClusterContext;
 import io.stackgres.testutil.GeneratorTestUtil;
@@ -34,7 +33,7 @@ import org.opentest4j.AssertionFailedError;
 
 public class GeneratedResourceMatcher {
   private final StackGresCluster cluster;
-  private final RequiredResourceDecorator<StackGresClusterContext> resourceGenerator;
+  private final ResourceGenerationDiscoverer<StackGresClusterContext> resourceGenerator;
   private final String clusterName;
   private final String clusterNamespace;
 
@@ -44,7 +43,7 @@ public class GeneratedResourceMatcher {
 
   private GeneratedResourceMatcher(
       StackGresCluster cluster,
-      RequiredResourceDecorator<StackGresClusterContext> resourceGenerator) {
+      ResourceGenerationDiscoverer<StackGresClusterContext> resourceGenerator) {
     this.cluster = cluster;
     this.resourceGenerator = resourceGenerator;
     this.clusterName = cluster.getMetadata().getName();
@@ -53,12 +52,12 @@ public class GeneratedResourceMatcher {
 
   public static GeneratedResourceMatcher givenACluster(
       StackGresCluster cluster,
-      RequiredResourceDecorator<StackGresClusterContext> resourceGenerator) {
+      ResourceGenerationDiscoverer<StackGresClusterContext> resourceGenerator) {
     return new GeneratedResourceMatcher(cluster, resourceGenerator);
   }
 
   protected List<HasMetadata> getResources(StackGresClusterContext context) {
-    return resourceGenerator.decorateResources(context);
+    return resourceGenerator.generateResources(context);
   }
 
   protected List<HasMetadata> getResources() {
@@ -72,7 +71,6 @@ public class GeneratedResourceMatcher {
         .profile(stackGresProfile)
         .postgresConfig(stackGresPostgresConfig)
         .databaseSecret(Optional.ofNullable(databaseSecret))
-        .prometheus(new Prometheus(false, null))
         .build();
   }
 
@@ -107,8 +105,8 @@ public class GeneratedResourceMatcher {
 
   public GeneratedResourceMatcher andPostgresConfig(StackGresPostgresConfig postgresConfig) {
     this.stackGresPostgresConfig = postgresConfig;
-    this.cluster.getSpec().getConfiguration()
-        .setPostgresConfig(postgresConfig.getMetadata().getName());
+    this.cluster.getSpec().getConfigurations()
+        .setSgPostgresConfig(postgresConfig.getMetadata().getName());
     return this;
   }
 
@@ -123,13 +121,13 @@ public class GeneratedResourceMatcher {
   }
 
   public GeneratedResourceMatcher andStorageSize(String storageSize) {
-    if (cluster.getSpec().getPod() == null) {
-      cluster.getSpec().setPod(new StackGresClusterPod());
+    if (cluster.getSpec().getPods() == null) {
+      cluster.getSpec().setPods(new StackGresClusterPods());
     }
-    if (cluster.getSpec().getPod().getPersistentVolume() == null) {
-      cluster.getSpec().getPod().setPersistentVolume(new StackGresPodPersistentVolume());
+    if (cluster.getSpec().getPods().getPersistentVolume() == null) {
+      cluster.getSpec().getPods().setPersistentVolume(new StackGresClusterPodsPersistentVolume());
     }
-    cluster.getSpec().getPod().getPersistentVolume().setSize(storageSize);
+    cluster.getSpec().getPods().getPersistentVolume().setSize(storageSize);
     return this;
   }
 
@@ -141,14 +139,14 @@ public class GeneratedResourceMatcher {
     instanceProfile.setSpec(new StackGresProfileSpec());
     instanceProfile.getSpec().setCpu(cpu);
     instanceProfile.getSpec().setMemory(memory);
-    cluster.getSpec().setResourceProfile(clusterNamespace);
+    cluster.getSpec().setSgInstanceProfile(clusterNamespace);
     stackGresProfile = instanceProfile;
     return this;
   }
 
   public GeneratedResourceMatcher andInstanceProfile(StackGresProfile profile) {
     this.stackGresProfile = profile;
-    cluster.getSpec().setResourceProfile(profile.getMetadata().getName());
+    cluster.getSpec().setSgInstanceProfile(profile.getMetadata().getName());
     return this;
   }
 

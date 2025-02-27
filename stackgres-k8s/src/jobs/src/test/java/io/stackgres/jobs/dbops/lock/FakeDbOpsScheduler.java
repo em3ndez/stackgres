@@ -5,16 +5,13 @@
 
 package io.stackgres.jobs.dbops.lock;
 
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.Function;
-
-import javax.inject.Inject;
 
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.quarkus.test.Mock;
 import io.stackgres.common.crd.sgdbops.StackGresDbOps;
 import io.stackgres.common.resource.CustomResourceScheduler;
+import jakarta.inject.Inject;
 import org.jetbrains.annotations.NotNull;
 
 @Mock
@@ -28,17 +25,17 @@ public class FakeDbOpsScheduler implements CustomResourceScheduler<StackGresDbOp
   }
 
   @Override
-  public StackGresDbOps create(@NotNull StackGresDbOps resource) {
+  public StackGresDbOps create(@NotNull StackGresDbOps resource, boolean dryRun) {
     return kubeDb.addOrReplaceDbOps(resource);
   }
 
   @Override
-  public void delete(@NotNull StackGresDbOps resource) {
+  public void delete(@NotNull StackGresDbOps resource, boolean dryRun) {
     kubeDb.delete(resource);
   }
 
   @Override
-  public StackGresDbOps update(@NotNull StackGresDbOps resource) {
+  public StackGresDbOps update(@NotNull StackGresDbOps resource, boolean dryRun) {
     return kubeDb.addOrReplaceDbOps(resource);
   }
 
@@ -53,11 +50,10 @@ public class FakeDbOpsScheduler implements CustomResourceScheduler<StackGresDbOp
 
   @Override
   public <S> StackGresDbOps updateStatus(@NotNull StackGresDbOps resource,
-      @NotNull Function<StackGresDbOps, S> statusGetter,
-      @NotNull BiConsumer<StackGresDbOps, S> statusSetter) {
+      @NotNull Consumer<StackGresDbOps> setter) {
     final ObjectMeta metadata = resource.getMetadata();
     var dbOps = kubeDb.getDbOps(metadata.getName(), metadata.getNamespace());
-    statusSetter.accept(dbOps, statusGetter.apply(resource));
+    setter.accept(dbOps);
     return kubeDb.addOrReplaceDbOps(dbOps);
   }
 

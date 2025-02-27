@@ -1,9 +1,10 @@
 #!/bin/sh
 
+APP_PATH="${APP_PATH:-/app}"
 if [ "$DEBUG_CLUSTER_CONTROLLER" = true ]
 then
   set -x
-  DEBUG_JAVA_OPTS="-agentlib:jdwp=transport=dt_socket,server=y,address=8000,suspend=$([ "$DEBUG_CLUSTER_CONTROLLER_SUSPEND" = true ] && echo y || echo n)"
+  DEBUG_JAVA_OPTS="-agentlib:jdwp=transport=dt_socket,server=y,address=*:8000,suspend=$([ "$DEBUG_CLUSTER_CONTROLLER_SUSPEND" = true ] && echo y || echo n)"
 fi
 if [ -n "$CLUSTER_CONTROLLER_LOG_LEVEL" ]
 then
@@ -17,12 +18,14 @@ if [ "$JAVA_CDS_GENERATION" = true ]
 then
   export KUBERNETES_MASTER=240.0.0.1
   java \
-    -XX:ArchiveClassesAtExit=/app/quarkus-run.jsa \
+    -XX:ArchiveClassesAtExit="$APP_PATH"/quarkus-run.jsa \
     -XX:MaxRAMPercentage=75.0 \
     -Djava.net.preferIPv4Stack=true \
     -Djava.awt.headless=true \
     -Djava.util.logging.manager=org.jboss.logmanager.LogManager \
-    $JAVA_OPTS $DEBUG_JAVA_OPTS -jar /app/quarkus-run.jar \
+    -Dstackgres.clusterName=default \
+    -Dstackgres.clusterNamespace=default \
+    $JAVA_OPTS $DEBUG_JAVA_OPTS -jar "$APP_PATH"/quarkus-run.jar \
     -Dquarkus.http.host=0.0.0.0 \
     $APP_OPTS &
   PID=$!
@@ -35,11 +38,17 @@ then
   exit
 fi
 exec java \
-  -XX:SharedArchiveFile=/app/quarkus-run.jsa \
+  -XX:SharedArchiveFile="$APP_PATH"/quarkus-run.jsa \
   -XX:MaxRAMPercentage=75.0 \
+  $(
+    if [ "$MEMORY_REQUEST" -gt 0 ]
+    then
+      printf ' -Xmx%s' "$(( $MEMORY_REQUEST - 1048575 ))"
+    fi
+  ) \
   -Djava.net.preferIPv4Stack=true \
   -Djava.awt.headless=true \
   -Djava.util.logging.manager=org.jboss.logmanager.LogManager \
-  $JAVA_OPTS $DEBUG_JAVA_OPTS -jar /app/quarkus-run.jar \
+  $JAVA_OPTS $DEBUG_JAVA_OPTS -jar "$APP_PATH"/quarkus-run.jar \
   -Dquarkus.http.host=0.0.0.0 \
   $APP_OPTS

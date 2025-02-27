@@ -8,18 +8,13 @@ package io.stackgres.common.crd.sgcluster;
 import java.util.List;
 import java.util.Objects;
 
-import javax.validation.constraints.NotNull;
+import io.quarkus.runtime.annotations.RegisterForReflection;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
+@RegisterForReflection
 public abstract class ClusterDbOpsRestartStatus {
 
-  @JsonProperty("initialInstances")
-  @NotNull
   private List<String> initialInstances;
 
-  @JsonProperty("primaryInstance")
-  @NotNull
   private String primaryInstance;
 
   public List<String> getInitialInstances() {

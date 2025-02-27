@@ -5,24 +5,33 @@
 
 package io.stackgres.common.resource;
 
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 import io.fabric8.kubernetes.client.CustomResource;
 import org.jetbrains.annotations.NotNull;
 
 public interface CustomResourceScheduler<T extends CustomResource<?, ?>> {
 
-  T create(@NotNull T resource);
+  default T create(@NotNull T resource) {
+    return create(resource, false);
+  }
 
-  T update(@NotNull T resource);
+  T create(@NotNull T resource, boolean dryRun);
+
+  default T update(@NotNull T resource) {
+    return update(resource, false);
+  }
+
+  T update(@NotNull T resource, boolean dryRun);
 
   T update(@NotNull T resource, @NotNull Consumer<T> setter);
 
-  <S> T updateStatus(@NotNull T resource, @NotNull Function<T, S> statusGetter,
-      @NotNull BiConsumer<T, S> statusSetter);
+  <S> T updateStatus(@NotNull T resource, @NotNull Consumer<T> setter);
 
-  void delete(@NotNull T resource);
+  default void delete(@NotNull T resource) {
+    delete(resource, false);
+  }
+
+  void delete(@NotNull T resource, boolean dryRun);
 
 }

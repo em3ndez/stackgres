@@ -7,8 +7,6 @@ package io.stackgres.operator.validation.objectstorage;
 
 import java.util.Map;
 
-import javax.inject.Inject;
-
 import io.fabric8.kubernetes.api.model.SecretBuilder;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.kubernetes.client.WithKubernetesTestServer;
@@ -16,12 +14,13 @@ import io.stackgres.common.ErrorType;
 import io.stackgres.common.crd.storages.AwsS3Storage;
 import io.stackgres.common.crd.storages.BackupStorage;
 import io.stackgres.common.resource.SecretWriter;
-import io.stackgres.operator.common.ObjectStorageReview;
+import io.stackgres.operator.common.StackGresObjectStorageReview;
 import io.stackgres.operator.common.fixture.AdmissionReviewFixtures;
 import io.stackgres.operator.utils.ValidationUtils;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
 import io.stackgres.testutil.RandomObjectUtils;
 import io.stackgres.testutil.StringUtils;
+import jakarta.inject.Inject;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -39,7 +38,7 @@ class ObjectStorageValidationPipelineTest {
   @DisplayName("Valid reviews should pass")
   void testValidReview() throws ValidationFailed {
 
-    ObjectStorageReview review = AdmissionReviewFixtures.objectStorage().loadCreate().get();
+    StackGresObjectStorageReview review = AdmissionReviewFixtures.objectStorage().loadCreate().get();
 
     var objectStorage = review.getRequest().getObject();
     var backupStorage = objectStorage.getSpec();
@@ -75,7 +74,7 @@ class ObjectStorageValidationPipelineTest {
   @Test
   @DisplayName("Given an invalid creation should fail")
   void testConstraintValidations() {
-    ObjectStorageReview review = AdmissionReviewFixtures.objectStorage().loadCreate().get();
+    StackGresObjectStorageReview review = AdmissionReviewFixtures.objectStorage().loadCreate().get();
     var objectStorage = review.getRequest().getObject();
     objectStorage.setSpec(
         RandomObjectUtils.generateRandomObject(BackupStorage.class));

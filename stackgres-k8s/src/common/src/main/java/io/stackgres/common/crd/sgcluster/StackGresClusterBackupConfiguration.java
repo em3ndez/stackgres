@@ -7,17 +7,16 @@ package io.stackgres.common.crd.sgcluster;
 
 import java.util.Objects;
 
-import javax.validation.Valid;
-import javax.validation.constraints.NotNull;
-import javax.validation.constraints.Positive;
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
-import io.stackgres.common.crd.sgbackupconfig.StackGresBaseBackupPerformance;
+import io.stackgres.common.crd.sgbackup.StackGresBaseBackupPerformance;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -27,27 +26,36 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresClusterBackupConfiguration {
 
-  @JsonProperty("retention")
-  @Positive(message = "retention should be greater than zero")
+  @Positive(message = "retention must be greater than zero")
   private Integer retention;
 
-  @JsonProperty("cronSchedule")
   private String cronSchedule;
 
-  @JsonProperty("compression")
   private String compression;
 
-  @JsonProperty("performance")
   @Valid
   private StackGresBaseBackupPerformance performance;
 
-  @JsonProperty("sgObjectStorage")
   @NotNull
-  private String objectStorage;
+  private String sgObjectStorage;
 
-  @JsonProperty("path")
   @NotNull
   private String path;
+
+  private Boolean useVolumeSnapshot;
+
+  private String volumeSnapshotClass;
+
+  private Boolean fastVolumeSnapshot;
+
+  private Integer timeout;
+
+  private Integer reconciliationTimeout;
+
+  @Min(value = 0, message = "maxRetries must be greather or equals to 0.")
+  private Integer maxRetries;
+
+  private Boolean retainWalsForUnmanagedLifecycle;
 
   public Integer getRetention() {
     return retention;
@@ -81,12 +89,12 @@ public class StackGresClusterBackupConfiguration {
     this.performance = performance;
   }
 
-  public String getObjectStorage() {
-    return objectStorage;
+  public String getSgObjectStorage() {
+    return sgObjectStorage;
   }
 
-  public void setObjectStorage(String objectStorage) {
-    this.objectStorage = objectStorage;
+  public void setSgObjectStorage(String sgObjectStorage) {
+    this.sgObjectStorage = sgObjectStorage;
   }
 
   public String getPath() {
@@ -95,6 +103,69 @@ public class StackGresClusterBackupConfiguration {
 
   public void setPath(String path) {
     this.path = path;
+  }
+
+  public Boolean getUseVolumeSnapshot() {
+    return useVolumeSnapshot;
+  }
+
+  public void setUseVolumeSnapshot(Boolean useVolumeSnapshot) {
+    this.useVolumeSnapshot = useVolumeSnapshot;
+  }
+
+  public String getVolumeSnapshotClass() {
+    return volumeSnapshotClass;
+  }
+
+  public void setVolumeSnapshotClass(String volumeSnapshotClass) {
+    this.volumeSnapshotClass = volumeSnapshotClass;
+  }
+
+  public Boolean getFastVolumeSnapshot() {
+    return fastVolumeSnapshot;
+  }
+
+  public void setFastVolumeSnapshot(Boolean fastVolumeSnapshot) {
+    this.fastVolumeSnapshot = fastVolumeSnapshot;
+  }
+
+  public Integer getTimeout() {
+    return timeout;
+  }
+
+  public void setTimeout(Integer timeout) {
+    this.timeout = timeout;
+  }
+
+  public Integer getReconciliationTimeout() {
+    return reconciliationTimeout;
+  }
+
+  public void setReconciliationTimeout(Integer reconciliationTimeout) {
+    this.reconciliationTimeout = reconciliationTimeout;
+  }
+
+  public Integer getMaxRetries() {
+    return maxRetries;
+  }
+
+  public void setMaxRetries(Integer maxRetries) {
+    this.maxRetries = maxRetries;
+  }
+
+  public Boolean getRetainWalsForUnmanagedLifecycle() {
+    return retainWalsForUnmanagedLifecycle;
+  }
+
+  public void setRetainWalsForUnmanagedLifecycle(Boolean retainWalsForUnmanagedLifecycle) {
+    this.retainWalsForUnmanagedLifecycle = retainWalsForUnmanagedLifecycle;
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(compression, cronSchedule, fastVolumeSnapshot, maxRetries, path,
+        performance, reconciliationTimeout, retainWalsForUnmanagedLifecycle, retention,
+        sgObjectStorage, timeout, useVolumeSnapshot, volumeSnapshotClass);
   }
 
   @Override
@@ -106,18 +177,18 @@ public class StackGresClusterBackupConfiguration {
       return false;
     }
     StackGresClusterBackupConfiguration other = (StackGresClusterBackupConfiguration) obj;
-    return Objects.equals(path, other.path)
-        && Objects.equals(compression, other.compression)
+    return Objects.equals(compression, other.compression)
         && Objects.equals(cronSchedule, other.cronSchedule)
-        && Objects.equals(objectStorage, other.objectStorage)
+        && Objects.equals(fastVolumeSnapshot, other.fastVolumeSnapshot)
+        && Objects.equals(maxRetries, other.maxRetries) && Objects.equals(path, other.path)
         && Objects.equals(performance, other.performance)
-        && Objects.equals(retention, other.retention);
-  }
-
-  @Override
-  public int hashCode() {
-    return Objects.hash(path, compression, cronSchedule, objectStorage, performance,
-        retention);
+        && Objects.equals(reconciliationTimeout, other.reconciliationTimeout)
+        && Objects.equals(retainWalsForUnmanagedLifecycle, other.retainWalsForUnmanagedLifecycle)
+        && Objects.equals(retention, other.retention)
+        && Objects.equals(sgObjectStorage, other.sgObjectStorage)
+        && Objects.equals(timeout, other.timeout)
+        && Objects.equals(useVolumeSnapshot, other.useVolumeSnapshot)
+        && Objects.equals(volumeSnapshotClass, other.volumeSnapshotClass);
   }
 
   @Override

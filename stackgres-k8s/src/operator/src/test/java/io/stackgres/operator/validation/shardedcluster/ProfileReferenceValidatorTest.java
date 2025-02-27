@@ -48,7 +48,7 @@ class ProfileReferenceValidatorTest {
   void setUp() throws Exception {
     validator = new ProfileReferenceValidator(profileFinder);
 
-    profileSizeXs = Fixtures.instanceProfile().loadSizeXs().get();
+    profileSizeXs = Fixtures.instanceProfile().loadSizeS().get();
   }
 
   @Test
@@ -57,7 +57,7 @@ class ProfileReferenceValidatorTest {
         AdmissionReviewFixtures.shardedCluster().loadCreate().get();
 
     String resourceProfile = review.getRequest().getObject().getSpec().getCoordinator()
-        .getResourceProfile();
+        .getSgInstanceProfile();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(profileFinder.findByNameAndNamespace(resourceProfile, namespace))
@@ -74,7 +74,7 @@ class ProfileReferenceValidatorTest {
         AdmissionReviewFixtures.shardedCluster().loadCreate().get();
 
     String resourceProfile = review.getRequest().getObject().getSpec().getShards()
-        .getResourceProfile();
+        .getSgInstanceProfile();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(profileFinder.findByNameAndNamespace(resourceProfile, namespace))
@@ -92,10 +92,11 @@ class ProfileReferenceValidatorTest {
         AdmissionReviewFixtures.shardedCluster().loadCreate().get();
 
     String resourceProfile = review.getRequest().getObject().getSpec().getShards()
-        .getResourceProfile();
+        .getSgInstanceProfile();
     review.getRequest().getObject().getSpec().getShards().setOverrides(List.of(
         new StackGresShardedClusterShardBuilder()
-        .withResourceProfile(resourceProfile)
+        .withIndex(0)
+        .withSgInstanceProfile(resourceProfile)
         .build()));
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
@@ -113,7 +114,7 @@ class ProfileReferenceValidatorTest {
         AdmissionReviewFixtures.shardedCluster().loadCreate().get();
 
     String resourceProfile = review.getRequest().getObject().getSpec().getCoordinator()
-        .getResourceProfile();
+        .getSgInstanceProfile();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(profileFinder.findByNameAndNamespace(resourceProfile, namespace))
@@ -125,7 +126,8 @@ class ProfileReferenceValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Invalid profile " + resourceProfile + " for coordinator", resultMessage);
+    assertEquals("SGInstanceProfile " + resourceProfile
+        + " not found for coordinator", resultMessage);
 
     verify(profileFinder, times(1)).findByNameAndNamespace(anyString(), anyString());
   }
@@ -136,13 +138,13 @@ class ProfileReferenceValidatorTest {
         AdmissionReviewFixtures.shardedCluster().loadCreate().get();
 
     review.getRequest().getObject().getSpec().getShards()
-        .setResourceProfile("test");
+        .setSgInstanceProfile("test");
     String resourceProfile = review.getRequest().getObject().getSpec().getShards()
-        .getResourceProfile();
+        .getSgInstanceProfile();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(profileFinder.findByNameAndNamespace(review.getRequest().getObject().getSpec()
-        .getCoordinator().getResourceProfile(), namespace))
+        .getCoordinator().getSgInstanceProfile(), namespace))
         .thenReturn(Optional.of(profileSizeXs));
     when(profileFinder.findByNameAndNamespace(resourceProfile, namespace))
         .thenReturn(Optional.empty());
@@ -153,7 +155,7 @@ class ProfileReferenceValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Invalid profile " + resourceProfile + " for shards", resultMessage);
+    assertEquals("SGInstanceProfile " + resourceProfile + " not found for shards", resultMessage);
 
     verify(profileFinder, times(2)).findByNameAndNamespace(anyString(), anyString());
   }
@@ -165,17 +167,18 @@ class ProfileReferenceValidatorTest {
 
     review.getRequest().getObject().getSpec().getShards().setOverrides(List.of(
         new StackGresShardedClusterShardBuilder()
-        .withResourceProfile("test")
+        .withIndex(0)
+        .withSgInstanceProfile("test")
         .build()));
     String ovverideResourceProfile = review.getRequest().getObject().getSpec().getShards()
-        .getOverrides().get(0).getResourceProfile();
+        .getOverrides().get(0).getSgInstanceProfile();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(profileFinder.findByNameAndNamespace(review.getRequest().getObject().getSpec()
-        .getCoordinator().getResourceProfile(), namespace))
+        .getCoordinator().getSgInstanceProfile(), namespace))
         .thenReturn(Optional.of(profileSizeXs));
     when(profileFinder.findByNameAndNamespace(review.getRequest().getObject().getSpec()
-        .getShards().getResourceProfile(), namespace))
+        .getShards().getSgInstanceProfile(), namespace))
         .thenReturn(Optional.of(profileSizeXs));
     when(profileFinder.findByNameAndNamespace(ovverideResourceProfile, namespace))
         .thenReturn(Optional.empty());
@@ -186,7 +189,8 @@ class ProfileReferenceValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Invalid profile " + ovverideResourceProfile + " for shard 0", resultMessage);
+    assertEquals("SGInstanceProfile " + ovverideResourceProfile
+        + " not found for shards override 0", resultMessage);
 
     verify(profileFinder, times(3)).findByNameAndNamespace(anyString(), anyString());
   }
@@ -197,9 +201,9 @@ class ProfileReferenceValidatorTest {
         AdmissionReviewFixtures.shardedCluster().loadProfileConfigUpdate().get();
 
     review.getRequest().getObject().getSpec().getCoordinator()
-        .setResourceProfile("test");
+        .setSgInstanceProfile("test");
     String resourceProfile = review.getRequest().getObject().getSpec().getCoordinator()
-        .getResourceProfile();
+        .getSgInstanceProfile();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(profileFinder.findByNameAndNamespace(resourceProfile, namespace))
@@ -211,7 +215,7 @@ class ProfileReferenceValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Cannot update coordinator to profile " + resourceProfile
+    assertEquals("Cannot update coordinator to SGInstanceProfile " + resourceProfile
         + " because it doesn't exists", resultMessage);
 
     verify(profileFinder, times(1)).findByNameAndNamespace(anyString(), anyString());
@@ -223,9 +227,9 @@ class ProfileReferenceValidatorTest {
         AdmissionReviewFixtures.shardedCluster().loadProfileConfigUpdate().get();
 
     review.getRequest().getObject().getSpec().getShards()
-        .setResourceProfile("test");
+        .setSgInstanceProfile("test");
     String resourceProfile = review.getRequest().getObject().getSpec().getShards()
-        .getResourceProfile();
+        .getSgInstanceProfile();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(profileFinder.findByNameAndNamespace(resourceProfile, namespace))
@@ -237,7 +241,7 @@ class ProfileReferenceValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Cannot update shards to profile " + resourceProfile
+    assertEquals("Cannot update shards to SGInstanceProfile " + resourceProfile
         + " because it doesn't exists", resultMessage);
 
     verify(profileFinder, times(1)).findByNameAndNamespace(anyString(), anyString());
@@ -250,10 +254,11 @@ class ProfileReferenceValidatorTest {
 
     review.getRequest().getObject().getSpec().getShards().setOverrides(List.of(
         new StackGresShardedClusterShardBuilder()
-        .withResourceProfile("test")
+        .withIndex(0)
+        .withSgInstanceProfile("test")
         .build()));
     String ovverideResourceProfile = review.getRequest().getObject().getSpec().getShards()
-        .getOverrides().get(0).getResourceProfile();
+        .getOverrides().get(0).getSgInstanceProfile();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(profileFinder.findByNameAndNamespace(ovverideResourceProfile, namespace))
@@ -265,8 +270,8 @@ class ProfileReferenceValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Cannot update shard 0 to profile " + ovverideResourceProfile
-        + " because it doesn't exists", resultMessage);
+    assertEquals("Cannot update shards override 0 to SGInstanceProfile "
+        + ovverideResourceProfile + " because it doesn't exists", resultMessage);
 
     verify(profileFinder, times(1)).findByNameAndNamespace(anyString(), anyString());
   }
@@ -283,15 +288,15 @@ class ProfileReferenceValidatorTest {
 
   @Test
   void giveAnAttemptToUpdateOverrideShardsToAnKnownProfile_shouldNotFail() throws ValidationFailed {
-
     final StackGresShardedClusterReview review =
         AdmissionReviewFixtures.shardedCluster().loadProfileConfigUpdate().get();
 
     String resourceProfile = review.getRequest().getObject().getSpec().getShards()
-        .getResourceProfile();
+        .getSgInstanceProfile();
     review.getRequest().getObject().getSpec().getShards().setOverrides(List.of(
         new StackGresShardedClusterShardBuilder()
-        .withResourceProfile(resourceProfile)
+        .withIndex(0)
+        .withSgInstanceProfile(resourceProfile)
         .build()));
 
     validator.validate(review);

@@ -7,7 +7,7 @@
 #
 ###
 
-FROM registry.access.redhat.com/ubi8-minimal:8.7-1107
+FROM registry.access.redhat.com/ubi8-minimal:8.10-1018
   # From https://github.com/docker-library/docker/blob/master/20.10/cli/Dockerfile
   RUN microdnf install -y \
       ca-certificates \
@@ -15,9 +15,9 @@ FROM registry.access.redhat.com/ubi8-minimal:8.7-1107
       wget \
       tar
   # RUN [ -e /etc/nsswitch.conf ] && grep '^hosts: files dns' /etc/nsswitch.conf
-  ENV DOCKER_VERSION 24.0.0
+  ENV DOCKER_VERSION 24.0.6
   RUN set -eux; \
-    wget -O 'docker.tgz' "https://download.docker.com/linux/static/stable/$(uname -m)/docker-24.0.0.tgz"; \
+    wget -O 'docker.tgz' "https://download.docker.com/linux/static/stable/$(uname -m)/docker-24.0.6.tgz"; \
     tar --extract \
       --file docker.tgz \
       --strip-components 1 \
@@ -28,18 +28,18 @@ FROM registry.access.redhat.com/ubi8-minimal:8.7-1107
     rm docker.tgz; \
     docker --version
 
-  ENV DOCKER_BUILDX_VERSION 0.10.4
+  ENV DOCKER_BUILDX_VERSION 0.11.2
   RUN set -eux; \
-    wget -O 'docker-buildx' "https://github.com/docker/buildx/releases/download/v0.10.4/buildx-v0.10.4.linux-$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64)"; \
+    wget -O 'docker-buildx' "https://github.com/docker/buildx/releases/download/v0.11.2/buildx-v0.11.2.linux-$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64)"; \
     plugin='/usr/local/libexec/docker/cli-plugins/docker-buildx'; \
     mkdir -p "$(dirname "$plugin")"; \
     mv -vT 'docker-buildx' "$plugin"; \
     chmod +x "$plugin"; \
     docker buildx version
 
-  ENV DOCKER_COMPOSE_VERSION 2.17.3
+  ENV DOCKER_COMPOSE_VERSION 2.21.0
   RUN set -eux; \
-  	wget -O 'docker-compose' "https://github.com/docker/compose/releases/download/v2.17.3/docker-compose-linux-$(uname -m)"; \
+  	wget -O 'docker-compose' "https://github.com/docker/compose/releases/download/v2.21.0/docker-compose-linux-$(uname -m)"; \
   	plugin='/usr/local/libexec/docker/cli-plugins/docker-compose'; \
   	mkdir -p "$(dirname "$plugin")"; \
   	mv -vT 'docker-compose' "$plugin"; \
@@ -83,7 +83,7 @@ FROM registry.access.redhat.com/ubi8-minimal:8.7-1107
     echo 'dockremap:165536:65536' >> /etc/subgid
 
   RUN set -eux; \
-    wget -O 'docker.tgz' "https://download.docker.com/linux/static/stable/$(uname -m)/docker-24.0.0.tgz"; \
+    wget -O 'docker.tgz' "https://download.docker.com/linux/static/stable/$(uname -m)/docker-24.0.6.tgz"; \
     tar --extract \
       --file docker.tgz \
       --strip-components 1 \
@@ -117,9 +117,8 @@ FROM registry.access.redhat.com/ubi8-minimal:8.7-1107
 
   # StackGres CI Tools
   RUN microdnf install -y gnupg openssl jq curl bash zsh sed
-  RUN uname -a | grep -qxF aarch64 \
-    || wget -O /bin/yajsv https://github.com/neilpa/yajsv/releases/download/v1.4.1/yajsv.linux.amd64
-  RUN chmod a+x /bin/yajsv
+  RUN if uname -m | grep -qxF x86_64; then \
+    wget -O /bin/yajsv https://github.com/neilpa/yajsv/releases/download/v1.4.1/yajsv.linux.amd64 && chmod a+x /bin/yajsv; fi
   RUN microdnf install -y python39-pip
   RUN pip3 install yamllint yq
   RUN mkdir -p "$HOME/.docker"; echo '{"experimental":"enabled"}' > "$HOME/.docker/config.json"
@@ -127,22 +126,36 @@ FROM registry.access.redhat.com/ubi8-minimal:8.7-1107
   RUN microdnf install -y xz
   RUN mkdir -p ~/.docker/cli-plugins
   RUN echo '{"experimental":"enabled"}' > ~/.docker/config.json
-  RUN wget -O /bin/kubectl "https://dl.k8s.io/release/v1.27.2/bin/linux/$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64)/kubectl"
+  RUN wget -O /bin/kubectl "https://dl.k8s.io/release/v1.31.1/bin/linux/$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64)/kubectl"
   RUN chmod a+x /bin/kubectl
   RUN wget -O /bin/kind-0.15.0 "https://github.com/kubernetes-sigs/kind/releases/download/v0.15.0/kind-linux-$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64)"
   RUN chmod a+x /bin/kind-0.15.0
-  RUN wget -O /bin/kind-0.19.0 "https://github.com/kubernetes-sigs/kind/releases/download/v0.19.0/kind-linux-$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64)"
-  RUN chmod a+x /bin/kind-0.19.0
-  RUN ln -s /bin/kind-0.19.0 /bin/kind
+  RUN wget -O /bin/kind-0.20.0 "https://github.com/kubernetes-sigs/kind/releases/download/v0.20.0/kind-linux-$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64)"
+  RUN chmod a+x /bin/kind-0.20.0
+  RUN ln -s /bin/kind-0.20.0 /bin/kind
   RUN wget -O /bin/k3d "https://github.com/rancher/k3d/releases/download/v5.5.1/k3d-linux-$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64)"
   RUN chmod a+x /bin/k3d
-  RUN wget "https://get.helm.sh/helm-v3.12.0-linux-$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64).tar.gz" -O -|tar xz --strip-components=1 -C /bin -f - "linux-$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64)/helm"
-  RUN wget "https://github.com/derailed/k9s/releases/download/v0.27.4/k9s_Linux_$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64).tar.gz" -O -|tar xz -C /bin -f - k9s
+  RUN wget "https://get.helm.sh/helm-v3.16.1-linux-$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64).tar.gz" -O -|tar xz --strip-components=1 -C /bin -f - "linux-$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64)/helm"
+  RUN wget "https://github.com/derailed/k9s/releases/download/v0.32.5/k9s_Linux_$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64).tar.gz" -O -|tar xz -C /bin -f - k9s
   RUN pip3 install awscli
-  RUN wget https://github.com/operator-framework/operator-sdk/releases/download/v1.29.0/operator-sdk_linux_$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64) -O /bin/operator-sdk
+  RUN wget https://github.com/operator-framework/operator-sdk/releases/download/v1.37.0/operator-sdk_linux_$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64) -O /bin/operator-sdk
   RUN chmod a+x /bin/operator-sdk
-  RUN wget https://github.com/operator-framework/operator-registry/releases/download/v1.27.1/linux-$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64)-opm -O /bin/opm
+  RUN wget https://github.com/operator-framework/operator-registry/releases/download/v1.47.0/linux-$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64)-opm -O /bin/opm
   RUN chmod a+x /bin/opm
   RUN microdnf install -y findutils make procps diffutils
-  RUN wget https://github.com/norwoodj/helm-docs/releases/download/v1.11.0/helm-docs_1.11.0_Linux_$(uname -m | grep -qxF aarch64 && echo arm64 || echo x86_64).tar.gz -O -|tar xz -C /bin -f - helm-docs
+  RUN wget https://github.com/norwoodj/helm-docs/releases/download/v1.12.0/helm-docs_1.12.0_Linux_$(uname -m | grep -qxF aarch64 && echo arm64 || echo x86_64).tar.gz -O -|tar xz -C /bin -f - helm-docs
   RUN wget https://github.com/gohugoio/hugo/releases/download/v0.81.0/hugo_0.81.0_Linux-$(uname -m | grep -qxF aarch64 && echo ARM64 || echo 64bit).tar.gz -O -|tar xz -C /bin -f - hugo
+  RUN wget https://github.com/fybrik/crdoc/releases/download/v0.6.3/crdoc_Linux_$(uname -m | grep -qxF aarch64 && echo arm64 || echo x86_64).tar.gz -O -|tar xz -C /bin -f - crdoc
+  RUN wget -O - "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.4.3/kustomize_v5.4.3_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/').tar.gz" | tar xzf - -C /bin
+  RUN wget -O /bin/kind-0.23.0 "https://github.com/kubernetes-sigs/kind/releases/download/v0.23.0/kind-linux-$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64)"
+  RUN chmod a+x /bin/kind-0.23.0
+  RUN ln -s -f /bin/kind-0.23.0 /bin/kind
+  # Older operator-sdk versions than 1.36 removed support for plugin quarkus.javaoperatorsdk.io/v1-beta but the bundle is generated only by operator-sdk version 1.32
+  #  another reason to use java-operator-sdk :/
+  RUN wget https://github.com/operator-framework/operator-sdk/releases/download/v1.32.0/operator-sdk_linux_$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64) -O /bin/operator-sdk-1.32
+  RUN chmod a+x /bin/operator-sdk-1.32
+  RUN wget -O /bin/kind-0.25.0 "https://github.com/kubernetes-sigs/kind/releases/download/v0.25.0/kind-linux-$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64)"
+  RUN chmod a+x /bin/kind-0.25.0
+  RUN wget -O /bin/kind-0.26.0 "https://github.com/kubernetes-sigs/kind/releases/download/v0.26.0/kind-linux-$(uname -m | grep -qxF aarch64 && echo arm64 || echo amd64)"
+  RUN chmod a+x /bin/kind-0.26.0
+  

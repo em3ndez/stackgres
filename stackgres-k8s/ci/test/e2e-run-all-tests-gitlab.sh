@@ -9,15 +9,15 @@ set -e
 # shellcheck disable=SC2015
 { [ "$IS_WEB" = true ] || [ "$IS_WEB" = false ]; } \
   && [ -n "$E2E_JOB" ] && [ -n "$E2E_RUN_ONLY" ] \
-  && [ -n "$CI_JOB_ID" ] && [ -n "$CI_PROJECT_ID" ] && [ -d "$CI_PROJECT_DIR" ] \
-  && [ -n "$CI_COMMIT_SHORT_SHA" ] && [ -n "$CI_PROJECT_PATH" ] \
+  && [ -n "$CI_JOB_ID" ] && [ -n "$CI_PROJECT_ID" ] \
+  && [ -n "$CI_COMMIT_SHORT_SHA" ] && [ -n "$SG_CI_PROJECT_PATH" ] \
   && [ -n "$CI_REGISTRY" ] && [ -n "$CI_REGISTRY_USER" ] && [ -n "$CI_REGISTRY_PASSWORD" ] \
   && true || false
 
 export E2E_SHELL="${E2E_SHELL:-sh}"
 export E2E_ENV="${E2E_ENV:-kind}"
 export E2E_PARALLELISM="${E2E_PARALLELISM:-32}"
-export K8S_VERSION="${K8S_VERSION:-1.22}"
+export K8S_VERSION="${K8S_VERSION:-1.24}"
 export K8S_FROM_DIND=true
 export K8S_REUSE="${K8S_REUSE:-false}"
 # shellcheck disable=SC2155
@@ -36,48 +36,36 @@ export E2E_BUILD_IMAGES=false
 export E2E_WAIT_OPERATOR=false
 export E2E_PULLED_IMAGES_PATH="/tmp/pulled-images$SUFFIX"
 export E2E_OPERATOR_REGISTRY=$CI_REGISTRY
-export E2E_OPERATOR_REGISTRY_PATH=/$CI_PROJECT_PATH/
+export E2E_OPERATOR_REGISTRY_PATH=/$SG_CI_PROJECT_PATH/
 export E2E_FORCE_IMAGE_PULL=true
 export K8S_USE_INTERNAL_REPOSITORY=true
 export E2E_DISABLE_CACHE="${E2E_DISABLE_CACHE:-false}"
 export E2E_DISABLE_LOGS="${E2E_DISABLE_LOGS:-true}"
-export E2E_SPEC_TRY_UNINSTALL_ON_FAILURE="${E2E_SPEC_TRY_UNINSTALL_ON_FAILURE:-true}"
-export E2E_SKIP_SPEC_UNINSTALL="${E2E_SKIP_SPEC_UNINSTALL:-true}"
+export E2E_SPEC_TRY_UNINSTALL_ON_FAILURE="${E2E_SPEC_TRY_UNINSTALL_ON_FAILURE:-$([ "$E2E_SKIP_OPERATOR_INSTALL" = true ] && printf false || printf true)}"
+export E2E_SKIP_SPEC_UNINSTALL="${E2E_SKIP_SPEC_UNINSTALL:-$([ "$E2E_SKIP_OPERATOR_INSTALL" = true ] && printf true || printf false)}"
 export KIND_LOCK_PATH="/tmp/kind-lock$SUFFIX"
 export KIND_LOG="${KIND_LOG:-true}"
 export KIND_LOG_PATH="/tmp/kind-log$SUFFIX"
 export KIND_LOG_RESOURCES="${KIND_LOG_RESOURCES:-false}"
 export KIND_CONTAINERD_CACHE_PATH="/tmp/kind-cache$SUFFIX"
 export EXTENSIONS_CACHE_HOST_PATH="/containerd-cache/extensions"
-export TEMP_DIR="/tmp/$CI_PROJECT_ID"
 export E2E_TEST_REGISTRY="$CI_REGISTRY"
-export E2E_TEST_REGISTRY_PATH="$CI_PROJECT_PATH"
+export E2E_TEST_REGISTRY_PATH="$SG_CI_PROJECT_PATH"
 export E2E_USE_TEST_HASHES=true
-
-copy_project_to_temp_dir() {
-  echo "Copying project files ..."
-
-  mkdir -p "$TEMP_DIR"
-
-  docker run --rm -i -u 0 -v "$TEMP_DIR:$TEMP_DIR" alpine rm -rf "$TEMP_DIR/stackgres-build-$CI_JOB_ID"
-  cp -r . "$TEMP_DIR/stackgres-build-$CI_JOB_ID"
-
-  echo "done"
-}
-
-clean_up_project_temp_dir() {
-  echo "Cleaning up ..."
-
-  docker run --rm -u 0 -v "$TEMP_DIR:$TEMP_DIR" alpine rm -rf "$TEMP_DIR/stackgres-build-$CI_JOB_ID"
-
-  echo "done"
-}
+export E2E_USE_TEST_CACHE_PER_TEST=true
+export OPERATOR_CHART_PATH=stackgres-k8s/install/helm/target/packages/stackgres-operator.tgz
+export K8S_ARCH_VERSION="$(eval "printf %s \"\$K8S_$(uname -m | tr '[a-z]' '[A-Z]')_VERSION\"")"
+export K8S_VERSION="${K8S_ARCH_VERSION:-$K8S_VERSION}"
 
 run_all_tests_loop() {
-  docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  mkdir -p $HOME/.docker                                                                                                                                                                               
+  cat "$DOCKER_AUTH_CONFIG" > "$HOME/.docker/config.json"                                                                                                                                              
+  echo | docker login "$CI_REGISTRY" || \
+    docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
   if [ -n "$EXTRA_REGISTRY_USER" ] && [ -n "$EXTRA_REGISTRY_PASSWORD" ] && [ -n "$EXTRA_REGISTRY" ]
   then
-    docker login -u "$EXTRA_REGISTRY_USER" -p "$EXTRA_REGISTRY_PASSWORD" "$EXTRA_REGISTRY"
+    echo | docker login "$EXTRA_REGISTRY" || \
+      docker login -u "$EXTRA_REGISTRY_USER" -p "$EXTRA_REGISTRY_PASSWORD" "$EXTRA_REGISTRY"
   fi
 
   echo "Variables:"
@@ -89,18 +77,12 @@ run_all_tests_loop() {
       done
   echo
 
-  if [ "$E2E_SKIP_TEST_CACHE" != true ]
-  then
-    echo "Retrieving cache..."
-    export IS_WEB
-    E2E_EXCLUDES_BY_HASH="$(sh stackgres-k8s/e2e/e2e get_already_passed_tests)"
-    echo 'done'
-  
-    echo
-  else
-    echo "Skipping cache, all tests will be executed!"
-    E2E_EXCLUDES_BY_HASH=""
-  fi
+  echo "Retrieving cache..."
+  export IS_WEB
+  E2E_EXCLUDES_BY_HASH="$(sh stackgres-k8s/e2e/e2e get_already_passed_tests)"
+  echo 'done'
+
+  echo
 
   echo "Retrieved image digests:"
   sort stackgres-k8s/e2e/target/all-test-result-images | uniq \
@@ -139,8 +121,6 @@ run_all_tests_loop() {
 
   echo
 
-  unset DEBUG
-
   echo "Running e2e tests..."
 
   # shellcheck disable=SC2086
@@ -148,7 +128,6 @@ run_all_tests_loop() {
   flock -s /tmp/stackgres-build-operator-native-executable \
     flock -s /tmp/stackgres-build-restapi-native-executable \
     flock -s /tmp/stackgres-build-jobs-native-executable \
-    flock -s /tmp/stackgres-build-distributedlogs-controller-native-executable \
     "$E2E_SHELL" "$0" run_with_e2e_lock \
     timeout -s KILL 3600 \
     "$E2E_SHELL" "$0" run_all_e2e
@@ -173,12 +152,9 @@ run_all_tests() {
     export E2E_ONLY_INCLUDES="$E2E_TEST"
   fi
 
-  copy_project_to_temp_dir
-
   set +e
 
   (
-  cd "$TEMP_DIR/stackgres-build-$CI_JOB_ID"
   while true
   do
     (
@@ -223,19 +199,11 @@ run_all_tests() {
     sleep 10
   done
 
-  mkdir -p "$CI_PROJECT_DIR/stackgres-k8s/ci/build/target"
   rm -rf stackgres-k8s/ci/build/target/.git
-  cp -r stackgres-k8s/ci/build/target/. "$CI_PROJECT_DIR/stackgres-k8s/ci/build/target/."
-  mkdir -p "$CI_PROJECT_DIR/stackgres-k8s/ci/test/target"
-  cp -r stackgres-k8s/ci/test/target/. "$CI_PROJECT_DIR/stackgres-k8s/ci/test/target/."
-  mkdir -p "$CI_PROJECT_DIR/stackgres-k8s/e2e/target"
-  cp -r stackgres-k8s/e2e/target/. "$CI_PROJECT_DIR/stackgres-k8s/e2e/target/."
 
   exit "$EXIT_CODE"
   )
   EXIT_CODE="$?"
-
-  clean_up_project_temp_dir
 
   sh stackgres-k8s/e2e/e2e add_already_passed_tests_to_report
 
@@ -269,7 +237,7 @@ run_with_e2e_lock() {
       EXIT_CODE="$?"
       if [ -f "/tmp/stackgres-integration-test$POSSIBLE_SUFFIX-was-locked-by-$CI_JOB_ID" ]
       then
-        rm -f "/tmp/stackgres-integration-test$SUFFIX-was-locked-by-$CI_JOB_ID"
+        rm -f "/tmp/stackgres-integration-test$POSSIBLE_SUFFIX-was-locked-by-$CI_JOB_ID"
         return "$EXIT_CODE"
       fi
     done

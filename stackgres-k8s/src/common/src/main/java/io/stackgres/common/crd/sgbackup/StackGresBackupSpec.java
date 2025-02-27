@@ -7,14 +7,13 @@ package io.stackgres.common.crd.sgbackup;
 
 import java.util.Objects;
 
-import javax.validation.constraints.NotNull;
-
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -24,12 +23,17 @@ import io.sundr.builder.annotations.Buildable;
     builderPackage = "io.fabric8.kubernetes.api.builder")
 public class StackGresBackupSpec {
 
-  @JsonProperty("sgCluster")
   @NotNull(message = "The cluster name is required")
   private String sgCluster;
 
-  @JsonProperty("managedLifecycle")
   private Boolean managedLifecycle;
+
+  private Integer timeout;
+
+  private Integer reconciliationTimeout;
+
+  @Min(value = 0, message = "maxRetries must be greather or equals to 0.")
+  private Integer maxRetries;
 
   public String getSgCluster() {
     return sgCluster;
@@ -47,9 +51,33 @@ public class StackGresBackupSpec {
     this.managedLifecycle = managedLifecycle;
   }
 
+  public Integer getTimeout() {
+    return timeout;
+  }
+
+  public void setTimeout(Integer timeout) {
+    this.timeout = timeout;
+  }
+
+  public Integer getReconciliationTimeout() {
+    return reconciliationTimeout;
+  }
+
+  public void setReconciliationTimeout(Integer reconciliationTimeout) {
+    this.reconciliationTimeout = reconciliationTimeout;
+  }
+
+  public Integer getMaxRetries() {
+    return maxRetries;
+  }
+
+  public void setMaxRetries(Integer maxRetries) {
+    this.maxRetries = maxRetries;
+  }
+
   @Override
   public int hashCode() {
-    return Objects.hash(managedLifecycle, sgCluster);
+    return Objects.hash(managedLifecycle, maxRetries, reconciliationTimeout, sgCluster, timeout);
   }
 
   @Override
@@ -62,7 +90,9 @@ public class StackGresBackupSpec {
     }
     StackGresBackupSpec other = (StackGresBackupSpec) obj;
     return Objects.equals(managedLifecycle, other.managedLifecycle)
-        && Objects.equals(sgCluster, other.sgCluster);
+        && Objects.equals(maxRetries, other.maxRetries)
+        && Objects.equals(reconciliationTimeout, other.reconciliationTimeout)
+        && Objects.equals(sgCluster, other.sgCluster) && Objects.equals(timeout, other.timeout);
   }
 
   @Override

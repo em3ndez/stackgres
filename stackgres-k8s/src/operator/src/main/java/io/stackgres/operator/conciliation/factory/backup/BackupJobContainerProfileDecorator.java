@@ -7,21 +7,18 @@ package io.stackgres.operator.conciliation.factory.backup;
 
 import java.util.Optional;
 
-import javax.inject.Singleton;
-
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.PodTemplateSpec;
 import io.fabric8.kubernetes.api.model.batch.v1.Job;
 import io.fabric8.kubernetes.api.model.batch.v1.JobSpec;
 import io.stackgres.common.StackGresGroupKind;
-import io.stackgres.common.crd.sgcluster.StackGresClusterNonProduction;
 import io.stackgres.common.crd.sgcluster.StackGresClusterResources;
-import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
 import io.stackgres.operator.conciliation.OperatorVersionBinder;
 import io.stackgres.operator.conciliation.backup.StackGresBackupContext;
 import io.stackgres.operator.conciliation.factory.AbstractContainerProfileDecorator;
 import io.stackgres.operator.conciliation.factory.Decorator;
-import org.jooq.lambda.Seq;
+import jakarta.inject.Singleton;
 
 @Singleton
 @OperatorVersionBinder
@@ -34,32 +31,26 @@ public class BackupJobContainerProfileDecorator extends AbstractContainerProfile
   }
 
   @Override
-  public void decorate(StackGresBackupContext context, Iterable<? extends HasMetadata> resources) {
+  @SuppressFBWarnings(value = "SA_LOCAL_SELF_COMPARISON",
+      justification = "False positive")
+  public HasMetadata decorate(StackGresBackupContext context, HasMetadata resource) {
     if (BackupJob.skipBackupJobCreation(context)
-        || Optional.of(context.getCluster().getSpec())
-        .map(StackGresClusterSpec::getNonProductionOptions)
-        .map(StackGresClusterNonProduction::getDisableClusterResourceRequirements)
-        .orElse(false)) {
-      return;
+        || context.calculateDisableClusterResourceRequirements()) {
+      return resource;
     }
 
-    Seq.seq(resources)
-        .filter(Job.class::isInstance)
-        .map(Job.class::cast)
-        .forEach(job -> setProfileContainers(context.getProfile(),
-            () -> Optional.of(job)
-            .map(Job::getSpec)
-            .map(JobSpec::getTemplate)
-            .map(PodTemplateSpec::getSpec),
-            Optional.ofNullable(context.getCluster().getSpec().getPod().getResources())
-            .map(StackGresClusterResources::getEnableClusterLimitsRequirements)
-            .orElse(false),
-            Optional.ofNullable(context.getCluster().getSpec().getNonProductionOptions())
-            .map(StackGresClusterNonProduction::getEnableSetClusterCpuRequests)
-            .orElse(false),
-            Optional.ofNullable(context.getCluster().getSpec().getNonProductionOptions())
-            .map(StackGresClusterNonProduction::getEnableSetClusterMemoryRequests)
-            .orElse(false)));
+    if (resource instanceof Job job) {
+      setProfileContainers(context.getProfile(),
+          () -> Optional.of(job)
+          .map(Job::getSpec)
+          .map(JobSpec::getTemplate)
+          .map(PodTemplateSpec::getSpec),
+          Optional.ofNullable(context.getCluster().getSpec().getPods().getResources())
+          .map(StackGresClusterResources::getEnableClusterLimitsRequirements)
+          .orElse(false));
+    }
+
+    return resource;
   }
 
 }

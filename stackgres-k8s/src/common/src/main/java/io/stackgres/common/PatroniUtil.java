@@ -5,41 +5,58 @@
 
 package io.stackgres.common;
 
-import static io.stackgres.operatorframework.resource.ResourceUtil.getIndexPattern;
+import static io.stackgres.common.StackGresUtil.getPostgresFlavorComponent;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
-import java.util.regex.Matcher;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.TextNode;
-import io.fabric8.kubernetes.api.model.Endpoints;
-import io.fabric8.kubernetes.api.model.ObjectMeta;
-import io.fabric8.kubernetes.client.CustomResource;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
+import io.fabric8.kubernetes.api.model.ContainerPort;
+import io.fabric8.kubernetes.api.model.EndpointPort;
+import io.fabric8.kubernetes.api.model.EndpointPortBuilder;
+import io.fabric8.kubernetes.api.model.IntOrString;
+import io.stackgres.common.crd.CustomContainer;
+import io.stackgres.common.crd.CustomServicePort;
+import io.stackgres.common.crd.postgres.service.StackGresPostgresService;
+import io.stackgres.common.crd.postgres.service.StackGresPostgresServices;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
-import io.stackgres.common.crd.sgcluster.StackGresClusterConfiguration;
+import io.stackgres.common.crd.sgcluster.StackGresClusterConfigurations;
 import io.stackgres.common.crd.sgcluster.StackGresClusterPatroni;
-import io.stackgres.common.crd.sgcluster.StackGresClusterPatroniInitialConfig;
+import io.stackgres.common.crd.sgcluster.StackGresClusterPatroniConfig;
+import io.stackgres.common.crd.sgcluster.StackGresClusterPods;
 import io.stackgres.common.crd.sgcluster.StackGresClusterSpec;
-import io.stackgres.common.crd.sgdistributedlogs.StackGresDistributedLogs;
-import io.stackgres.common.patroni.PatroniConfig;
-import io.stackgres.common.resource.ResourceUtil;
+import io.stackgres.common.crd.sgshardedcluster.StackGresShardedCluster;
+import io.stackgres.common.labels.LabelFactoryForCluster;
+import io.stackgres.common.patroni.PatroniCtl.PatroniCtlInstance;
+import io.stackgres.common.patroni.PatroniHistoryEntry;
+import io.stackgres.common.patroni.PatroniMember;
+import io.stackgres.operatorframework.resource.ResourceUtil;
 import org.jetbrains.annotations.NotNull;
+import org.jooq.lambda.Seq;
 import org.jooq.lambda.Unchecked;
 import org.slf4j.LoggerFactory;
 
 public interface PatroniUtil {
 
+  int PATRONI_VERSION_4 = 4;
+
+  String PATRONI_READ_ONLY_SERVICE_NAME = "PATRONI_READ_ONLY_SERVICE_NAME";
+  String REPLICATION_SERVICE_PORT_ENV = "REPLICATION_SERVICE_PORT";
+  String REPLICATION_INITIALIZATION_BACKUP = "REPLICATION_INITIALIZATION_BACKUP";
+
   String LEADER_KEY = "leader";
   String INITIALIZE_KEY = "initialize";
   String CONFIG_KEY = "config";
-  String HISTORY_KEY = "history";
   String ROLE_KEY = "role";
-  String PRIMARY_ROLE = "master";
+  String PRIMARY_ROLE = "primary";
+  String OLD_PRIMARY_ROLE = "master";
   String REPLICA_ROLE = "replica";
   String PROMOTED_ROLE = "promoted";
   String DEMOTED_ROLE = "demoted";
@@ -51,6 +68,9 @@ public interface PatroniUtil {
   String NOFAILOVER_TAG = "nofailover";
   String TRUE_TAG_VALUE = "true";
   String FALSE_TAG_VALUE = "false";
+
+  String CERTIFICATE_KEY = "tls.crt";
+  String PRIVATE_KEY_KEY = "tls.key";
 
   String SUFFIX = "-patroni";
   String DEPRECATED_READ_WRITE_SERVICE = "-primary";
@@ -69,13 +89,6 @@ public interface PatroniUtil {
       "namespace",
       "log",
       "bootstrap",
-      "consul",
-      "etcd",
-      "etcdv3",
-      "zookeper",
-      "exhibitor",
-      "kubernetes",
-      "raft",
       "postgresql",
       "restapi",
       "ctl",
@@ -83,18 +96,14 @@ public interface PatroniUtil {
 
   static String clusterScope(StackGresCluster cluster) {
     return Optional
-        .ofNullable(cluster.getSpec().getConfiguration().getPatroni())
+        .ofNullable(cluster.getSpec().getConfigurations().getPatroni())
         .map(StackGresClusterPatroni::getInitialConfig)
-        .map(patroniConfig -> patroniConfig.getScope())
+        .map(StackGresClusterPatroniConfig::getScope)
         .orElse(cluster.getMetadata().getName());
   }
 
-  static String clusterScope(StackGresDistributedLogs cluster) {
-    return cluster.getMetadata().getName();
-  }
-
-  static String readWriteName(CustomResource<?, ?> cluster) {
-    return ResourceUtil.nameIsValidService(baseNameFor(cluster));
+  static String readWriteName(StackGresCluster cluster) {
+    return ResourceUtil.nameIsValidService(baseName(cluster));
   }
 
   static String readWriteNameForDistributedLogs(String name) {
@@ -128,29 +137,23 @@ public interface PatroniUtil {
   }
 
   static String restName(StackGresCluster cluster) {
-    return ResourceUtil.nameIsValidService(cluster.getMetadata().getName() + REST_SERVICE);
+    return restName(cluster.getMetadata().getName());
   }
 
-  static String configName(CustomResource<?, ?> cluster) {
-    return ResourceUtil.nameIsValidDnsSubdomain(baseNameFor(cluster) + CONFIG_SERVICE);
+  static String restName(String clusterName) {
+    return ResourceUtil.nameIsValidService(clusterName + REST_SERVICE);
   }
 
-  static String failoverName(CustomResource<?, ?> cluster) {
-    return ResourceUtil.nameIsValidDnsSubdomain(baseNameFor(cluster) + FAILOVER_SERVICE);
+  static String configName(StackGresCluster cluster) {
+    return ResourceUtil.nameIsValidDnsSubdomain(baseName(cluster) + CONFIG_SERVICE);
   }
 
-  static String syncName(CustomResource<?, ?> cluster) {
-    return ResourceUtil.nameIsValidDnsSubdomain(baseNameFor(cluster) + SYNC_SERVICE);
+  static String failoverName(StackGresCluster cluster) {
+    return ResourceUtil.nameIsValidDnsSubdomain(baseName(cluster) + FAILOVER_SERVICE);
   }
 
-  private static String baseNameFor(CustomResource<?, ?> resource) {
-    if (resource instanceof StackGresCluster cluster) {
-      return baseName(cluster);
-    } else if (resource instanceof StackGresDistributedLogs cluster) {
-      return baseName(cluster);
-    }
-    throw new IllegalArgumentException("Can not deternime base name for custom resource of kind "
-        + resource.getKind());
+  static String syncName(StackGresCluster cluster) {
+    return ResourceUtil.nameIsValidDnsSubdomain(baseName(cluster) + SYNC_SERVICE);
   }
 
   /**
@@ -164,78 +167,258 @@ public interface PatroniUtil {
   private static String baseName(StackGresCluster cluster) {
     return Optional.of(cluster)
         .map(StackGresCluster::getSpec)
-        .map(StackGresClusterSpec::getConfiguration)
-        .map(StackGresClusterConfiguration::getPatroni)
+        .map(StackGresClusterSpec::getConfigurations)
+        .map(StackGresClusterConfigurations::getPatroni)
         .map(StackGresClusterPatroni::getInitialConfig)
-        .map(StackGresClusterPatroniInitialConfig::getScope)
+        .map(StackGresClusterPatroniConfig::getScope)
         .map(scope -> Optional.of(cluster)
             .map(StackGresCluster::getSpec)
-            .map(StackGresClusterSpec::getConfiguration)
-            .map(StackGresClusterConfiguration::getPatroni)
+            .map(StackGresClusterSpec::getConfigurations)
+            .map(StackGresClusterConfigurations::getPatroni)
             .map(StackGresClusterPatroni::getInitialConfig)
-            .flatMap(StackGresClusterPatroniInitialConfig::getCitusGroup)
+            .flatMap(StackGresClusterPatroniConfig::getCitusGroup)
             .map(group -> scope + "-" + group)
             .orElse(scope))
         .orElse(cluster.getMetadata().getName());
   }
 
-  private static String baseName(StackGresDistributedLogs cluster) {
-    return cluster.getMetadata().getName();
-  }
-
   /**
-   * Return true when labels match a patroni primary pod, false otherwise.
+   * Return true when Pod is the primary, false otherwise.
    */
-  static boolean isPrimary(Map<String, String> labels) {
-    return Objects.equals(labels.get(ROLE_KEY), PRIMARY_ROLE);
+  static Boolean isPrimary(final String podName, final PatroniCtlInstance patroniCtl) {
+    return patroniCtl.list()
+        .stream()
+        .anyMatch(member -> member.getMember().equals(podName)
+            && member.isPrimary());
   }
 
-  static Boolean isPrimary(final String podName, final Optional<Endpoints> patroniEndpoints) {
-    return patroniEndpoints.map(Endpoints::getMetadata)
-        .map(ObjectMeta::getAnnotations)
-        .map(annotations -> annotations.get(LEADER_KEY))
-        .map(podName::equals).orElse(false);
+  static boolean isBootstrapped(final PatroniCtlInstance patroniCtl) {
+    return patroniCtl.list().stream().anyMatch(member -> member.getTimeline() != null);
   }
 
-  static boolean isBootstrapped(final Optional<Endpoints> patroniConfigEndpoints) {
-    return patroniConfigEndpoints.map(Endpoints::getMetadata)
-        .map(ObjectMeta::getAnnotations)
-        .map(annotations -> annotations.get(INITIALIZE_KEY))
-        .filter(Predicate.not(String::isEmpty))
-        .isPresent();
+  static boolean isStandbyCluster(PatroniCtlInstance patroniCtl) {
+    return patroniCtl.showConfig().getStandbyCluster() != null;
   }
 
-  static boolean isStandbyCluster(Optional<Endpoints> patroniConfigEndpoints,
-      ObjectMapper objectMapper) {
-    return patroniConfigEndpoints
-    .map(Endpoints::getMetadata)
-    .map(ObjectMeta::getAnnotations)
-    .map(annotations -> annotations.get(PatroniUtil.CONFIG_KEY))
-    .map(Unchecked.function(config -> objectMapper.readValue(config, PatroniConfig.class)))
-    .map(PatroniConfig::getStandbyCluster)
-    .isPresent();
-  }
-
-  static int getLatestPrimaryIndexFromPatroni(Optional<Endpoints> patroniConfigEndpoints,
-      ObjectMapper objectMapper) {
+  static Optional<String> getLatestPrimaryFromPatroni(PatroniCtlInstance patroniCtl) {
     try {
-      return patroniConfigEndpoints.map(Endpoints::getMetadata).map(ObjectMeta::getAnnotations)
-          .filter(annotations -> annotations.containsKey(HISTORY_KEY))
-          .map(annotations -> annotations.get(HISTORY_KEY))
-          .map(Unchecked.function(history -> objectMapper.readTree(history)))
-          .filter(history -> history instanceof ArrayNode).map(ArrayNode.class::cast)
-          .map(history -> history.get(history.size() - 1))
-          .filter(lastPrimary -> lastPrimary instanceof ArrayNode).map(ArrayNode.class::cast)
-          .filter(lastPrimary -> lastPrimary.size() == 5).map(lastPrimary -> lastPrimary.get(4))
-          .filter(lastPrimary -> lastPrimary instanceof TextNode).map(TextNode.class::cast)
-          .map(TextNode::textValue).map(getIndexPattern()::matcher)
-          .filter(Matcher::find).filter(matcher -> matcher.group(1) != null)
-          .map(matcher -> matcher.group(1)).map(Integer::parseInt).orElse(0);
+      return Seq.seq(patroniCtl.history())
+          .findLast()
+          .map(PatroniHistoryEntry::getNewLeader)
+          .or(() -> patroniCtl.list().stream()
+              .filter(PatroniMember::isPrimary)
+              .map(PatroniMember::getMember)
+              .findAny());
     } catch (RuntimeException ex) {
       LoggerFactory.getLogger(PatroniUtil.class)
           .warn("Unable to parse patroni history to indentify previous primary instance", ex);
-      return 0;
+      return Optional.empty();
     }
+  }
+
+  static String secretName(final String clusterName) {
+    return ResourceUtil.resourceName(clusterName);
+  }
+
+  static String getInitialConfig(
+      StackGresCluster cluster,
+      LabelFactoryForCluster labelFactory,
+      YAMLMapper yamlMapper,
+      ObjectMapper objectMapper) {
+    return getInitialConfig(
+        cluster, labelFactory, yamlMapper, objectMapper,
+        Optional.ofNullable(cluster.getSpec().getConfigurations().getPatroni())
+        .map(StackGresClusterPatroni::getInitialConfig)
+        .map(Unchecked.function(yamlMapper::valueToTree))
+        .map(ObjectNode.class::cast)
+        .map(config -> {
+          PatroniUtil.PATRONI_BLOCKLIST_CONFIG_KEYS.forEach(config::remove);
+          return config;
+        })
+        .filter(Predicate.not(ObjectNode::isEmpty)),
+        PatroniUtil.clusterScope(cluster),
+        Optional
+        .ofNullable(cluster.getSpec().getConfigurations())
+        .map(StackGresClusterConfigurations::getPatroni)
+        .map(StackGresClusterPatroni::getInitialConfig)
+        .map(StackGresClusterPatroniConfig::isPatroniOnKubernetes)
+        .orElse(true));
+  }
+
+  static String getInitialConfig(
+      StackGresCluster cluster,
+      LabelFactoryForCluster labelFactory,
+      YAMLMapper yamlMapper,
+      ObjectMapper objectMapper,
+      Optional<ObjectNode> initialConfig,
+      String scope,
+      boolean isPatroniOnKubernetes) {
+    return initialConfig
+        .or(() -> Optional.of(yamlMapper.createObjectNode()))
+        .map(config -> {
+          config.put("scope", scope);
+          if (isPatroniOnKubernetes) {
+            ObjectNode kubernetes = yamlMapper.createObjectNode();
+            kubernetes.put("namespace", cluster.getMetadata().getNamespace());
+            kubernetes.set("labels", getClusterLabelsAsJson(cluster, objectMapper, labelFactory));
+            kubernetes.put("use_endpoints", true);
+            kubernetes.put("scope_label", labelFactory.labelMapper().clusterScopeKey(cluster));
+            kubernetes.put("pod_ip", "${POD_IP}");
+            kubernetes.set("ports", getPatroniEndpointPortsAsJson(cluster, objectMapper));
+            if (config.get("kubernetes") instanceof ObjectNode) {
+              Seq.seq(config.get("kubernetes").fields())
+                  .filter(field -> !kubernetes.has(field.getKey()))
+                  .forEach(field -> kubernetes.set(field.getKey(), field.getValue()));
+            }
+            config.set("kubernetes", kubernetes);
+          }
+          return config;
+        })
+        .map(Unchecked.function(yamlMapper::writeValueAsString))
+        .orElse("");
+  }
+
+  private static JsonNode getClusterLabelsAsJson(
+      StackGresCluster cluster,
+      ObjectMapper objectMapper,
+      LabelFactoryForCluster labelFactory) {
+    final Map<String, String> patroniClusterLabels = labelFactory
+        .patroniClusterLabels(cluster);
+    return objectMapper.valueToTree(patroniClusterLabels);
+  }
+
+  private static JsonNode getPatroniEndpointPortsAsJson(
+      StackGresCluster cluster, ObjectMapper objectMapper) {
+    List<EndpointPort> patroniEndpointPorts = getPatroniEndpointPorts(cluster);
+    return objectMapper.valueToTree(patroniEndpointPorts);
+  }
+
+  static List<EndpointPort> getPatroniEndpointPorts(final StackGresCluster cluster) {
+    List<EndpointPort> patroniEndpointPorts = new ArrayList<>();
+    boolean isEnvoyDisabled = Optional.of(cluster)
+        .map(StackGresCluster::getSpec)
+        .map(StackGresClusterSpec::getPods)
+        .map(StackGresClusterPods::getDisableEnvoy)
+        .orElse(false);
+    boolean isConnectionPoolingDisabled = Optional.of(cluster)
+        .map(StackGresCluster::getSpec)
+        .map(StackGresClusterSpec::getPods)
+        .map(StackGresClusterPods::getDisableConnectionPooling)
+        .orElse(false);
+    if (isEnvoyDisabled) {
+      if (isConnectionPoolingDisabled) {
+        patroniEndpointPorts.add(new EndpointPortBuilder()
+            .withName(EnvoyUtil.POSTGRES_PORT_NAME)
+            .withPort(EnvoyUtil.PG_PORT)
+            .withProtocol("TCP")
+            .build());
+        patroniEndpointPorts.add(new EndpointPortBuilder()
+            .withName(EnvoyUtil.POSTGRES_REPLICATION_PORT_NAME)
+            .withPort(EnvoyUtil.PG_PORT)
+            .withProtocol("TCP")
+            .build());
+      } else {
+        patroniEndpointPorts.add(new EndpointPortBuilder()
+            .withName(EnvoyUtil.POSTGRES_PORT_NAME)
+            .withPort(EnvoyUtil.PG_POOL_PORT)
+            .withProtocol("TCP")
+            .build());
+        patroniEndpointPorts.add(new EndpointPortBuilder()
+            .withName(EnvoyUtil.POSTGRES_REPLICATION_PORT_NAME)
+            .withPort(EnvoyUtil.PG_PORT)
+            .withProtocol("TCP")
+            .build());
+      }
+      if (getPostgresFlavorComponent(cluster) == StackGresComponent.BABELFISH) {
+        patroniEndpointPorts.add(new EndpointPortBuilder()
+            .withName(EnvoyUtil.BABELFISH_PORT_NAME)
+            .withPort(EnvoyUtil.BF_PORT)
+            .withProtocol("TCP")
+            .build());
+      }
+    } else {
+      patroniEndpointPorts.add(new EndpointPortBuilder()
+          .withName(EnvoyUtil.POSTGRES_PORT_NAME)
+          .withPort(EnvoyUtil.PG_ENTRY_PORT)
+          .withProtocol("TCP")
+          .build());
+      patroniEndpointPorts.add(new EndpointPortBuilder()
+          .withName(EnvoyUtil.POSTGRES_REPLICATION_PORT_NAME)
+          .withPort(EnvoyUtil.PG_REPL_ENTRY_PORT)
+          .withProtocol("TCP")
+          .build());
+      if (getPostgresFlavorComponent(cluster) == StackGresComponent.BABELFISH) {
+        patroniEndpointPorts.add(new EndpointPortBuilder()
+            .withName(EnvoyUtil.BABELFISH_PORT_NAME)
+            .withPort(EnvoyUtil.BF_ENTRY_PORT)
+            .withProtocol("TCP")
+            .build());
+      }
+    }
+    Optional.of(cluster)
+        .map(StackGresCluster::getSpec)
+        .map(StackGresClusterSpec::getPostgresServices)
+        .map(StackGresPostgresServices::getPrimary)
+        .map(StackGresPostgresService::getCustomPorts)
+        .stream()
+        .flatMap(List::stream)
+        .map(customPort -> getEndpointPortFromCustomPort(cluster, customPort))
+        .forEach(patroniEndpointPorts::add);
+    return patroniEndpointPorts;
+  }
+
+  private static EndpointPort getEndpointPortFromCustomPort(final StackGresCluster cluster,
+      CustomServicePort customPort) {
+    return new EndpointPortBuilder()
+        .withName(StackGresPort.CUSTOM.getName(customPort.getName()))
+        .withPort(getPortForCustomTargetPort(cluster, customPort.getTargetPort()))
+        .withProtocol(customPort.getProtocol())
+        .withAppProtocol(customPort.getAppProtocol())
+        .build();
+  }
+
+  private static Integer getPortForCustomTargetPort(final StackGresCluster cluster,
+      IntOrString targetPort) {
+    if (targetPort.getIntVal() != null) {
+      return targetPort.getIntVal();
+    }
+    return findContainerPortForCustomPort(cluster, targetPort)
+        .orElseThrow(() -> new IllegalArgumentException(
+            "Can not find any custom container with port named "
+                + targetPort.getStrVal()));
+  }
+
+  private static Optional<Integer> findContainerPortForCustomPort(final StackGresCluster cluster,
+      IntOrString targetPort) {
+    return Optional.of(cluster)
+        .map(StackGresCluster::getSpec)
+        .map(StackGresClusterSpec::getPods)
+        .map(StackGresClusterPods::getCustomContainers)
+        .stream()
+        .flatMap(List::stream)
+        .map(CustomContainer::getPorts)
+        .flatMap(List::stream)
+        .filter(port -> Objects.equals(targetPort.getStrVal(), port.getName()))
+        .findFirst()
+        .map(ContainerPort::getContainerPort);
+  }
+
+  static String getPrimaryRole(StackGresCluster cluster) {
+    final String patroniVersion = StackGresUtil.getPatroniVersion(cluster);
+    final int patroniMajorVersion = StackGresUtil.getPatroniMajorVersion(patroniVersion);
+    if (patroniMajorVersion < PATRONI_VERSION_4) {
+      return OLD_PRIMARY_ROLE;
+    }
+    return PRIMARY_ROLE;
+  }
+
+  static String getPrimaryRole(StackGresShardedCluster cluster) {
+    final String patroniVersion = StackGresUtil.getPatroniVersion(cluster);
+    final int patroniMajorVersion = StackGresUtil.getPatroniMajorVersion(patroniVersion);
+    if (patroniMajorVersion < PATRONI_VERSION_4) {
+      return OLD_PRIMARY_ROLE;
+    }
+    return PRIMARY_ROLE;
   }
 
 }

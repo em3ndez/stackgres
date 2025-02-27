@@ -14,13 +14,15 @@ public enum StackGresVolume implements StackGresNamedObject {
   BACKUP_ENV("backup-env", "%s-backup"),
   RESTORE_CREDENTIALS("restore-secret", "%s-restore"),
   RESTORE_ENV("restore-env", "%s-restore"),
+  REPLICATION_INITIALIZATION_ENV("replication-init-env", "%s-replication-init"),
+  REPLICATION_INITIALIZATION_CREDENTIALS("replication-init-secret", "%s-replication-init"),
   REPLICATE_CREDENTIALS("replicate-secret", "%s-replicate"),
   REPLICATE_ENV("replicate-env", "%s-replicate"),
   ENVOY("envoy", "%s-envoy-config"),
   EXPORTER_QUERIES("queries", "%s-prometheus-postgres-exporter-config"),
   EXPORTER_INIT("postgres-exporter-init", "%s-prometheus-postgres"),
-  PGBOUNCER("pgbouncer", "%s-connection-pooling-config"),
-  PGBOUNCER_CONFIG("pgbouncer-config"),
+  PGBOUNCER_CONFIG("pgbouncer", "%s-connection-pooling-config"),
+  PGBOUNCER_DYNAMIC_CONFIG("pgbouncer-dynamic-config"),
   PGBOUNCER_SECRETS("pgbouncer-secrets"),
   FLUENT_BIT("fluent-bit", "%s-fluent-bit"),
   POSTGRES_CONFIG("postgresql-conf", "%s-postgresql-conf"),
@@ -40,7 +42,6 @@ public enum StackGresVolume implements StackGresNamedObject {
   HUGEPAGES_1G("hugepages-1gi"),
   FLUENTD("fluentd"),
   FLUENTD_BUFFER("fluentd-buffer"),
-  FLUENTD_LOG("fluentd-log"),
   CUSTOM("custom-%s");
 
   private final String name;

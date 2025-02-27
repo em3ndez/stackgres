@@ -8,17 +8,13 @@ package io.stackgres.operator.conciliation.factory.dbops;
 import java.util.List;
 import java.util.Optional;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import io.fabric8.kubernetes.api.model.EnvVar;
 import io.fabric8.kubernetes.api.model.EnvVarBuilder;
 import io.fabric8.kubernetes.api.model.PodSecurityContext;
-import io.stackgres.common.ClusterStatefulSetPath;
+import io.stackgres.common.ClusterPath;
 import io.stackgres.common.KubectlUtil;
-import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgdbops.StackGresDbOps;
 import io.stackgres.common.crd.sgdbops.StackGresDbOpsVacuum;
 import io.stackgres.common.crd.sgdbops.StackGresDbOpsVacuumConfig;
@@ -29,18 +25,20 @@ import io.stackgres.operator.conciliation.dbops.StackGresDbOpsContext;
 import io.stackgres.operator.conciliation.factory.ResourceFactory;
 import io.stackgres.operator.conciliation.factory.cluster.patroni.PatroniSecret;
 import io.stackgres.operator.conciliation.factory.cluster.patroni.PatroniServices;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jooq.lambda.Seq;
 
 @Singleton
 @OperatorVersionBinder
-@OpJob("vacuum")
+@DbOpsJob("vacuum")
 public class DbOpsVacuumJob extends AbstractDbOpsJob {
 
   @Inject
   public DbOpsVacuumJob(
       ResourceFactory<StackGresDbOpsContext, PodSecurityContext> podSecurityFactory,
       DbOpsEnvironmentVariables clusterStatefulSetEnvironmentVariables,
-      LabelFactoryForCluster<StackGresCluster> labelFactory,
+      LabelFactoryForCluster labelFactory,
       LabelFactoryForDbOps dbOpsLabelFactory,
       ObjectMapper jsonMapper,
       KubectlUtil kubectl,
@@ -123,8 +121,8 @@ public class DbOpsVacuumJob extends AbstractDbOpsJob {
   }
 
   @Override
-  protected ClusterStatefulSetPath getRunScript() {
-    return ClusterStatefulSetPath.LOCAL_BIN_RUN_VACUUM_SH_PATH;
+  protected ClusterPath getRunScript() {
+    return ClusterPath.LOCAL_BIN_RUN_VACUUM_SH_PATH;
   }
 
 }

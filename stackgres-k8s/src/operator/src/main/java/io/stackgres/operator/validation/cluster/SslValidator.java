@@ -7,9 +7,7 @@ package io.stackgres.operator.validation.cluster;
 
 import java.util.Optional;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.stackgres.common.ErrorType;
 import io.stackgres.common.crd.SecretKeySelector;
@@ -21,6 +19,8 @@ import io.stackgres.common.resource.ResourceFinder;
 import io.stackgres.operator.common.StackGresClusterReview;
 import io.stackgres.operator.validation.ValidationType;
 import io.stackgres.operatorframework.admissionwebhook.validating.ValidationFailed;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 
 @Singleton
 @ValidationType(ErrorType.INVALID_CR_REFERENCE)
@@ -34,6 +34,8 @@ public class SslValidator implements ClusterValidator {
   }
 
   @Override
+  @SuppressFBWarnings(value = "SF_SWITCH_NO_DEFAULT",
+      justification = "False positive")
   public void validate(StackGresClusterReview review) throws ValidationFailed {
     switch (review.getRequest().getOperation()) {
       case CREATE:
@@ -67,8 +69,8 @@ public class SslValidator implements ClusterValidator {
     Optional<Secret> secret = secretFinder
         .findByNameAndNamespace(secretKeySelector.getName(), namespace);
 
-    if (!secret.filter(s -> s.getData()
-        .containsKey(secretKeySelector.getKey())).isPresent()) {
+    if (secret.filter(s -> s.getData()
+        .containsKey(secretKeySelector.getKey())).isEmpty()) {
       fail(onError);
     }
   }

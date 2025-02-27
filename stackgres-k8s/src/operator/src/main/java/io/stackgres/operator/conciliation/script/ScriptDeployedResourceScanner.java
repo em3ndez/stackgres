@@ -9,22 +9,37 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-import javax.enterprise.context.ApplicationScoped;
-
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
+import io.stackgres.common.CdiUtil;
 import io.stackgres.common.crd.sgscript.StackGresScript;
-import io.stackgres.operator.conciliation.DeployedResourcesScanner;
+import io.stackgres.operator.conciliation.AbstractDeployedResourcesScanner;
+import io.stackgres.operator.conciliation.DeployedResourcesCache;
+import io.stackgres.operator.conciliation.DeployedResourcesSnapshot;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
-public class ScriptDeployedResourceScanner extends DeployedResourcesScanner<StackGresScript> {
+public class ScriptDeployedResourceScanner
+    extends AbstractDeployedResourcesScanner<StackGresScript> {
+
+  @Inject
+  public ScriptDeployedResourceScanner(DeployedResourcesCache deployedResourcesCache) {
+    super(deployedResourcesCache);
+  }
+
+  public ScriptDeployedResourceScanner() {
+    super(null);
+    CdiUtil.checkPublicNoArgsConstructorIsCalledToCreateProxy(getClass());
+  }
 
   @Override
-  public List<HasMetadata> getDeployedResources(StackGresScript config) {
-    return List.of();
+  public DeployedResourcesSnapshot getDeployedResources(
+      StackGresScript config, List<HasMetadata> requiredResources) {
+    return DeployedResourcesSnapshot.emptySnapshot();
   }
 
   @Override
@@ -40,7 +55,8 @@ public class ScriptDeployedResourceScanner extends DeployedResourcesScanner<Stac
   @Override
   protected Map<Class<? extends HasMetadata>, Function<KubernetesClient,
       MixedOperation<? extends HasMetadata, ? extends KubernetesResourceList<? extends HasMetadata>,
-          ? extends Resource<? extends HasMetadata>>>> getInNamepspaceResourceOperations() {
+          ? extends Resource<? extends HasMetadata>>>> getInNamepspaceResourceOperations(
+              StackGresScript config) {
     throw new UnsupportedOperationException();
   }
 

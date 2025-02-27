@@ -1,5 +1,8 @@
 #!/bin/sh
 
+RESOURCE_CRD_NAME="$DBOPS_CRD_NAME"
+RESOURCE_NAME="$DBOPS_NAME"
+
 . "$LOCAL_BIN_SHELL_UTILS_PATH"
 
 eval_in_place() {
@@ -11,14 +14,14 @@ EVAL_IN_PLACE_EOF
 
 set_completed() {
   create_event "DbOpCompleted" "Normal" "Database operation $OP_NAME completed"
-  kubectl patch "$DB_OPS_CRD_NAME" -n "$CLUSTER_NAMESPACE" "$DB_OPS_NAME" --type=merge \
+  kubectl patch "$DBOPS_CRD_NAME" -n "$CLUSTER_NAMESPACE" "$DBOPS_NAME" --type=merge \
     -p "$(cat << EOF
 {
   "status": {
     "conditions":[
-      $(eval_in_place "$CONDITION_DB_OPS_FALSE_RUNNING"),
-      $(eval_in_place "$CONDITION_DB_OPS_COMPLETED"),
-      $(eval_in_place "$CONDITION_DB_OPS_FALSE_FAILED")
+      $(eval_in_place "$CONDITION_DBOPS_FALSE_RUNNING"),
+      $(eval_in_place "$CONDITION_DBOPS_COMPLETED"),
+      $(eval_in_place "$CONDITION_DBOPS_FALSE_FAILED")
     ]
   }
 }
@@ -28,14 +31,14 @@ EOF
 
 set_timed_out() {
   create_event "DbOpTimeOut" "Warning" "Database operation $OP_NAME timed out"
-  kubectl patch "$DB_OPS_CRD_NAME" -n "$CLUSTER_NAMESPACE" "$DB_OPS_NAME" --type=merge \
+  kubectl patch "$DBOPS_CRD_NAME" -n "$CLUSTER_NAMESPACE" "$DBOPS_NAME" --type=merge \
     -p "$(cat << EOF
 {
   "status": {
     "conditions":[
-      $(eval_in_place "$CONDITION_DB_OPS_FALSE_RUNNING"),
-      $(eval_in_place "$CONDITION_DB_OPS_FALSE_COMPLETED"),
-      $(eval_in_place "$CONDITION_DB_OPS_TIMED_OUT")
+      $(eval_in_place "$CONDITION_DBOPS_FALSE_RUNNING"),
+      $(eval_in_place "$CONDITION_DBOPS_FALSE_COMPLETED"),
+      $(eval_in_place "$CONDITION_DBOPS_TIMED_OUT")
     ]
   }
 }
@@ -45,14 +48,14 @@ EOF
 
 set_lock_lost() {
   create_event "DbOpTimeOut" "Warning" "Database operation $OP_NAME lost the lock"
-  kubectl patch "$DB_OPS_CRD_NAME" -n "$CLUSTER_NAMESPACE" "$DB_OPS_NAME" --type=merge \
+  kubectl patch "$DBOPS_CRD_NAME" -n "$CLUSTER_NAMESPACE" "$DBOPS_NAME" --type=merge \
     -p "$(cat << EOF
 {
   "status": {
     "conditions":[
-      $(eval_in_place "$CONDITION_DB_OPS_FALSE_RUNNING"),
-      $(eval_in_place "$CONDITION_DB_OPS_FALSE_COMPLETED"),
-      $(eval_in_place "$CONDITION_DB_OPS_LOCK_LOST")
+      $(eval_in_place "$CONDITION_DBOPS_FALSE_RUNNING"),
+      $(eval_in_place "$CONDITION_DBOPS_FALSE_COMPLETED"),
+      $(eval_in_place "$CONDITION_DBOPS_LOCK_LOST")
     ]
   }
 }
@@ -61,58 +64,68 @@ EOF
 }
 
 set_failed() {
-  if [ -z "$FAILURE" ]
-  then
-    create_event "DbOpFailed" "Warning" "Database operation $OP_NAME failed"
-    kubectl patch "$DB_OPS_CRD_NAME" -n "$CLUSTER_NAMESPACE" "$DB_OPS_NAME" --type=merge \
-      -p "$(cat << EOF
+  create_event "DbOpFailed" "Warning" "Database operation $OP_NAME failed"
+  kubectl patch "$DBOPS_CRD_NAME" -n "$CLUSTER_NAMESPACE" "$DBOPS_NAME" --type=merge \
+    -p "$(cat << EOF
 {
   "status": {
     "conditions":[
-      $(eval_in_place "$CONDITION_DB_OPS_FALSE_RUNNING"),
-      $(eval_in_place "$CONDITION_DB_OPS_FALSE_COMPLETED"),
-      $(eval_in_place "$CONDITION_DB_OPS_FAILED")
+      $(eval_in_place "$CONDITION_DBOPS_FALSE_RUNNING"),
+      $(eval_in_place "$CONDITION_DBOPS_FALSE_COMPLETED"),
+      $(eval_in_place "$CONDITION_DBOPS_FAILED")
     ]
-  }
-}
-EOF
-      )"
-  else
-    create_event "DbOpFailed" "Warning" "Database operation $OP_NAME failed: $FAILURE"
-    kubectl patch "$DB_OPS_CRD_NAME" -n "$CLUSTER_NAMESPACE" "$DB_OPS_NAME" --type=merge \
-      -p "$(cat << EOF
-{
-  "status": {
-    "conditions":[
-      $(eval_in_place "$CONDITION_DB_OPS_FALSE_RUNNING"),
-      $(eval_in_place "$CONDITION_DB_OPS_FALSE_COMPLETED"),
-      $(eval_in_place "$CONDITION_DB_OPS_FAILED")
-    ],
+$(
+    if [ -n "$FAILURE" ] || [ -n "$PHASE" ]
+    then
+      cat << OP_EOF
+    ,
     "$OP_NAME": {
-      "failure": $FAILURE
+$(
+    if [ -n "$PHASE" ]
+    then
+      cat << PHASE_EOF
+      "phase": $(printf %s "$PHASE" | to_json_string)$([ -z "$FAILURE" ] || printf ,)
+PHASE_EOF
+    fi
+    if [ -n "$FAILURE" ]
+    then
+      cat << FAILURE_EOF
+      "failure": $(printf %s "$FAILURE" | to_json_string)
+FAILURE_EOF
+    fi
+)
     }
+OP_EOF
+    fi
+)
   }
 }
 EOF
       )"
-  fi
 }
 
 set_result() {
   read_events_service_loop &
   READ_EVENTS_SERVICE_PID="$!"
+  (
+  [ "$DEBUG" = true ] || set +x
   until grep -q '^EXIT_CODE=' "$SHARED_PATH/$KEBAB_OP_NAME.out" 2>/dev/null
   do
     sleep 1
   done
+  echo "Result detected:"
+  cat "$SHARED_PATH/$KEBAB_OP_NAME.out"
+  echo
+  )
 
   kill "$READ_EVENTS_SERVICE_PID" || true
   wait "$READ_EVENTS_SERVICE_PID" 2>/dev/null || true
 
-  EXIT_CODE="$(grep '^EXIT_CODE=' "$SHARED_PATH/$KEBAB_OP_NAME.out" | cut -d = -f 2)"
-  TIMED_OUT="$(grep '^TIMED_OUT=' "$SHARED_PATH/$KEBAB_OP_NAME.out" | cut -d = -f 2)"
-  LOCK_LOST="$(grep '^LOCK_LOST=' "$SHARED_PATH/$KEBAB_OP_NAME.out" | cut -d = -f 2)"
-  FAILURE="$(grep '^FAILURE=' "$SHARED_PATH/$KEBAB_OP_NAME.out" | cut -d = -f 2 | sed 's/^\(.*\)$/"\1"/')"
+  EXIT_CODE="$(grep '^EXIT_CODE=' "$SHARED_PATH/$KEBAB_OP_NAME.out" | tail -n 1 | cut -d = -f 2)"
+  TIMED_OUT="$(grep '^TIMED_OUT=' "$SHARED_PATH/$KEBAB_OP_NAME.out" | tail -n 1 | cut -d = -f 2)"
+  LOCK_LOST="$(grep '^LOCK_LOST=' "$SHARED_PATH/$KEBAB_OP_NAME.out" | tail -n 1 | cut -d = -f 2)"
+  FAILURE="$(grep '^FAILURE=' "$SHARED_PATH/$KEBAB_OP_NAME.out" | tail -n 1 | cut -d = -f 2)"
+  PHASE="$(grep '^PHASE=' "$SHARED_PATH/$KEBAB_OP_NAME.out" | tail -n 1 | cut -d = -f 2)"
   LAST_TRANSITION_TIME="$(date_iso8601)"
 
   if [ "$EXIT_CODE" = 0 ]

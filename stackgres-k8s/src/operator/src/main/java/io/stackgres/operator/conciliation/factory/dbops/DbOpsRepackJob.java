@@ -10,18 +10,14 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import io.fabric8.kubernetes.api.model.EnvVar;
 import io.fabric8.kubernetes.api.model.EnvVarBuilder;
 import io.fabric8.kubernetes.api.model.PodSecurityContext;
-import io.stackgres.common.ClusterStatefulSetPath;
+import io.stackgres.common.ClusterPath;
 import io.stackgres.common.KubectlUtil;
 import io.stackgres.common.StackGresContainer;
-import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.crd.sgdbops.StackGresDbOps;
 import io.stackgres.common.crd.sgdbops.StackGresDbOpsRepack;
 import io.stackgres.common.crd.sgdbops.StackGresDbOpsRepackConfig;
@@ -30,18 +26,20 @@ import io.stackgres.common.labels.LabelFactoryForDbOps;
 import io.stackgres.operator.conciliation.OperatorVersionBinder;
 import io.stackgres.operator.conciliation.dbops.StackGresDbOpsContext;
 import io.stackgres.operator.conciliation.factory.ResourceFactory;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jooq.lambda.Seq;
 
 @Singleton
 @OperatorVersionBinder
-@OpJob("repack")
+@DbOpsJob("repack")
 public class DbOpsRepackJob extends AbstractDbOpsJob {
 
   @Inject
   public DbOpsRepackJob(
       ResourceFactory<StackGresDbOpsContext, PodSecurityContext> podSecurityFactory,
       DbOpsEnvironmentVariables clusterStatefulSetEnvironmentVariables,
-      LabelFactoryForCluster<StackGresCluster> labelFactory,
+      LabelFactoryForCluster labelFactory,
       LabelFactoryForDbOps dbOpsLabelFactory,
       ObjectMapper jsonMapper,
       KubectlUtil kubectl,
@@ -135,8 +133,8 @@ public class DbOpsRepackJob extends AbstractDbOpsJob {
   }
 
   @Override
-  protected ClusterStatefulSetPath getRunScript() {
-    return ClusterStatefulSetPath.LOCAL_BIN_RUN_REPACK_SH_PATH;
+  protected ClusterPath getRunScript() {
+    return ClusterPath.LOCAL_BIN_RUN_REPACK_SH_PATH;
   }
 
   @Override

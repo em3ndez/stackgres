@@ -7,14 +7,15 @@ package io.stackgres.common.crd.sgbackup;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
-import javax.validation.Valid;
-
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import io.stackgres.common.StackGresUtil;
 import io.sundr.builder.annotations.Buildable;
+import jakarta.validation.Valid;
 
 @RegisterForReflection
 @JsonInclude(JsonInclude.Include.NON_DEFAULT)
@@ -38,6 +39,13 @@ public class StackGresBackupInformation {
   private String startWalFile;
   private String timeline;
   private String sourcePod;
+
+  @JsonIgnore
+  public String getPostgresMajorVersion() {
+    return Optional.ofNullable(postgresVersion)
+        .map(version -> version.substring(0, 2))
+        .orElse(null);
+  }
 
   @Deprecated
   public String getHostname() {

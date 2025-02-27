@@ -57,7 +57,7 @@ class PoolingValidatorTest {
 
     String poolingConfig =
         review.getRequest().getObject().getSpec().getCoordinator()
-        .getConfiguration().getConnectionPoolingConfig();
+        .getConfigurationsForCoordinator().getSgPoolingConfig();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
     when(configFinder.findByNameAndNamespace(poolingConfig, namespace))
         .thenReturn(Optional.of(pgbouncerConfig));
@@ -74,7 +74,7 @@ class PoolingValidatorTest {
 
     String poolingConfig =
         review.getRequest().getObject().getSpec().getCoordinator()
-        .getConfiguration().getConnectionPoolingConfig();
+        .getConfigurationsForCoordinator().getSgPoolingConfig();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
     when(configFinder.findByNameAndNamespace(poolingConfig, namespace))
         .thenReturn(Optional.of(pgbouncerConfig));
@@ -91,12 +91,13 @@ class PoolingValidatorTest {
 
     String poolingConfig =
         review.getRequest().getObject().getSpec().getCoordinator()
-        .getConfiguration().getConnectionPoolingConfig();
+        .getConfigurationsForCoordinator().getSgPoolingConfig();
     review.getRequest().getObject().getSpec().getShards().setOverrides(List.of(
         new StackGresShardedClusterShardBuilder()
-        .withNewConfigurationForShards()
-        .withConnectionPoolingConfig(poolingConfig)
-        .endConfigurationForShards()
+        .withIndex(0)
+        .withNewConfigurationsForShards()
+        .withSgPoolingConfig(poolingConfig)
+        .endConfigurationsForShards()
         .build()));
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
     when(configFinder.findByNameAndNamespace(poolingConfig, namespace))
@@ -114,7 +115,7 @@ class PoolingValidatorTest {
 
     String poolingConfig =
         review.getRequest().getObject().getSpec().getCoordinator()
-        .getConfiguration().getConnectionPoolingConfig();
+        .getConfigurationsForCoordinator().getSgPoolingConfig();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(configFinder.findByNameAndNamespace(poolingConfig, namespace))
@@ -126,7 +127,7 @@ class PoolingValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Pooling config " + poolingConfig + " not found for coordinator", resultMessage);
+    assertEquals("SGPoolingConfig " + poolingConfig + " not found for coordinator", resultMessage);
 
     verify(configFinder, times(1)).findByNameAndNamespace(any(), any());
   }
@@ -137,14 +138,14 @@ class PoolingValidatorTest {
         .loadCreate().get();
 
     review.getRequest().getObject().getSpec().getShards()
-        .getConfiguration().setConnectionPoolingConfig("test");
+        .getConfigurations().setSgPoolingConfig("test");
     String poolingConfig =
         review.getRequest().getObject().getSpec().getShards()
-        .getConfiguration().getConnectionPoolingConfig();
+        .getConfigurations().getSgPoolingConfig();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(configFinder.findByNameAndNamespace(review.getRequest().getObject().getSpec()
-        .getCoordinator().getConfiguration().getConnectionPoolingConfig(), namespace))
+        .getCoordinator().getConfigurationsForCoordinator().getSgPoolingConfig(), namespace))
         .thenReturn(Optional.of(pgbouncerConfig));
     when(configFinder.findByNameAndNamespace(poolingConfig, namespace))
         .thenReturn(Optional.empty());
@@ -155,7 +156,7 @@ class PoolingValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Pooling config " + poolingConfig + " not found for shards", resultMessage);
+    assertEquals("SGPoolingConfig " + poolingConfig + " not found for shards", resultMessage);
 
     verify(configFinder, times(2)).findByNameAndNamespace(any(), any());
   }
@@ -167,20 +168,21 @@ class PoolingValidatorTest {
 
     review.getRequest().getObject().getSpec().getShards().setOverrides(List.of(
         new StackGresShardedClusterShardBuilder()
-        .withNewConfigurationForShards()
-        .withConnectionPoolingConfig("overrideTest")
-        .endConfigurationForShards()
+        .withIndex(0)
+        .withNewConfigurationsForShards()
+        .withSgPoolingConfig("overrideTest")
+        .endConfigurationsForShards()
         .build()));
     String poolingConfig =
         review.getRequest().getObject().getSpec().getShards().getOverrides().get(0)
-        .getConfigurationForShards().getConnectionPoolingConfig();
+        .getConfigurationsForShards().getSgPoolingConfig();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(configFinder.findByNameAndNamespace(review.getRequest().getObject().getSpec()
-        .getCoordinator().getConfiguration().getConnectionPoolingConfig(), namespace))
+        .getCoordinator().getConfigurationsForCoordinator().getSgPoolingConfig(), namespace))
         .thenReturn(Optional.of(pgbouncerConfig));
     when(configFinder.findByNameAndNamespace(review.getRequest().getObject().getSpec()
-        .getShards().getConfiguration().getConnectionPoolingConfig(), namespace))
+        .getShards().getConfigurations().getSgPoolingConfig(), namespace))
         .thenReturn(Optional.of(pgbouncerConfig));
     when(configFinder.findByNameAndNamespace(poolingConfig, namespace))
         .thenReturn(Optional.empty());
@@ -191,7 +193,8 @@ class PoolingValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Pooling config " + poolingConfig + " not found for shard 0", resultMessage);
+    assertEquals("SGPoolingConfig " + poolingConfig
+        + " not found for shards override 0", resultMessage);
 
     verify(configFinder, times(3)).findByNameAndNamespace(any(), any());
   }
@@ -202,10 +205,10 @@ class PoolingValidatorTest {
         .loadConnectionPoolingConfigUpdate().get();
 
     review.getRequest().getObject().getSpec().getCoordinator()
-        .getConfiguration().setConnectionPoolingConfig("test");
+        .getConfigurationsForCoordinator().setSgPoolingConfig("test");
     String poolingConfig =
         review.getRequest().getObject().getSpec().getCoordinator()
-        .getConfiguration().getConnectionPoolingConfig();
+        .getConfigurationsForCoordinator().getSgPoolingConfig();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(configFinder.findByNameAndNamespace(poolingConfig, namespace))
@@ -217,7 +220,7 @@ class PoolingValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Cannot update coordinator to pooling config " + poolingConfig
+    assertEquals("Cannot update coordinator to SGPoolingConfig " + poolingConfig
         + " because it doesn't exists", resultMessage);
 
     verify(configFinder, times(1)).findByNameAndNamespace(any(), any());
@@ -229,10 +232,10 @@ class PoolingValidatorTest {
         .loadConnectionPoolingConfigUpdate().get();
 
     review.getRequest().getObject().getSpec().getShards()
-        .getConfiguration().setConnectionPoolingConfig("test");
+        .getConfigurations().setSgPoolingConfig("test");
     String poolingConfig =
         review.getRequest().getObject().getSpec().getShards()
-        .getConfiguration().getConnectionPoolingConfig();
+        .getConfigurations().getSgPoolingConfig();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(configFinder.findByNameAndNamespace(poolingConfig, namespace))
@@ -244,7 +247,7 @@ class PoolingValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Cannot update shards to pooling config " + poolingConfig
+    assertEquals("Cannot update shards to SGPoolingConfig " + poolingConfig
         + " because it doesn't exists", resultMessage);
 
     verify(configFinder, times(1)).findByNameAndNamespace(any(), any());
@@ -257,13 +260,14 @@ class PoolingValidatorTest {
 
     review.getRequest().getObject().getSpec().getShards().setOverrides(List.of(
         new StackGresShardedClusterShardBuilder()
-        .withNewConfigurationForShards()
-        .withConnectionPoolingConfig("overrideTest")
-        .endConfigurationForShards()
+        .withIndex(0)
+        .withNewConfigurationsForShards()
+        .withSgPoolingConfig("overrideTest")
+        .endConfigurationsForShards()
         .build()));
     String poolingConfig =
         review.getRequest().getObject().getSpec().getShards().getOverrides().get(0)
-        .getConfigurationForShards().getConnectionPoolingConfig();
+        .getConfigurationsForShards().getSgPoolingConfig();
     String namespace = review.getRequest().getObject().getMetadata().getNamespace();
 
     when(configFinder.findByNameAndNamespace(poolingConfig, namespace))
@@ -275,7 +279,7 @@ class PoolingValidatorTest {
 
     String resultMessage = ex.getMessage();
 
-    assertEquals("Cannot update shard 0 to pooling config " + poolingConfig
+    assertEquals("Cannot update shards override 0 to SGPoolingConfig " + poolingConfig
         + " because it doesn't exists", resultMessage);
 
     verify(configFinder, times(1)).findByNameAndNamespace(any(), any());
@@ -297,12 +301,13 @@ class PoolingValidatorTest {
 
     String poolingConfig =
         review.getRequest().getObject().getSpec().getShards()
-        .getConfiguration().getConnectionPoolingConfig();
+        .getConfigurations().getSgPoolingConfig();
     review.getRequest().getObject().getSpec().getShards().setOverrides(List.of(
         new StackGresShardedClusterShardBuilder()
-        .withNewConfigurationForShards()
-        .withConnectionPoolingConfig(poolingConfig)
-        .endConfigurationForShards()
+        .withIndex(0)
+        .withNewConfigurationsForShards()
+        .withSgPoolingConfig(poolingConfig)
+        .endConfigurationsForShards()
         .build()));
 
     validator.validate(review);

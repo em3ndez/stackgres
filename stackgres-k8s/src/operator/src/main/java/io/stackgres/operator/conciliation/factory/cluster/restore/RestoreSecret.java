@@ -10,9 +10,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 
-import javax.inject.Inject;
-import javax.inject.Singleton;
-
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
 import io.fabric8.kubernetes.api.model.SecretVolumeSourceBuilder;
@@ -23,9 +20,9 @@ import io.stackgres.common.StackGresUtil;
 import io.stackgres.common.StackGresVolume;
 import io.stackgres.common.crd.sgbackup.BackupStatus;
 import io.stackgres.common.crd.sgbackup.StackGresBackup;
+import io.stackgres.common.crd.sgbackup.StackGresBackupConfigSpec;
 import io.stackgres.common.crd.sgbackup.StackGresBackupProcess;
 import io.stackgres.common.crd.sgbackup.StackGresBackupStatus;
-import io.stackgres.common.crd.sgbackupconfig.StackGresBackupConfigSpec;
 import io.stackgres.common.crd.sgcluster.StackGresCluster;
 import io.stackgres.common.labels.LabelFactoryForCluster;
 import io.stackgres.operator.conciliation.OperatorVersionBinder;
@@ -34,6 +31,9 @@ import io.stackgres.operator.conciliation.factory.ImmutableVolumePair;
 import io.stackgres.operator.conciliation.factory.VolumeFactory;
 import io.stackgres.operator.conciliation.factory.VolumePair;
 import io.stackgres.operator.conciliation.factory.cluster.backup.BackupEnvVarFactory;
+import io.stackgres.operatorframework.resource.ResourceUtil;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jetbrains.annotations.NotNull;
 
 @Singleton
@@ -41,7 +41,7 @@ import org.jetbrains.annotations.NotNull;
 public class RestoreSecret
     implements VolumeFactory<StackGresClusterContext> {
 
-  private LabelFactoryForCluster<StackGresCluster> labelFactory;
+  private LabelFactoryForCluster labelFactory;
 
   private BackupEnvVarFactory envVarFactory;
 
@@ -84,11 +84,10 @@ public class RestoreSecret
         data.put("RESTORE_BACKUP_ERROR", "Backup is " + status);
       } else {
         final StackGresBackup backup = restoreBackup.get();
-        data.put("BACKUP_RESOURCE_VERSION",
-            backup.getMetadata().getResourceVersion());
         String backupNamespace = backup.getMetadata().getNamespace();
-        StackGresBackupConfigSpec backupConfig = backup.getStatus().getBackupConfig();
-        data.putAll(envVarFactory.getSecretEnvVar(backupNamespace, backupConfig));
+        StackGresBackupConfigSpec backupConfig = backup.getStatus().getSgBackupConfig();
+        data.putAll(envVarFactory.getSecretEnvVar(backupNamespace, backupConfig,
+            context.getRestoreSecrets()));
       }
     } else {
       data.put("RESTORE_BACKUP_ERROR", "Can not restore from backup. Backup not found!");
@@ -101,12 +100,12 @@ public class RestoreSecret
         .withLabels(labelFactory.genericLabels(cluster))
         .endMetadata()
         .withType("Opaque")
-        .withStringData(StackGresUtil.addMd5Sum(data))
+        .withData(ResourceUtil.encodeSecret(StackGresUtil.addMd5Sum(data)))
         .build();
   }
 
   @Inject
-  public void setLabelFactory(LabelFactoryForCluster<StackGresCluster> labelFactory) {
+  public void setLabelFactory(LabelFactoryForCluster labelFactory) {
     this.labelFactory = labelFactory;
   }
 

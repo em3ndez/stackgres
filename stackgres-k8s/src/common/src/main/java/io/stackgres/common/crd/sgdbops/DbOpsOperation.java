@@ -29,24 +29,12 @@ public enum DbOpsOperation {
   }
 
   public static DbOpsOperation fromString(String name) {
-    switch (name) {
-      case "benchmark":
-        return BENCHMARK;
-      case "vacuum":
-        return VACUUM;
-      case "repack":
-        return REPACK;
-      case "restart":
-        return RESTART;
-      case "majorVersionUpgrade":
-        return MAJOR_VERSION_UPGRADE;
-      case "minorVersionUpgrade":
-        return MINOR_VERSION_UPGRADE;
-      case "securityUpgrade":
-        return SECURITY_UPGRADE;
-      default:
-        throw new IllegalArgumentException("DbOps operation type is invalid: " + name);
+    for (DbOpsOperation value : values()) {
+      if (value.type.equals(name)) {
+        return value;
+      }
     }
+    throw new IllegalArgumentException("DbOps operation type is invalid: " + name);
   }
 
 }

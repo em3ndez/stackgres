@@ -8,7 +8,7 @@ run_query() {
   local HOST=127.0.0.1
   local DATABASE=postgres
   local INSTANCE=0
-  local CONTAINER="postgres-util"
+  local CONTAINER=""
   local TYPE="postgres"
   local SSLMODE=prefer
   local USERNAME=
@@ -52,10 +52,14 @@ run_query() {
 
   if [ "$TYPE" = postgres ]
   then
+    if [ -z "$CONTAINER" ]
+    then
+      CONTAINER=patroni
+    fi
     if [ -z "$USERNAME" ]
     then
-      USERNAME="postgres:$(kubectl -n "$NAMESPACE" get secrets "$NAME" \
-        -o jsonpath='{.data.superuser-password}' | base64 -d)"
+      USERNAME="$(kubectl -n "$NAMESPACE" get secrets "$NAME" \
+        --template '{{ if index .data "superuser-username" }}{{ index .data "superuser-username" | base64decode }}{{ else }}postgres{{ end }}:{{ index .data "superuser-password" | base64decode }}')"
     fi
     PASSWORD="${USERNAME#*:}"
     USERNAME="${USERNAME%:*}"
@@ -63,9 +67,13 @@ run_query() {
       PGPASSWORD="$PASSWORD" \
       PGCONNECT_TIMEOUT="$((5 + E2E_TIMEOUT / 10))" \
       PGSSLMODE="$SSLMODE" \
-      psql -t -A -U "$USERNAME" -d "$DATABASE" -p "$PORT" -h "$HOST" -c "$QUERY"
+      psql -q -t -A -U "$USERNAME" -d "$DATABASE" -p "$PORT" -h "$HOST" -c "$QUERY"
   elif [ "$TYPE" = babelfish ]
   then
+    if [ -z "$CONTAINER" ]
+    then
+      CONTAINER=postgres-util
+    fi
     if [ -z "$USERNAME" ]
     then
       USERNAME="babelfish:$(kubectl -n "$NAMESPACE" get secrets "$NAME" \

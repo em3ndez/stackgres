@@ -5,21 +5,20 @@
 
 package io.stackgres.operator.validation.pgconfig;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.inject.Any;
-import javax.enterprise.inject.Instance;
-import javax.inject.Inject;
-
-import io.stackgres.operator.common.PgConfigReview;
+import io.stackgres.operator.common.StackGresPostgresConfigReview;
 import io.stackgres.operator.validation.AbstractValidationPipeline;
 import io.stackgres.operatorframework.admissionwebhook.validating.Validator;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Any;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
-public class PgConfigValidationPipeline extends AbstractValidationPipeline<PgConfigReview> {
+public class PgConfigValidationPipeline extends AbstractValidationPipeline<StackGresPostgresConfigReview> {
 
   @Inject
   public PgConfigValidationPipeline(
-      @Any Instance<Validator<PgConfigReview>> validatorInstances) {
+      @Any Instance<Validator<StackGresPostgresConfigReview>> validatorInstances) {
     super(validatorInstances);
   }
 

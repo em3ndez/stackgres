@@ -19,12 +19,14 @@ import io.stackgres.common.crd.sgshardedcluster.StackGresShardedCluster;
 import io.stackgres.common.event.EventEmitter;
 import io.stackgres.common.fixture.Fixtures;
 import io.stackgres.common.resource.CustomResourceScheduler;
-import io.stackgres.operator.conciliation.ComparisonDelegator;
-import io.stackgres.operator.conciliation.Conciliator;
+import io.stackgres.operator.conciliation.AbstractConciliator;
+import io.stackgres.operator.conciliation.DeployedResourcesCache;
 import io.stackgres.operator.conciliation.HandlerDelegator;
+import io.stackgres.operator.conciliation.Metrics;
 import io.stackgres.operator.conciliation.ReconciliationResult;
 import io.stackgres.operator.conciliation.StatusManager;
 import io.stackgres.operator.conciliation.factory.cluster.KubernetessMockResourceGenerationUtil;
+import io.stackgres.testutil.JsonUtil;
 import org.jooq.lambda.tuple.Tuple;
 import org.jooq.lambda.tuple.Tuple2;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,7 +40,9 @@ class ShardedClusterReconciliatorTest {
 
   private final StackGresShardedCluster cluster = Fixtures.shardedCluster().loadDefault().get();
   @Mock
-  Conciliator<StackGresShardedCluster> conciliator;
+  AbstractConciliator<StackGresShardedCluster> conciliator;
+  @Mock
+  DeployedResourcesCache deployedResourcesCache;
   @Mock
   HandlerDelegator<StackGresShardedCluster> handlerDelegator;
   @Mock
@@ -48,7 +52,7 @@ class ShardedClusterReconciliatorTest {
   @Mock
   CustomResourceScheduler<StackGresShardedCluster> clusterScheduler;
   @Mock
-  ComparisonDelegator<StackGresShardedCluster> resourceComparator;
+  Metrics metrics;
 
   private ShardedClusterReconciliator reconciliator;
 
@@ -57,11 +61,13 @@ class ShardedClusterReconciliatorTest {
     ShardedClusterReconciliator.Parameters parameters =
         new ShardedClusterReconciliator.Parameters();
     parameters.conciliator = conciliator;
+    parameters.deployedResourcesCache = deployedResourcesCache;
     parameters.handlerDelegator = handlerDelegator;
     parameters.eventController = eventController;
     parameters.statusManager = statusManager;
     parameters.clusterScheduler = clusterScheduler;
-    parameters.resourceComparator = resourceComparator;
+    parameters.objectMapper = JsonUtil.jsonMapper();
+    parameters.metrics = metrics;
     reconciliator = spy(new ShardedClusterReconciliator(parameters));
   }
 
@@ -79,7 +85,7 @@ class ShardedClusterReconciliatorTest {
             List.of(),
             List.of()));
 
-    reconciliator.reconciliationCycle(cluster, false);
+    reconciliator.reconciliationCycle(cluster, 0, false);
 
     verify(conciliator).evalReconciliationState(cluster);
     creations.forEach(resource -> verify(handlerDelegator).create(cluster, resource));
@@ -101,7 +107,7 @@ class ShardedClusterReconciliatorTest {
             patches,
             List.of()));
 
-    reconciliator.reconciliationCycle(cluster, false);
+    reconciliator.reconciliationCycle(cluster, 0, false);
 
     verify(conciliator).evalReconciliationState(cluster);
     patches.forEach(resource -> verify(handlerDelegator).patch(cluster, resource.v1, resource.v2));
@@ -120,7 +126,7 @@ class ShardedClusterReconciliatorTest {
             List.of(),
             deletions));
 
-    reconciliator.reconciliationCycle(cluster, false);
+    reconciliator.reconciliationCycle(cluster, 0, false);
 
     verify(conciliator).evalReconciliationState(cluster);
     deletions.forEach(resource -> verify(handlerDelegator).delete(cluster, resource));

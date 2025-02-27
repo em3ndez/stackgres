@@ -5,17 +5,16 @@
 
 package io.stackgres.operator.mutation.backup;
 
-import javax.enterprise.context.ApplicationScoped;
-import javax.enterprise.inject.Any;
-import javax.enterprise.inject.Instance;
-import javax.inject.Inject;
-
 import io.stackgres.common.crd.sgbackup.StackGresBackup;
-import io.stackgres.operator.common.BackupReview;
+import io.stackgres.operator.common.StackGresBackupReview;
 import io.stackgres.operator.mutation.AbstractMutationPipeline;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Any;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
 
 @ApplicationScoped
-public class BackupPipeline extends AbstractMutationPipeline<StackGresBackup, BackupReview> {
+public class BackupPipeline extends AbstractMutationPipeline<StackGresBackup, StackGresBackupReview> {
 
   @Inject
   public BackupPipeline(
